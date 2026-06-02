@@ -403,10 +403,19 @@ class TradingEngine:
                 open_value += pos['amount'] * price
             except Exception:
                 pass
-        total_fees = sum(
-            float(t.get('fee', {}).get('cost', 0) or 0)
-            for t in self.trade_history
-        )
+        total_fees = 0.0
+        for t in self.trade_history:
+            fee = t.get('fee', {})
+            fee_cost = float(fee.get('cost', 0) or 0)
+            fee_currency = fee.get('currency', '')
+            if fee_cost == 0.0:
+                continue
+            if fee_currency == self.base_currency:
+                total_fees += fee_cost
+            else:
+                # fee is in the base coin (e.g., BTC) → convert using trade price
+                price = t.get('price', 0.0)
+                total_fees += fee_cost * price
         total_value = current_balance + open_value
         pnl = total_value - self.initial_balance
         pnl_percent = (pnl / self.initial_balance * 100) if self.initial_balance else 0.0
