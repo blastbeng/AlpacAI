@@ -47,6 +47,7 @@ class TradingEngine:
 
         self.current_coins: List[str] = []
         self.positions: Dict[str, Dict[str, Any]] = {}  # symbol -> position info
+        self.trade_history: List[Dict[str, Any]] = []
         self._load_state()
 
     def _load_state(self):
@@ -63,11 +64,17 @@ class TradingEngine:
                     pos["stop_loss"] = pos["price"] * (1 - STOP_LOSS_PCT)
                 if "take_profit" not in pos:
                     pos["take_profit"] = pos["price"] * (1 + TAKE_PROFIT_PCT)
+        trades_json = self.redis.get("trading:trade_history")
+        if trades_json:
+            self.trade_history = json.loads(trades_json)
 
     def _save_state(self):
         """Persist current coins and positions to Redis."""
         self.redis.set("trading:current_coins", json.dumps(self.current_coins))
         self.redis.set("trading:positions", json.dumps(self.positions))
+        # Keep only the last 1000 trades to avoid unbounded growth
+        self.trade_history = self.trade_history[-1000:]
+        self.redis.set("trading:trade_history", json.dumps(self.trade_history))
 
     async def run(self):
         """Main loop that runs forever."""
@@ -189,6 +196,8 @@ class TradingEngine:
                     "stop_loss": entry_price * (1 - STOP_LOSS_PCT),
                     "take_profit": entry_price * (1 + TAKE_PROFIT_PCT),
                 }
+                self.trade_history.append(order)
+                self._save_state()
             except Exception as e:
                 logger.error(f"Buy order failed for {symbol}: {e}")
 
@@ -202,5 +211,7 @@ class TradingEngine:
                 logger.info(f"SELL {symbol}: {order}")
                 # Remove position
                 self.positions.pop(symbol, None)
+                self.trade_history.append(order)
+                self._save_state()
             except Exception as e:
                 logger.error(f"Sell order failed for {symbol}: {e}")
