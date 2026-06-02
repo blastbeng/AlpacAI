@@ -94,7 +94,17 @@ class TelegramBot:
             sym = t['symbol']
             amt = t['amount']
             price = t['price']
-            msg += f"  {side} {sym} {amt} @ {price}\n"
+            fee = t.get('fee', {})
+            fee_str = ""
+            if fee:
+                fee_cost = fee.get('cost', 0)
+                fee_currency = fee.get('currency', '')
+                fee_str = f" (fee: {fee_cost:.6f} {fee_currency})"
+            pnl_str = ""
+            if t['side'] == 'sell' and 'realized_pnl' in t:
+                pnl = t['realized_pnl']
+                pnl_str = f" | P&L: {pnl:+.4f}"
+            msg += f"  {side} {sym} {amt:.6f} @ {price:.4f}{fee_str}{pnl_str}\n"
         await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=self.keyboard)
 
     async def cmd_profit(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
