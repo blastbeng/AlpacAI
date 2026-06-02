@@ -5,6 +5,7 @@ import time
 from typing import Dict, List, Optional, Any
 
 from src.config.settings import settings
+from src.exchanges.fees import get_fee_rate
 from src.exchanges.factory import get_exchange
 from src.exchanges.market_data import get_available_pairs, get_tickers, get_order_book
 from src.trading.paper_simulator import PaperSimulator
@@ -42,6 +43,7 @@ class TradingEngine:
                 self.exchange,
                 base_currency=self.base_currency,
                 initial_balance=settings.PAPER_INITIAL_BALANCE,
+                redis_client=self.redis,
             )
         else:
             self.trader = LiveTrader(self.exchange)
@@ -168,7 +170,7 @@ class TradingEngine:
                 except Exception:
                     current_price = pos.get("price", 0.0)  # fallback to entry price
                 cost = sold_amount * current_price
-                fee_rate = 0.001  # assume 0.1% fee
+                fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
                 fee_cost = cost * fee_rate
                 trade = {
                     "symbol": symbol,

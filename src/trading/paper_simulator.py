@@ -3,6 +3,8 @@ import time
 from typing import Dict, List, Optional, Any
 import ccxt
 
+from src.exchanges.fees import get_fee_rate
+
 
 class PaperSimulator:
     """Simulates a trading account with fake balances and order execution."""
@@ -13,10 +15,12 @@ class PaperSimulator:
         base_currency: str = "USDT",
         initial_balance: float = 10000.0,
         fee_rate: float = 0.001,  # 0.1% fee
+        redis_client=None,
     ):
         self.exchange = exchange
         self.base_currency = base_currency
         self.fee_rate = fee_rate
+        self.redis_client = redis_client
         self.balances: Dict[str, float] = {base_currency: initial_balance}
         self.orders: List[Dict[str, Any]] = []
         self.trades: List[Dict[str, Any]] = []
@@ -30,6 +34,15 @@ class PaperSimulator:
         """Return amount after fee deduction."""
         return amount * (1 - self.fee_rate)
 
+    def _get_fee_rate(self, symbol: str) -> float:
+        """Return the taker fee rate for the symbol, using Redis cache if available."""
+        return get_fee_rate(
+            self.exchange,
+            symbol,
+            redis_client=self.redis_client,
+            default=self.fee_rate,
+        )
+
     def get_balance(self, currency: str) -> float:
         return self.balances.get(currency, 0.0)
 
@@ -41,7 +54,8 @@ class PaperSimulator:
         base, quote = symbol.split('/')
         price = self._get_price(symbol)
         base_amount = quote_amount / price
-        fee = base_amount * self.fee_rate
+        fee_rate = self._get_fee_rate(symbol)
+        fee = base_amount * fee_rate
         net_base = base_amount - fee
 
         if self.balances.get(quote, 0) < quote_amount:
@@ -71,7 +85,8 @@ class PaperSimulator:
         base, quote = symbol.split('/')
         price = self._get_price(symbol)
         quote_amount = base_amount * price
-        fee = quote_amount * self.fee_rate
+        fee_rate = self._get_fee_rate(symbol)
+        fee = quote_amount * fee_rate
         net_quote = quote_amount - fee
 
         if self.balances.get(base, 0) < base_amount:
