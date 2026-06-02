@@ -12,6 +12,8 @@ logging.basicConfig(
 
 async def main():
     engine = TradingEngine()
+    from src.web.app import set_engine
+    set_engine(engine)
     # Start engine as a background task
     asyncio.create_task(engine.run())
     if settings.TELEGRAM_BOT_TOKEN:
