@@ -15,13 +15,16 @@ async def main():
     logging.info("Trading engine initialized.")
     from src.web.app import set_engine
     set_engine(engine)
-    # Start engine as a background task
-    asyncio.create_task(engine.run())
+    # Set up Telegram notifier before starting the engine
     if settings.TELEGRAM_BOT_TOKEN:
         from src.telegram.bot import TelegramBot
         telegram_bot = TelegramBot(engine)
+        await telegram_bot.initialize()
         engine.set_notifier(telegram_bot)
         asyncio.create_task(telegram_bot.run())
+
+    # Now start the trading engine
+    asyncio.create_task(engine.run())
     # Run the web server
     config = uvicorn.Config(
         app,

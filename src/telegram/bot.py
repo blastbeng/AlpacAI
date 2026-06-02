@@ -82,10 +82,14 @@ class TelegramBot:
         if chat_id:
             await self.app.bot.send_message(chat_id=int(chat_id), text=message)
 
-    async def run(self):
-        """Start polling for updates."""
+    async def initialize(self):
+        """Initialize and start the bot application (without polling)."""
         await self.app.initialize()
         await self.app.start()
+
+    async def run(self):
+        """Start polling for updates."""
+        await self.initialize()
         await self.app.updater.start_polling()
         # Keep the task alive
         while True:
