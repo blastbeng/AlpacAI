@@ -4,6 +4,7 @@ import uvicorn
 from src.web.app import app
 from src.config.settings import settings
 from src.database import init_db
+from src.utils.redis_client import get_redis_client
 from src.trading.engine import TradingEngine
 
 logging.basicConfig(
@@ -11,8 +12,22 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
+def _cleanup_redis_state():
+    """Remove old trading state keys from Redis (now stored in SQLite)."""
+    redis = get_redis_client()
+    keys_to_delete = [
+        "trading:current_coins",
+        "trading:positions",
+        "trading:trade_history",
+        "trading:initial_balance",
+    ]
+    for key in keys_to_delete:
+        redis.delete(key)
+
+
 async def main():
     init_db()
+    _cleanup_redis_state()
     engine = TradingEngine()
     logging.info("Trading engine initialized.")
     from src.web.app import set_engine
