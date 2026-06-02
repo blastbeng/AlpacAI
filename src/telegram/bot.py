@@ -5,6 +5,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from src.config.settings import settings
 from src.trading.engine import TradingEngine
 from src.utils.redis_client import get_redis_client
+from src.database import set_telegram_chat_id, get_telegram_chat_id
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class TelegramBot:
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
-        await asyncio.to_thread(self.redis.set, "telegram:chat_id", chat_id)
+        await asyncio.to_thread(set_telegram_chat_id, chat_id)
         await update.message.reply_text(
             "Bot started! You will receive trade notifications here.\nUse the buttons below or type /menu to see them again.",
             reply_markup=self.keyboard,
@@ -107,7 +108,7 @@ class TelegramBot:
 
     async def send_notification(self, message: str):
         """Send a notification to the stored chat ID."""
-        chat_id = await asyncio.to_thread(self.redis.get, "telegram:chat_id")
+        chat_id = await asyncio.to_thread(get_telegram_chat_id)
         logger.info(f"send_notification called, chat_id={chat_id}, message={message[:50]}...")
         if not chat_id:
             logger.warning("No chat_id stored – cannot send notification. Use /start first.")
