@@ -22,6 +22,10 @@ services:
       - "8083:8083"
     env_file:
       - .env
+    environment:
+      - PUID=1000
+      - PGID=1000
+    user: "${PUID:-1000}:${PGID:-1000}"
     depends_on:
       redis:
         condition: service_healthy
