@@ -16,6 +16,7 @@ services:
   bot:
     build: .
     container_name: bengobot
+    pull_policy: build
     restart: no
     ports:
       - "8083:8083"
