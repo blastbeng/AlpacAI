@@ -19,7 +19,6 @@ async def main():
     if settings.TELEGRAM_BOT_TOKEN:
         from src.telegram.bot import TelegramBot
         telegram_bot = TelegramBot(engine)
-        await telegram_bot.initialize()
         engine.set_notifier(telegram_bot)
         asyncio.create_task(telegram_bot.run())
 
