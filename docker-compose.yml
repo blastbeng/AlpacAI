@@ -6,7 +6,7 @@ services:
     ports:
       - "63795:6379"
     volumes:
-      - ./redis_data:/data
+      - redis_data:/data
     environment:
       - TZ=Europe/Rome
       - PUID=1000
@@ -36,4 +36,7 @@ services:
         condition: service_healthy
     volumes:
       - ./src:/app/src   # for development hot-reload (optional)
+
+volumes:
+  redis_data:
 
