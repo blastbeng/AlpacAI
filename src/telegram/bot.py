@@ -20,7 +20,6 @@ class TelegramBot:
                 [KeyboardButton("💰 Profit"), KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
             ],
             resize_keyboard=True,
-            persistent=True,
         )
         self._initialized = False
 
