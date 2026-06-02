@@ -49,7 +49,12 @@ class TradingEngine:
         self.positions: Dict[str, Dict[str, Any]] = {}  # symbol -> position info
         self.trade_history: List[Dict[str, Any]] = []
         self.initial_balance: float = 0.0
+        self.notifier = None
         self._load_state()
+
+    def set_notifier(self, notifier):
+        """Attach a notification service (e.g., TelegramBot)."""
+        self.notifier = notifier
 
     def _load_state(self):
         """Load current coins and positions from Redis."""
@@ -134,6 +139,10 @@ class TradingEngine:
                 valid_coins = [c for c in new_coins if c in available_pairs]
                 self.current_coins = valid_coins[: self.max_coins]
                 logger.info(f"Selected coins: {self.current_coins}")
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"🔄 Coins updated: {', '.join(self.current_coins) if self.current_coins else 'None'}"
+                    )
         except json.JSONDecodeError:
             logger.error("Failed to parse coin selection response.")
 
@@ -197,9 +206,17 @@ class TradingEngine:
                 current_price = ticker['last']
                 if current_price <= pos["stop_loss"]:
                     logger.info(f"Stop-loss triggered for {symbol} at {current_price}")
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"⛔ Stop‑loss triggered for {symbol} at {current_price:.4f}"
+                        )
                     await self._execute_signal(symbol, Signal(action="SELL", confidence=1.0, reasoning="Stop-loss"))
                 elif current_price >= pos["take_profit"]:
                     logger.info(f"Take-profit triggered for {symbol} at {current_price}")
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"✅ Take‑profit triggered for {symbol} at {current_price:.4f}"
+                        )
                     await self._execute_signal(symbol, Signal(action="SELL", confidence=1.0, reasoning="Take-profit"))
             except Exception as e:
                 logger.error(f"Risk check failed for {symbol}: {e}")
@@ -232,6 +249,10 @@ class TradingEngine:
                 }
                 self.trade_history.append(order)
                 self._save_state()
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"🟢 BUY {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
+                    )
             except Exception as e:
                 logger.error(f"Buy order failed for {symbol}: {e}")
 
@@ -247,5 +268,9 @@ class TradingEngine:
                 self.positions.pop(symbol, None)
                 self.trade_history.append(order)
                 self._save_state()
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"🔴 SELL {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
+                    )
             except Exception as e:
                 logger.error(f"Sell order failed for {symbol}: {e}")
