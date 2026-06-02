@@ -29,8 +29,8 @@ def get_exchange() -> ccxt.Exchange:
     exchange = exchange_class(config)
 
     if settings.TRADING_MODE == "paper":
-        # Enable sandbox mode if the exchange supports it
-        if hasattr(exchange, "set_sandbox_mode"):
+        # Enable sandbox mode only if the exchange truly supports it
+        if exchange.has.get("sandbox", False):
             exchange.set_sandbox_mode(True)
 
     exchange.enableRateLimit = True
