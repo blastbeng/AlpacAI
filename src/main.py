@@ -12,6 +12,7 @@ logging.basicConfig(
 
 async def main():
     engine = TradingEngine()
+    logging.info("Trading engine initialized.")
     from src.web.app import set_engine
     set_engine(engine)
     # Start engine as a background task

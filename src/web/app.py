@@ -4,7 +4,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from src.config.settings import settings
-from src.utils.redis_client import get_redis_client
+from src.utils.redis_client import get_redis_client, check_redis_connection
 
 app = FastAPI(title="Crypto Trading Bot")
 
@@ -29,7 +29,11 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    redis_ok = check_redis_connection()
+    return {
+        "status": "ok" if redis_ok else "degraded",
+        "redis": "connected" if redis_ok else "disconnected",
+    }
 
 @app.get("/api/status")
 async def status():
