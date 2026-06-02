@@ -19,6 +19,7 @@ from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm
 from src.strategies.validator import validate_signal
 from src.utils.redis_client import get_redis_client
+from src.database import load_trading_state, save_trading_state, delete_trading_state
 
 logger = logging.getLogger(__name__)
 
@@ -89,41 +90,38 @@ class TradingEngine:
             self.trader.trades.append(trade)
 
     def _load_state(self):
-        """Load current coins and positions from Redis."""
-        coins_json = self.redis.get("trading:current_coins")
-        if coins_json:
-            self.current_coins = json.loads(coins_json)
-        positions_json = self.redis.get("trading:positions")
-        if positions_json:
-            self.positions = json.loads(positions_json)
-            # Ensure risk fields exist (for backward compatibility)
-            for pos in self.positions.values():
-                if "stop_loss" not in pos:
-                    pos["stop_loss"] = pos["price"] * (1 - STOP_LOSS_PCT)
-                if "take_profit" not in pos:
-                    pos["take_profit"] = pos["price"] * (1 + TAKE_PROFIT_PCT)
-        trades_json = self.redis.get("trading:trade_history")
-        if trades_json:
-            self.trade_history = json.loads(trades_json)
-        init_bal = self.redis.get("trading:initial_balance")
-        if init_bal:
-            self.initial_balance = float(init_bal)
+        """Load current coins, positions, trade history, and initial balance from SQLite."""
+        state = load_trading_state()
+
+        self.current_coins = state.get("current_coins", [])
+        self.positions = state.get("positions", {})
+        # Ensure risk fields exist (for backward compatibility)
+        for pos in self.positions.values():
+            if "stop_loss" not in pos:
+                pos["stop_loss"] = pos["price"] * (1 - STOP_LOSS_PCT)
+            if "take_profit" not in pos:
+                pos["take_profit"] = pos["price"] * (1 + TAKE_PROFIT_PCT)
+
+        self.trade_history = state.get("trade_history", [])
+
+        if "initial_balance" in state:
+            self.initial_balance = float(state["initial_balance"])
         else:
-            # Use the configured initial balance for paper mode
+            # Compute and persist initial balance
             if settings.TRADING_MODE == "paper":
                 self.initial_balance = settings.PAPER_INITIAL_BALANCE
             else:
                 balance = self.trader.fetch_balance()
                 self.initial_balance = balance.get(self.base_currency, 0.0)
-            self.redis.set("trading:initial_balance", self.initial_balance)
+            save_trading_state("initial_balance", self.initial_balance)
 
     async def _save_state(self):
-        """Persist current coins and positions to Redis."""
-        await asyncio.to_thread(self.redis.set, "trading:current_coins", json.dumps(self.current_coins))
-        await asyncio.to_thread(self.redis.set, "trading:positions", json.dumps(self.positions))
+        """Persist current coins, positions, and trade history to SQLite."""
+        await asyncio.to_thread(save_trading_state, "current_coins", self.current_coins)
+        await asyncio.to_thread(save_trading_state, "positions", self.positions)
         # Keep only the last 1000 trades to avoid unbounded growth
         self.trade_history = self.trade_history[-1000:]
-        await asyncio.to_thread(self.redis.set, "trading:trade_history", json.dumps(self.trade_history))
+        await asyncio.to_thread(save_trading_state, "trade_history", self.trade_history)
 
     async def run(self):
         """Main loop that runs forever."""

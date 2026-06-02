@@ -3,6 +3,7 @@ import logging
 import uvicorn
 from src.web.app import app
 from src.config.settings import settings
+from src.database import init_db
 from src.trading.engine import TradingEngine
 
 logging.basicConfig(
@@ -11,6 +12,7 @@ logging.basicConfig(
 )
 
 async def main():
+    init_db()
     engine = TradingEngine()
     logging.info("Trading engine initialized.")
     from src.web.app import set_engine
