@@ -20,6 +20,12 @@ async def main():
         from src.telegram.bot import TelegramBot
         telegram_bot = TelegramBot(engine)
         engine.set_notifier(telegram_bot)
+
+        # Initialize the bot so we can send a startup message immediately
+        await telegram_bot.initialize()
+        await telegram_bot.send_notification("🤖 Bot started! Use the buttons below to control me.")
+
+        # Start polling in the background
         asyncio.create_task(telegram_bot.run())
 
     # Now start the trading engine

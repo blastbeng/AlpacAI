@@ -22,6 +22,7 @@ class TelegramBot:
             resize_keyboard=True,
             persistent=True,
         )
+        self._initialized = False
 
     def _register_handlers(self):
         self.app.add_handler(CommandHandler("start", self.cmd_start))
@@ -119,9 +120,11 @@ class TelegramBot:
             logger.error(f"Failed to send Telegram notification: {e}", exc_info=True)
 
     async def initialize(self):
-        """Initialize and start the bot application (without polling)."""
-        await self.app.initialize()
-        await self.app.start()
+        """Initialize and start the bot application (idempotent)."""
+        if not self._initialized:
+            await self.app.initialize()
+            await self.app.start()
+            self._initialized = True
 
     async def run(self):
         """Start polling for updates."""
