@@ -79,8 +79,15 @@ class TelegramBot:
     async def send_notification(self, message: str):
         """Send a notification to the stored chat ID."""
         chat_id = await asyncio.to_thread(self.redis.get, "telegram:chat_id")
-        if chat_id:
+        logger.info(f"send_notification called, chat_id={chat_id}, message={message[:50]}...")
+        if not chat_id:
+            logger.warning("No chat_id stored – cannot send notification. Use /start first.")
+            return
+        try:
             await self.app.bot.send_message(chat_id=int(chat_id), text=message)
+            logger.info("Notification sent successfully.")
+        except Exception as e:
+            logger.error(f"Failed to send Telegram notification: {e}", exc_info=True)
 
     async def initialize(self):
         """Initialize and start the bot application (without polling)."""

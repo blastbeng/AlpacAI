@@ -124,12 +124,18 @@ class TradingEngine:
     async def run(self):
         """Main loop that runs forever."""
         logger.info("Trading engine started.")
+        startup_notified = False
         while True:
             try:
                 paused = await asyncio.to_thread(self.redis.get, "trading:paused")
                 if paused:
                     await asyncio.sleep(STRATEGY_INTERVAL)
                     continue
+
+                if not startup_notified and self.notifier:
+                    await self.notifier.send_notification("🚀 Trading engine started.")
+                    startup_notified = True
+
                 await self._reevaluate_coins()
                 for symbol in self.current_coins:
                     await self._process_coin(symbol)
