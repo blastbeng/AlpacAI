@@ -1,5 +1,5 @@
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 SYSTEM_PROMPT = """You are a professional cryptocurrency trading bot assistant. Your task is to analyze market data and provide trading decisions in strict JSON format. Do not include any text outside the JSON. Always output valid JSON.
 
@@ -28,7 +28,8 @@ def build_coin_selection_prompt(
     tickers: Dict[str, Any],
     base_balance: float,
     per_coin_budget: float,
-    market_limits: Dict[str, Dict[str, Any]]
+    market_limits: Dict[str, Dict[str, Any]],
+    performance: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -56,6 +57,16 @@ Available trading pairs with market data and minimum trade cost (in {base_curren
 Select up to {max_coins} coins to trade. You MUST only select coins where the per-coin budget ({per_coin_budget:.2f} {base_currency}) is greater than or equal to the coin's min_trade_cost. Skip any coin that does not meet this requirement. Prefer coins with high volume and positive momentum. You may keep some current coins if they are still promising and meet the budget requirement, or replace them.
 
 Return a JSON array of symbols."""
+    if performance:
+        perf_text = f"""
+Historical Performance Data:
+Overall equity curve: {json.dumps(performance.get('equity_curve', {}))}
+Per-coin performance (win rate, avg P&L, total trades): {json.dumps(performance.get('coin_performance', {}), indent=2)}
+Per-strategy performance: {json.dumps(performance.get('strategy_performance', {}), indent=2)}
+
+Use this historical data to select coins that have been profitable in the past, and to avoid coins with poor performance. Prefer strategies that have shown higher win rates and average P&L.
+"""
+        prompt += perf_text
     return prompt
 
 def build_strategy_prompt(
@@ -65,7 +76,8 @@ def build_strategy_prompt(
     balance: Dict[str, float],
     open_positions: List[Dict[str, Any]],
     per_coin_budget: float,
-    max_coins: int
+    max_coins: int,
+    performance: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -77,4 +89,17 @@ Per-coin budget (balance / max_coins): {per_coin_budget:.2f} {symbol.split('/')[
 Maximum coins to trade: {max_coins}
 
 Based on the above, decide whether to BUY, SELL, or HOLD. Consider the per-coin budget: only BUY if the budget is sufficient to meet the minimum trade size and the position size is meaningful. If the budget is too small, prefer HOLD. Provide a strategy if action is BUY or SELL. Return a JSON object as specified."""
+    if performance:
+        coin_perf = performance.get("coin_performance", {}).get(symbol, {})
+        strategy_perf = performance.get("strategy_performance", {})
+        equity = performance.get("equity_curve", {})
+        perf_text = f"""
+Historical Performance:
+- This coin's past performance: {json.dumps(coin_perf)}
+- Overall equity curve: {json.dumps(equity)}
+- Strategy performance summary: {json.dumps(strategy_perf)}
+
+Use this data to decide whether to BUY, SELL, or HOLD. If the coin has a poor win rate or the overall equity curve is declining, be more conservative. Prefer strategies that have worked well historically.
+"""
+        prompt += perf_text
     return prompt

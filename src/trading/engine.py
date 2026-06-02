@@ -128,6 +128,72 @@ class TradingEngine:
                 pos['cost_basis'] = pos['amount'] * pos['price']
                 pos['net_base'] = pos['amount']
 
+    def _compute_performance_metrics(self) -> Dict[str, Any]:
+        """Analyze trade history to produce per-coin and per-strategy performance summaries."""
+        from collections import defaultdict
+
+        now = time.time()
+        coin_stats = defaultdict(lambda: {"trades": 0, "wins": 0, "total_pnl": 0.0, "last_trade_ts": 0})
+        strategy_stats = defaultdict(lambda: {"trades": 0, "wins": 0, "total_pnl": 0.0})
+
+        for trade in self.trade_history:
+            if trade.get("side") != "sell":
+                continue
+            symbol = trade["symbol"]
+            pnl = trade.get("realized_pnl", 0.0)
+            strategy = trade.get("strategy_type", "unknown")
+
+            coin_stats[symbol]["trades"] += 1
+            coin_stats[symbol]["total_pnl"] += pnl
+            if pnl > 0:
+                coin_stats[symbol]["wins"] += 1
+            coin_stats[symbol]["last_trade_ts"] = max(coin_stats[symbol]["last_trade_ts"], trade.get("timestamp", 0) / 1000.0)
+
+            strategy_stats[strategy]["trades"] += 1
+            strategy_stats[strategy]["total_pnl"] += pnl
+            if pnl > 0:
+                strategy_stats[strategy]["wins"] += 1
+
+        # Convert to dicts with win rates
+        coin_perf = {}
+        for sym, s in coin_stats.items():
+            win_rate = s["wins"] / s["trades"] if s["trades"] > 0 else 0.0
+            avg_pnl = s["total_pnl"] / s["trades"] if s["trades"] > 0 else 0.0
+            coin_perf[sym] = {
+                "trades": s["trades"],
+                "win_rate": round(win_rate, 3),
+                "avg_pnl": round(avg_pnl, 4),
+                "total_pnl": round(s["total_pnl"], 4),
+                "last_trade_seconds_ago": round(now - s["last_trade_ts"]) if s["last_trade_ts"] else None,
+            }
+
+        strategy_perf = {}
+        for st, s in strategy_stats.items():
+            win_rate = s["wins"] / s["trades"] if s["trades"] > 0 else 0.0
+            avg_pnl = s["total_pnl"] / s["trades"] if s["trades"] > 0 else 0.0
+            strategy_perf[st] = {
+                "trades": s["trades"],
+                "win_rate": round(win_rate, 3),
+                "avg_pnl": round(avg_pnl, 4),
+                "total_pnl": round(s["total_pnl"], 4),
+            }
+
+        # Overall equity curve summary: last 10 trades P&L trend
+        recent_sells = [t for t in self.trade_history if t.get("side") == "sell"][-10:]
+        recent_pnl = [t.get("realized_pnl", 0.0) for t in recent_sells]
+        total_recent_pnl = sum(recent_pnl)
+        trend = "up" if total_recent_pnl > 0 else "down" if total_recent_pnl < 0 else "flat"
+
+        return {
+            "coin_performance": coin_perf,
+            "strategy_performance": strategy_perf,
+            "equity_curve": {
+                "total_pnl": round(sum(t.get("realized_pnl", 0.0) for t in self.trade_history if t.get("side") == "sell"), 4),
+                "recent_10_trades_pnl": round(total_recent_pnl, 4),
+                "trend": trend,
+            },
+        }
+
     async def _reconcile_positions(self):
         """Detect and handle external changes: delisted coins, externally sold positions."""
         # --- Delisted coins ---
@@ -299,6 +365,7 @@ class TradingEngine:
                 'min_amount': min_amount,
             }
 
+        perf = self._compute_performance_metrics()
         prompt = build_coin_selection_prompt(
             available_pairs=sample_pairs,
             current_coins=self.current_coins,
@@ -308,6 +375,7 @@ class TradingEngine:
             base_balance=base_balance,
             per_coin_budget=per_coin_budget,
             market_limits=market_limits,
+            performance=perf,
         )
         response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 300)
         logger.info(f"LLM coin selection raw response: {response}")
@@ -361,6 +429,7 @@ class TradingEngine:
             base_balance = balance.get(self.base_currency, 0.0)
             per_coin_budget = base_balance / self.max_coins if self.max_coins > 0 else 0.0
 
+            perf = self._compute_performance_metrics()
             prompt = build_strategy_prompt(
                 symbol=symbol,
                 ticker=ticker,
@@ -369,6 +438,7 @@ class TradingEngine:
                 open_positions=open_positions,
                 per_coin_budget=per_coin_budget,
                 max_coins=self.max_coins,
+                performance=perf,
             )
             response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 60)
             strategy = create_strategy_from_llm(response)
@@ -503,6 +573,7 @@ class TradingEngine:
                         "cost_basis": cost_basis,
                         "net_base": net_base,
                     }
+                order["strategy_type"] = signal.strategy_type
                 self.trade_history.append(order)
                 await self._save_state()
                 if self.notifier:
@@ -541,6 +612,7 @@ class TradingEngine:
                     realized_pnl = 0.0
                 order["realized_pnl"] = realized_pnl
                 order["cost_basis"] = pos.get("cost_basis", 0.0) if pos else 0.0
+                order["strategy_type"] = signal.strategy_type
                 # Remove position
                 self.positions.pop(symbol, None)
                 self.trade_history.append(order)
