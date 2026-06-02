@@ -2,7 +2,6 @@ import uuid
 import time
 from typing import Dict, List, Optional, Any
 import ccxt
-from src.config.settings import settings
 
 
 class PaperSimulator:

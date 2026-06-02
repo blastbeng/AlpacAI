@@ -25,21 +25,24 @@ class TelegramBot:
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
-        self.redis.set("telegram:chat_id", chat_id)
+        await asyncio.to_thread(self.redis.set, "telegram:chat_id", chat_id)
         await update.message.reply_text("Bot started! You will receive trade notifications here.")
 
     async def cmd_pause(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        self.redis.set("trading:paused", "1")
+        await asyncio.to_thread(self.redis.set, "trading:paused", "1")
         await update.message.reply_text("Trading paused.")
 
     async def cmd_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        self.redis.delete("trading:paused")
+        await asyncio.to_thread(self.redis.delete, "trading:paused")
         await update.message.reply_text("Trading resumed.")
 
     async def cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        coins = self.engine.current_coins
-        positions = self.engine.positions
-        balance = self.engine.trader.fetch_balance()
+        def get_status():
+            coins = self.engine.current_coins
+            positions = self.engine.positions
+            balance = self.engine.trader.fetch_balance()
+            return coins, positions, balance
+        coins, positions, balance = await asyncio.to_thread(get_status)
         msg = f"*Current Coins:* {', '.join(coins) if coins else 'None'}\n"
         msg += f"*Positions:*\n"
         for sym, pos in positions.items():
@@ -51,7 +54,7 @@ class TelegramBot:
         await update.message.reply_text(msg, parse_mode='Markdown')
 
     async def cmd_trades(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        trades = self.engine.trade_history[-10:]
+        trades = await asyncio.to_thread(lambda: self.engine.trade_history[-10:])
         if not trades:
             await update.message.reply_text("No trades yet.")
             return
@@ -65,7 +68,7 @@ class TelegramBot:
         await update.message.reply_text(msg, parse_mode='Markdown')
 
     async def cmd_profit(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        summary = self.engine.get_profit_summary()
+        summary = await asyncio.to_thread(self.engine.get_profit_summary)
         msg = f"*Profit Summary:*\n"
         msg += f"Initial Balance: {summary['initial_balance']:.2f}\n"
         msg += f"Current Balance: {summary['current_balance']:.2f}\n"
@@ -75,7 +78,7 @@ class TelegramBot:
 
     async def send_notification(self, message: str):
         """Send a notification to the stored chat ID."""
-        chat_id = self.redis.get("telegram:chat_id")
+        chat_id = await asyncio.to_thread(self.redis.get, "telegram:chat_id")
         if chat_id:
             await self.app.bot.send_message(chat_id=int(chat_id), text=message)
 

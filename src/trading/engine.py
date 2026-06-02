@@ -81,27 +81,28 @@ class TradingEngine:
             self.initial_balance = balance.get(self.base_currency, 0.0)
             self.redis.set("trading:initial_balance", self.initial_balance)
 
-    def _save_state(self):
+    async def _save_state(self):
         """Persist current coins and positions to Redis."""
-        self.redis.set("trading:current_coins", json.dumps(self.current_coins))
-        self.redis.set("trading:positions", json.dumps(self.positions))
+        await asyncio.to_thread(self.redis.set, "trading:current_coins", json.dumps(self.current_coins))
+        await asyncio.to_thread(self.redis.set, "trading:positions", json.dumps(self.positions))
         # Keep only the last 1000 trades to avoid unbounded growth
         self.trade_history = self.trade_history[-1000:]
-        self.redis.set("trading:trade_history", json.dumps(self.trade_history))
+        await asyncio.to_thread(self.redis.set, "trading:trade_history", json.dumps(self.trade_history))
 
     async def run(self):
         """Main loop that runs forever."""
         logger.info("Trading engine started.")
         while True:
             try:
-                if self.redis.get("trading:paused"):
+                paused = await asyncio.to_thread(self.redis.get, "trading:paused")
+                if paused:
                     await asyncio.sleep(STRATEGY_INTERVAL)
                     continue
                 await self._reevaluate_coins()
                 for symbol in self.current_coins:
                     await self._process_coin(symbol)
                 await self._check_risk_management()
-                self._save_state()
+                await self._save_state()
             except Exception as e:
                 logger.error(f"Engine loop error: {e}", exc_info=True)
             await asyncio.sleep(STRATEGY_INTERVAL)
@@ -110,19 +111,19 @@ class TradingEngine:
         """Use LLM to select which coins to trade."""
         # Only re-evaluate every COIN_REVALUATION_INTERVAL
         last_key = "trading:last_coin_eval"
-        last_eval = self.redis.get(last_key)
+        last_eval = await asyncio.to_thread(self.redis.get, last_key)
         now = time.time()
         if last_eval and (now - float(last_eval)) < COIN_REVALUATION_INTERVAL:
             return
 
-        available_pairs = get_available_pairs(self.exchange, self.base_currency)
+        available_pairs = await asyncio.to_thread(get_available_pairs, self.exchange, self.base_currency)
         if not available_pairs:
             logger.warning("No available pairs found.")
             return
 
         # Fetch tickers for a subset to keep prompt size manageable
         sample_pairs = available_pairs[:50]
-        tickers = get_tickers(self.exchange, sample_pairs)
+        tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_pairs)
 
         prompt = build_coin_selection_prompt(
             available_pairs=sample_pairs,
@@ -131,7 +132,7 @@ class TradingEngine:
             base_currency=self.base_currency,
             tickers=tickers,
         )
-        response = get_cached_ollama_response(prompt, SYSTEM_PROMPT, ttl=300)
+        response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 300)
         try:
             new_coins = json.loads(response)
             if isinstance(new_coins, list):
@@ -146,14 +147,14 @@ class TradingEngine:
         except json.JSONDecodeError:
             logger.error("Failed to parse coin selection response.")
 
-        self.redis.set(last_key, now)
+        await asyncio.to_thread(self.redis.set, last_key, now)
 
     async def _process_coin(self, symbol: str):
         """Fetch market data, get LLM strategy, validate, and execute."""
         try:
-            ticker = self.exchange.fetch_ticker(symbol)
-            order_book = get_order_book(self.exchange, symbol, limit=5)
-            balance = self.trader.fetch_balance()
+            ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+            order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 5)
+            balance = await asyncio.to_thread(self.trader.fetch_balance)
             open_positions = [
                 pos for pos in self.positions.values() if pos.get("symbol") == symbol
             ]
@@ -165,7 +166,7 @@ class TradingEngine:
                 balance=balance,
                 open_positions=open_positions,
             )
-            response = get_cached_ollama_response(prompt, SYSTEM_PROMPT, ttl=60)
+            response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 60)
             strategy = create_strategy_from_llm(response)
             signal = strategy.generate_signal({})
             validated = validate_signal(signal)
@@ -202,7 +203,7 @@ class TradingEngine:
         """Check open positions and close if stop-loss or take-profit is hit."""
         for symbol, pos in list(self.positions.items()):
             try:
-                ticker = self.exchange.fetch_ticker(symbol)
+                ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
                 current_price = ticker['last']
                 if current_price <= pos["stop_loss"]:
                     logger.info(f"Stop-loss triggered for {symbol} at {current_price}")
@@ -224,7 +225,7 @@ class TradingEngine:
     async def _execute_signal(self, symbol: str, signal):
         """Execute a BUY or SELL signal."""
         base, quote = symbol.split("/")
-        balance = self.trader.fetch_balance()
+        balance = await asyncio.to_thread(self.trader.fetch_balance)
 
         if signal.action == "BUY":
             # Use a fraction of available quote balance
@@ -234,21 +235,32 @@ class TradingEngine:
                 logger.info(f"Insufficient {quote} to buy {symbol}")
                 return
             try:
-                order = self.trader.create_market_buy_order(symbol, amount)
+                order = await asyncio.to_thread(self.trader.create_market_buy_order, symbol, amount)
                 logger.info(f"BUY {symbol}: {order}")
-                # Record position
-                entry_price = order["price"]
-                self.positions[symbol] = {
-                    "symbol": symbol,
-                    "side": "buy",
-                    "amount": order["amount"],
-                    "price": entry_price,
-                    "timestamp": order["timestamp"],
-                    "stop_loss": entry_price * (1 - STOP_LOSS_PCT),
-                    "take_profit": entry_price * (1 + TAKE_PROFIT_PCT),
-                }
+                # Update or create position
+                if symbol in self.positions:
+                    # Accumulate: weighted average price
+                    old_amount = self.positions[symbol]["amount"]
+                    old_price = self.positions[symbol]["price"]
+                    new_amount = old_amount + order["amount"]
+                    new_price = ((old_amount * old_price) + (order["amount"] * order["price"])) / new_amount
+                    self.positions[symbol]["amount"] = new_amount
+                    self.positions[symbol]["price"] = new_price
+                    self.positions[symbol]["stop_loss"] = new_price * (1 - STOP_LOSS_PCT)
+                    self.positions[symbol]["take_profit"] = new_price * (1 + TAKE_PROFIT_PCT)
+                else:
+                    entry_price = order["price"]
+                    self.positions[symbol] = {
+                        "symbol": symbol,
+                        "side": "buy",
+                        "amount": order["amount"],
+                        "price": entry_price,
+                        "timestamp": order["timestamp"],
+                        "stop_loss": entry_price * (1 - STOP_LOSS_PCT),
+                        "take_profit": entry_price * (1 + TAKE_PROFIT_PCT),
+                    }
                 self.trade_history.append(order)
-                self._save_state()
+                await self._save_state()
                 if self.notifier:
                     await self.notifier.send_notification(
                         f"🟢 BUY {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
@@ -257,17 +269,22 @@ class TradingEngine:
                 logger.error(f"Buy order failed for {symbol}: {e}")
 
         elif signal.action == "SELL":
-            base_balance = balance.get(base, 0.0)
-            if base_balance <= 0:
-                logger.info(f"No {base} balance to sell {symbol}")
+            # Sell the exact position amount if we have one, otherwise sell all base balance
+            pos = self.positions.get(symbol)
+            if pos:
+                sell_amount = pos["amount"]
+            else:
+                sell_amount = balance.get(base, 0.0)
+            if sell_amount <= 0:
+                logger.info(f"No {base} to sell for {symbol}")
                 return
             try:
-                order = self.trader.create_market_sell_order(symbol, base_balance)
+                order = await asyncio.to_thread(self.trader.create_market_sell_order, symbol, sell_amount)
                 logger.info(f"SELL {symbol}: {order}")
                 # Remove position
                 self.positions.pop(symbol, None)
                 self.trade_history.append(order)
-                self._save_state()
+                await self._save_state()
                 if self.notifier:
                     await self.notifier.send_notification(
                         f"🔴 SELL {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
