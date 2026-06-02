@@ -7,6 +7,10 @@ services:
       - "63795:6379"
     volumes:
       - ./redis_data:/data
+    environment:
+      - TZ=Europe/Rome
+      - PUID=1000
+      - PGID=1000
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -25,6 +29,7 @@ services:
     environment:
       - PUID=1000
       - PGID=1000
+      - TZ=Europe/Rome
     user: "${PUID:-1000}:${PGID:-1000}"
     depends_on:
       redis:
