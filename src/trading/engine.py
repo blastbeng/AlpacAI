@@ -165,15 +165,26 @@ class TradingEngine:
         sample_pairs = available_pairs[:50]
         tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_pairs)
 
-        # Extract minimum trade limits from exchange markets
+        # Build market_limits with a concrete min_cost for each symbol
         market_limits = {}
         for symbol in sample_pairs:
             market = self.exchange.markets.get(symbol, {})
             limits = market.get('limits', {})
             min_cost = limits.get('cost', {}).get('min')
             min_amount = limits.get('amount', {}).get('min')
+            ticker = tickers.get(symbol, {})
+            last_price = ticker.get('last', 0)
+
+            # Compute a numeric min_cost
+            if min_cost is not None:
+                numeric_min_cost = float(min_cost)
+            elif min_amount is not None and last_price:
+                numeric_min_cost = float(min_amount) * last_price
+            else:
+                numeric_min_cost = 0.0  # no known limit
+
             market_limits[symbol] = {
-                'min_cost': min_cost,
+                'min_cost': numeric_min_cost,
                 'min_amount': min_amount,
             }
 
@@ -188,21 +199,40 @@ class TradingEngine:
             market_limits=market_limits,
         )
         response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 300)
+        logger.info(f"LLM coin selection raw response: {response}")
+
         try:
             new_coins = json.loads(response)
             if isinstance(new_coins, list):
                 # Validate that coins are in available pairs
                 valid_coins = [c for c in new_coins if c in available_pairs]
                 self.current_coins = valid_coins[: self.max_coins]
-                logger.info(f"Selected coins: {self.current_coins}")
-                if self.notifier:
-                    await self.notifier.send_notification(
-                        f"🔄 Coins updated: {', '.join(self.current_coins) if self.current_coins else 'None'}"
-                    )
         except json.JSONDecodeError:
             logger.error("Failed to parse coin selection response.")
-            if self.notifier:
-                await self.notifier.send_notification("❌ Failed to parse coin selection response.")
+            new_coins = []
+
+        # Fallback: if LLM returned no coins, pick top-volume affordable coins
+        if not self.current_coins:
+            logger.warning("LLM returned no coins – using volume-based fallback.")
+            # Sort sample_pairs by 24h volume descending
+            def volume(sym):
+                t = tickers.get(sym, {})
+                return t.get('quoteVolume', 0) or 0
+            sorted_pairs = sorted(sample_pairs, key=volume, reverse=True)
+            fallback_coins = []
+            for sym in sorted_pairs:
+                min_cost = market_limits.get(sym, {}).get('min_cost', 0)
+                if per_coin_budget >= min_cost:
+                    fallback_coins.append(sym)
+                if len(fallback_coins) >= self.max_coins:
+                    break
+            self.current_coins = fallback_coins
+
+        logger.info(f"Selected coins: {self.current_coins}")
+        if self.notifier:
+            await self.notifier.send_notification(
+                f"🔄 Coins updated: {', '.join(self.current_coins) if self.current_coins else 'None'}"
+            )
 
         await asyncio.to_thread(self.redis.set, last_key, now)
 

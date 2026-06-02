@@ -41,8 +41,7 @@ def build_coin_selection_prompt(
                 "last": t.get("last"),
                 "change_24h": t.get("percentage"),
                 "volume": t.get("quoteVolume"),
-                "min_trade_cost": limits.get("min_cost"),      # in quote currency
-                "min_trade_amount": limits.get("min_amount"),  # in base currency
+                "min_trade_cost": limits.get("min_cost"),  # now always a number
             }
 
     prompt = f"""Current base currency: {base_currency}
@@ -51,10 +50,10 @@ Maximum number of coins to trade: {max_coins}
 Budget per coin (balance / max_coins): {per_coin_budget:.2f} {base_currency}
 Currently traded coins: {json.dumps(current_coins)}
 
-Available trading pairs with market data and minimum trade requirements:
+Available trading pairs with market data and minimum trade cost (in {base_currency}):
 {json.dumps(ticker_summary, indent=2)}
 
-Select up to {max_coins} coins to trade. You MUST only select coins where the per-coin budget ({per_coin_budget:.2f} {base_currency}) is greater than or equal to the coin's min_trade_cost (if provided). If min_trade_cost is not available, use min_trade_amount multiplied by the last price as an estimate. Skip any coin that does not meet this requirement. Prefer coins with high volume and positive momentum. You may keep some current coins if they are still promising and meet the budget requirement, or replace them.
+Select up to {max_coins} coins to trade. You MUST only select coins where the per-coin budget ({per_coin_budget:.2f} {base_currency}) is greater than or equal to the coin's min_trade_cost. Skip any coin that does not meet this requirement. Prefer coins with high volume and positive momentum. You may keep some current coins if they are still promising and meet the budget requirement, or replace them.
 
 Return a JSON array of symbols."""
     return prompt
