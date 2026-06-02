@@ -345,26 +345,38 @@ class TradingEngine:
                 order = await asyncio.to_thread(self.trader.create_market_buy_order, symbol, amount)
                 logger.info(f"BUY {symbol}: {order}")
                 # Update or create position
+                # Extract fee info for cost basis tracking
+                fee = order.get('fee', {})
+                fee_cost = float(fee.get('cost', 0.0) or 0.0)
+                fee_currency = fee.get('currency', '')
+                cost_basis = order['cost']
+                net_base = order['amount'] - (fee_cost if fee_currency == base else 0.0)
+
                 if symbol in self.positions:
-                    # Accumulate: weighted average price
-                    old_amount = self.positions[symbol]["amount"]
-                    old_price = self.positions[symbol]["price"]
-                    new_amount = old_amount + order["amount"]
-                    new_price = ((old_amount * old_price) + (order["amount"] * order["price"])) / new_amount
-                    self.positions[symbol]["amount"] = new_amount
+                    # Accumulate: weighted average price with cost basis
+                    old_cost_basis = self.positions[symbol].get("cost_basis", self.positions[symbol]["amount"] * self.positions[symbol]["price"])
+                    old_net_base = self.positions[symbol].get("net_base", self.positions[symbol]["amount"])
+                    new_cost_basis = old_cost_basis + cost_basis
+                    new_net_base = old_net_base + net_base
+                    new_price = new_cost_basis / new_net_base if new_net_base > 0 else 0.0
+                    self.positions[symbol]["amount"] = new_net_base
                     self.positions[symbol]["price"] = new_price
+                    self.positions[symbol]["cost_basis"] = new_cost_basis
+                    self.positions[symbol]["net_base"] = new_net_base
                     self.positions[symbol]["stop_loss"] = new_price * (1 - STOP_LOSS_PCT)
                     self.positions[symbol]["take_profit"] = new_price * (1 + TAKE_PROFIT_PCT)
                 else:
-                    entry_price = order["price"]
+                    entry_price = cost_basis / net_base if net_base > 0 else order["price"]
                     self.positions[symbol] = {
                         "symbol": symbol,
                         "side": "buy",
-                        "amount": order["amount"],
+                        "amount": net_base,
                         "price": entry_price,
                         "timestamp": order["timestamp"],
                         "stop_loss": entry_price * (1 - STOP_LOSS_PCT),
                         "take_profit": entry_price * (1 + TAKE_PROFIT_PCT),
+                        "cost_basis": cost_basis,
+                        "net_base": net_base,
                     }
                 self.trade_history.append(order)
                 await self._save_state()
@@ -392,6 +404,18 @@ class TradingEngine:
             try:
                 order = await asyncio.to_thread(self.trader.create_market_sell_order, symbol, sell_amount)
                 logger.info(f"SELL {symbol}: {order}")
+                # Compute realized P&L
+                fee = order.get('fee', {})
+                fee_cost = float(fee.get('cost', 0.0) or 0.0)
+                fee_currency = fee.get('currency', '')
+                net_quote = order['cost'] - (fee_cost if fee_currency == quote else 0.0)
+                if pos:
+                    cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
+                    realized_pnl = net_quote - cost_basis
+                else:
+                    realized_pnl = 0.0
+                order["realized_pnl"] = realized_pnl
+                order["cost_basis"] = pos.get("cost_basis", 0.0) if pos else 0.0
                 # Remove position
                 self.positions.pop(symbol, None)
                 self.trade_history.append(order)
