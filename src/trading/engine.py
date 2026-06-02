@@ -91,14 +91,14 @@ class TradingEngine:
                     pos = positions[symbol]
                     pos['cost_basis'] += cost
                     pos['net_base'] += net_base
-                    pos['amount'] += amount
+                    pos['amount'] += net_base
                     pos['price'] = pos['cost_basis'] / pos['net_base'] if pos['net_base'] else price
                 else:
                     entry_price = cost / net_base if net_base else price
                     positions[symbol] = {
                         'symbol': symbol,
                         'side': 'buy',
-                        'amount': amount,
+                        'amount': net_base,
                         'price': entry_price,
                         'cost_basis': cost,
                         'net_base': net_base,
