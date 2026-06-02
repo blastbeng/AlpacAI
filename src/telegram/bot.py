@@ -59,11 +59,11 @@ class TelegramBot:
 
     async def cmd_pause(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.to_thread(self.redis.set, "trading:paused", "1")
-        await update.message.reply_text("Trading paused.")
+        await update.message.reply_text("Trading paused.", reply_markup=self.keyboard)
 
     async def cmd_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.to_thread(self.redis.delete, "trading:paused")
-        await update.message.reply_text("Trading resumed.")
+        await update.message.reply_text("Trading resumed.", reply_markup=self.keyboard)
 
     async def cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         def get_status():
@@ -80,7 +80,7 @@ class TelegramBot:
         for cur, amt in balance.items():
             if amt > 0:
                 msg += f"  {cur}: {amt}\n"
-        await update.message.reply_text(msg, parse_mode='Markdown')
+        await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=self.keyboard)
 
     async def cmd_trades(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         trades = await asyncio.to_thread(lambda: self.engine.trade_history[-10:])
@@ -94,7 +94,7 @@ class TelegramBot:
             amt = t['amount']
             price = t['price']
             msg += f"  {side} {sym} {amt} @ {price}\n"
-        await update.message.reply_text(msg, parse_mode='Markdown')
+        await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=self.keyboard)
 
     async def cmd_profit(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         summary = await asyncio.to_thread(self.engine.get_profit_summary)
@@ -103,7 +103,7 @@ class TelegramBot:
         msg += f"Current Balance: {summary['current_balance']:.2f}\n"
         msg += f"Open Positions Value: {summary['open_value']:.2f}\n"
         msg += f"Total P&L: {summary['total_pnl']:.2f} ({summary['pnl_percent']:.2f}%)\n"
-        await update.message.reply_text(msg, parse_mode='Markdown')
+        await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=self.keyboard)
 
     async def send_notification(self, message: str):
         """Send a notification to the stored chat ID."""
@@ -113,7 +113,7 @@ class TelegramBot:
             logger.warning("No chat_id stored – cannot send notification. Use /start first.")
             return
         try:
-            await self.app.bot.send_message(chat_id=int(chat_id), text=message)
+            await self.app.bot.send_message(chat_id=int(chat_id), text=message, reply_markup=self.keyboard)
             logger.info("Notification sent successfully.")
         except Exception as e:
             logger.error(f"Failed to send Telegram notification: {e}", exc_info=True)
