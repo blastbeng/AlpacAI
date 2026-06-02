@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  bot:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    volumes:
+      - ./src:/app/src   # for development hot-reload (optional)
+      - ./.env:/app/.env
+
+volumes:
+  redis_data:
