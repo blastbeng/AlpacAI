@@ -51,12 +51,42 @@ class TradingEngine:
         self.initial_balance: float = 0.0
         self.notifier = None
         self._load_state()
+        # Restore paper simulator state from trade history
+        if settings.TRADING_MODE == "paper":
+            self._restore_paper_state()
         # Ensure trading is not paused on startup
         self.redis.delete("trading:paused")
 
     def set_notifier(self, notifier):
         """Attach a notification service (e.g., TelegramBot)."""
         self.notifier = notifier
+
+    def _restore_paper_state(self):
+        """Replay trade history to restore paper simulator balances."""
+        # Reset simulator to initial state
+        self.trader.balances = {self.base_currency: self.initial_balance}
+        self.trader.trades = []
+        for trade in self.trade_history:
+            symbol = trade['symbol']
+            side = trade['side']
+            amount = trade['amount']
+            price = trade['price']
+            cost = trade['cost']
+            fee = trade.get('fee', {})
+            fee_cost = fee.get('cost', 0)
+            fee_currency = fee.get('currency', '')
+            base, quote = symbol.split('/')
+            if side == 'buy':
+                # Deduct quote, add base minus fee
+                self.trader.balances[quote] = self.trader.balances.get(quote, 0) - cost
+                net_base = amount - fee_cost if fee_currency == base else amount
+                self.trader.balances[base] = self.trader.balances.get(base, 0) + net_base
+            elif side == 'sell':
+                # Deduct base, add quote minus fee
+                self.trader.balances[base] = self.trader.balances.get(base, 0) - amount
+                net_quote = cost - fee_cost if fee_currency == quote else cost
+                self.trader.balances[quote] = self.trader.balances.get(quote, 0) + net_quote
+            self.trader.trades.append(trade)
 
     def _load_state(self):
         """Load current coins and positions from Redis."""
