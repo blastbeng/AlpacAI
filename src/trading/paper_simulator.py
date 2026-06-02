@@ -1,0 +1,109 @@
+import uuid
+import time
+from typing import Dict, List, Optional, Any
+import ccxt
+from src.config.settings import settings
+
+
+class PaperSimulator:
+    """Simulates a trading account with fake balances and order execution."""
+
+    def __init__(
+        self,
+        exchange: ccxt.Exchange,
+        base_currency: str = "USDT",
+        initial_balance: float = 10000.0,
+        fee_rate: float = 0.001,  # 0.1% fee
+    ):
+        self.exchange = exchange
+        self.base_currency = base_currency
+        self.fee_rate = fee_rate
+        self.balances: Dict[str, float] = {base_currency: initial_balance}
+        self.orders: List[Dict[str, Any]] = []
+        self.trades: List[Dict[str, Any]] = []
+
+    def _get_price(self, symbol: str) -> float:
+        """Get current mid price for a symbol from the real exchange."""
+        ticker = self.exchange.fetch_ticker(symbol)
+        return (ticker['bid'] + ticker['ask']) / 2 if ticker['bid'] and ticker['ask'] else ticker['last']
+
+    def _deduct_fee(self, currency: str, amount: float) -> float:
+        """Return amount after fee deduction."""
+        return amount * (1 - self.fee_rate)
+
+    def get_balance(self, currency: str) -> float:
+        return self.balances.get(currency, 0.0)
+
+    def fetch_balance(self) -> Dict[str, float]:
+        return dict(self.balances)
+
+    def create_market_buy_order(self, symbol: str, quote_amount: float) -> Dict[str, Any]:
+        """Buy base currency using quote currency (e.g., spend USDT to buy BTC)."""
+        base, quote = symbol.split('/')
+        price = self._get_price(symbol)
+        base_amount = quote_amount / price
+        fee = base_amount * self.fee_rate
+        net_base = base_amount - fee
+
+        if self.balances.get(quote, 0) < quote_amount:
+            raise ValueError(f"Insufficient {quote} balance")
+
+        self.balances[quote] -= quote_amount
+        self.balances[base] = self.balances.get(base, 0) + net_base
+
+        order = {
+            'id': str(uuid.uuid4()),
+            'symbol': symbol,
+            'type': 'market',
+            'side': 'buy',
+            'amount': base_amount,
+            'price': price,
+            'cost': quote_amount,
+            'fee': {'cost': fee, 'currency': base},
+            'status': 'closed',
+            'timestamp': int(time.time() * 1000),
+        }
+        self.orders.append(order)
+        self.trades.append(order)
+        return order
+
+    def create_market_sell_order(self, symbol: str, base_amount: float) -> Dict[str, Any]:
+        """Sell base currency to receive quote currency."""
+        base, quote = symbol.split('/')
+        price = self._get_price(symbol)
+        quote_amount = base_amount * price
+        fee = quote_amount * self.fee_rate
+        net_quote = quote_amount - fee
+
+        if self.balances.get(base, 0) < base_amount:
+            raise ValueError(f"Insufficient {base} balance")
+
+        self.balances[base] -= base_amount
+        self.balances[quote] = self.balances.get(quote, 0) + net_quote
+
+        order = {
+            'id': str(uuid.uuid4()),
+            'symbol': symbol,
+            'type': 'market',
+            'side': 'sell',
+            'amount': base_amount,
+            'price': price,
+            'cost': quote_amount,
+            'fee': {'cost': fee, 'currency': quote},
+            'status': 'closed',
+            'timestamp': int(time.time() * 1000),
+        }
+        self.orders.append(order)
+        self.trades.append(order)
+        return order
+
+    def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+        # In this simple simulator, market orders fill immediately, so no open orders.
+        return []
+
+    def cancel_order(self, order_id: str) -> bool:
+        # No open orders to cancel.
+        return False
+
+    def get_trade_history(self) -> List[Dict[str, Any]]:
+        return self.trades
