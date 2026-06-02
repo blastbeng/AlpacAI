@@ -159,9 +159,26 @@ class TradingEngine:
             logger.warning("No available pairs found.")
             return
 
+        # Fetch balance and compute per-coin budget
+        balance = await asyncio.to_thread(self.trader.fetch_balance)
+        base_balance = balance.get(self.base_currency, 0.0)
+        per_coin_budget = base_balance / self.max_coins if self.max_coins > 0 else 0.0
+
         # Fetch tickers for a subset to keep prompt size manageable
         sample_pairs = available_pairs[:50]
         tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_pairs)
+
+        # Extract minimum trade limits from exchange markets
+        market_limits = {}
+        for symbol in sample_pairs:
+            market = self.exchange.markets.get(symbol, {})
+            limits = market.get('limits', {})
+            min_cost = limits.get('cost', {}).get('min')
+            min_amount = limits.get('amount', {}).get('min')
+            market_limits[symbol] = {
+                'min_cost': min_cost,
+                'min_amount': min_amount,
+            }
 
         prompt = build_coin_selection_prompt(
             available_pairs=sample_pairs,
@@ -169,6 +186,9 @@ class TradingEngine:
             max_coins=self.max_coins,
             base_currency=self.base_currency,
             tickers=tickers,
+            base_balance=base_balance,
+            per_coin_budget=per_coin_budget,
+            market_limits=market_limits,
         )
         response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 300)
         try:

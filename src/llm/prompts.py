@@ -25,28 +25,38 @@ def build_coin_selection_prompt(
     current_coins: List[str],
     max_coins: int,
     base_currency: str,
-    tickers: Dict[str, Any]
+    tickers: Dict[str, Any],
+    base_balance: float,
+    per_coin_budget: float,
+    market_limits: Dict[str, Dict[str, Any]]
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
-    # Summarize tickers for the prompt (limit to avoid huge prompts)
+    # Summarize tickers and limits for the prompt
     ticker_summary = {}
-    for symbol in available_pairs[:50]:  # limit to first 50 to keep prompt size manageable
+    for symbol in available_pairs[:50]:
         if symbol in tickers:
             t = tickers[symbol]
+            limits = market_limits.get(symbol, {})
             ticker_summary[symbol] = {
                 "last": t.get("last"),
                 "change_24h": t.get("percentage"),
                 "volume": t.get("quoteVolume"),
+                "min_trade_cost": limits.get("min_cost"),      # in quote currency
+                "min_trade_amount": limits.get("min_amount"),  # in base currency
             }
 
     prompt = f"""Current base currency: {base_currency}
+Your available {base_currency} balance: {base_balance:.2f}
 Maximum number of coins to trade: {max_coins}
+Budget per coin (balance / max_coins): {per_coin_budget:.2f} {base_currency}
 Currently traded coins: {json.dumps(current_coins)}
 
-Available trading pairs (sample):
+Available trading pairs with market data and minimum trade requirements:
 {json.dumps(ticker_summary, indent=2)}
 
-Based on the market data, select up to {max_coins} coins to trade. Return a JSON array of symbols. Prefer coins with high volume and positive momentum. You may keep some current coins if they are still promising, or replace them."""
+Select up to {max_coins} coins to trade. You MUST only select coins where the per-coin budget ({per_coin_budget:.2f} {base_currency}) is greater than or equal to the coin's min_trade_cost (if provided). If min_trade_cost is not available, use min_trade_amount multiplied by the last price as an estimate. Skip any coin that does not meet this requirement. Prefer coins with high volume and positive momentum. You may keep some current coins if they are still promising and meet the budget requirement, or replace them.
+
+Return a JSON array of symbols."""
     return prompt
 
 def build_strategy_prompt(
