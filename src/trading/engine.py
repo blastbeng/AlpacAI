@@ -153,7 +153,7 @@ class TradingEngine:
         """Fetch market data, get LLM strategy, validate, and execute."""
         try:
             ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
-            order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 5)
+            order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
             balance = await asyncio.to_thread(self.trader.fetch_balance)
             open_positions = [
                 pos for pos in self.positions.values() if pos.get("symbol") == symbol

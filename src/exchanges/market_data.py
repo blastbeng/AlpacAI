@@ -17,6 +17,6 @@ def get_tickers(exchange: ccxt.Exchange, symbols: Optional[List[str]] = None) ->
     else:
         return exchange.fetch_tickers()
 
-def get_order_book(exchange: ccxt.Exchange, symbol: str, limit: int = 10) -> Dict[str, Any]:
+def get_order_book(exchange: ccxt.Exchange, symbol: str, limit: int = 20) -> Dict[str, Any]:
     """Fetch order book for a symbol."""
     return exchange.fetch_order_book(symbol, limit)
