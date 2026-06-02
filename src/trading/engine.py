@@ -55,6 +55,7 @@ class TradingEngine:
         # Restore paper simulator state from trade history
         if settings.TRADING_MODE == "paper":
             self._restore_paper_state()
+        self._ensure_cost_basis()
         # Ensure trading is not paused on startup
         self.redis.delete("trading:paused")
 
@@ -116,6 +117,14 @@ class TradingEngine:
             self.trader.trades.append(trade)
 
         self.positions = positions
+
+    def _ensure_cost_basis(self):
+        """If positions lack cost_basis, compute it from amount and price (backward compat)."""
+        for sym, pos in self.positions.items():
+            if 'cost_basis' not in pos or 'net_base' not in pos:
+                # Assume no fees for old positions; cost_basis = amount * price
+                pos['cost_basis'] = pos['amount'] * pos['price']
+                pos['net_base'] = pos['amount']
 
     def _load_state(self):
         """Load current coins, positions, trade history, and initial balance from SQLite."""
