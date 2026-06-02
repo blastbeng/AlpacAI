@@ -184,7 +184,7 @@
             <h2>Recent Trades</h2>
             <div class="table-wrapper">
                 <table id="trades-table">
-                    <thead><tr><th>Time</th><th>Side</th><th>Symbol</th><th>Amount</th><th>Price</th></tr></thead>
+                    <thead><tr><th>Time</th><th>Side</th><th>Symbol</th><th>Amount</th><th>Price</th><th>Fee</th><th>P&L</th></tr></thead>
                     <tbody></tbody>
                 </table>
             </div>
@@ -254,6 +254,18 @@
                     row.insertCell().textContent = t.symbol;
                     row.insertCell().textContent = t.amount?.toFixed(6);
                     row.insertCell().textContent = t.price?.toFixed(4);
+                    // Fee
+                    const fee = t.fee;
+                    const feeStr = fee ? `${fee.cost?.toFixed(6)} ${fee.currency}` : '-';
+                    row.insertCell().textContent = feeStr;
+                    // P&L (only for sells)
+                    const pnlCell = row.insertCell();
+                    if (t.side === 'sell' && t.realized_pnl !== undefined) {
+                        pnlCell.textContent = t.realized_pnl.toFixed(4);
+                        pnlCell.className = t.realized_pnl >= 0 ? 'green' : 'red';
+                    } else {
+                        pnlCell.textContent = '-';
+                    }
                 });
             }
 
