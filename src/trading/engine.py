@@ -48,6 +48,7 @@ class TradingEngine:
         self.current_coins: List[str] = []
         self.positions: Dict[str, Dict[str, Any]] = {}  # symbol -> position info
         self.trade_history: List[Dict[str, Any]] = []
+        self.initial_balance: float = 0.0
         self._load_state()
 
     def _load_state(self):
@@ -67,6 +68,13 @@ class TradingEngine:
         trades_json = self.redis.get("trading:trade_history")
         if trades_json:
             self.trade_history = json.loads(trades_json)
+        init_bal = self.redis.get("trading:initial_balance")
+        if init_bal:
+            self.initial_balance = float(init_bal)
+        else:
+            balance = self.trader.fetch_balance()
+            self.initial_balance = balance.get(self.base_currency, 0.0)
+            self.redis.set("trading:initial_balance", self.initial_balance)
 
     def _save_state(self):
         """Persist current coins and positions to Redis."""
@@ -81,6 +89,9 @@ class TradingEngine:
         logger.info("Trading engine started.")
         while True:
             try:
+                if self.redis.get("trading:paused"):
+                    await asyncio.sleep(STRATEGY_INTERVAL)
+                    continue
                 await self._reevaluate_coins()
                 for symbol in self.current_coins:
                     await self._process_coin(symbol)
@@ -154,6 +165,29 @@ class TradingEngine:
                 await self._execute_signal(symbol, validated)
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}", exc_info=True)
+
+    def get_profit_summary(self) -> Dict[str, float]:
+        """Return profit/loss summary."""
+        balance = self.trader.fetch_balance()
+        current_balance = balance.get(self.base_currency, 0.0)
+        open_value = 0.0
+        for sym, pos in self.positions.items():
+            try:
+                ticker = self.exchange.fetch_ticker(sym)
+                price = ticker['last']
+                open_value += pos['amount'] * price
+            except Exception:
+                pass
+        total_value = current_balance + open_value
+        pnl = total_value - self.initial_balance
+        pnl_percent = (pnl / self.initial_balance * 100) if self.initial_balance else 0.0
+        return {
+            "initial_balance": self.initial_balance,
+            "current_balance": current_balance,
+            "open_value": open_value,
+            "total_pnl": pnl,
+            "pnl_percent": pnl_percent,
+        }
 
     async def _check_risk_management(self):
         """Check open positions and close if stop-loss or take-profit is hit."""
