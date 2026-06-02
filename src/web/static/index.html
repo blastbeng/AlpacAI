@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Trading Bot Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
+        .green { color: green; }
+        .red { color: red; }
+        .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+        .connected { background: #4caf50; }
+        .disconnected { background: #f44336; }
+    </style>
+</head>
+<body>
+    <h1>Crypto Trading Bot</h1>
+    <div>
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Connecting...</span>
+    </div>
+
+    <div class="card">
+        <h2>Current Coins</h2>
+        <div id="coins">-</div>
+    </div>
+
+    <div class="card">
+        <h2>Positions</h2>
+        <table id="positions-table">
+            <thead><tr><th>Symbol</th><th>Amount</th><th>Entry Price</th><th>Stop Loss</th><th>Take Profit</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Balances</h2>
+        <div id="balances">-</div>
+    </div>
+
+    <div class="card">
+        <h2>Recent Trades</h2>
+        <table id="trades-table">
+            <thead><tr><th>Time</th><th>Side</th><th>Symbol</th><th>Amount</th><th>Price</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Profit Summary</h2>
+        <div id="profit">-</div>
+    </div>
+
+    <script>
+        const wsUrl = `ws://${location.host}/ws`;
+        let ws;
+        function connect() {
+            ws = new WebSocket(wsUrl);
+            ws.onopen = () => {
+                document.getElementById('status-dot').className = 'status-dot connected';
+                document.getElementById('status-text').textContent = 'Connected';
+            };
+            ws.onclose = () => {
+                document.getElementById('status-dot').className = 'status-dot disconnected';
+                document.getElementById('status-text').textContent = 'Disconnected – retrying in 3s';
+                setTimeout(connect, 3000);
+            };
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                updateUI(data);
+            };
+        }
+
+        function updateUI(data) {
+            // Coins
+            document.getElementById('coins').textContent = data.current_coins?.join(', ') || 'None';
+
+            // Positions
+            const posBody = document.querySelector('#positions-table tbody');
+            posBody.innerHTML = '';
+            if (data.positions) {
+                for (const [sym, pos] of Object.entries(data.positions)) {
+                    const row = posBody.insertRow();
+                    row.insertCell().textContent = sym;
+                    row.insertCell().textContent = pos.amount?.toFixed(6) || '';
+                    row.insertCell().textContent = pos.price?.toFixed(4) || '';
+                    row.insertCell().textContent = pos.stop_loss?.toFixed(4) || '';
+                    row.insertCell().textContent = pos.take_profit?.toFixed(4) || '';
+                }
+            }
+
+            // Balances
+            const balDiv = document.getElementById('balances');
+            if (data.balances) {
+                balDiv.innerHTML = Object.entries(data.balances)
+                    .filter(([_, v]) => v > 0)
+                    .map(([k, v]) => `${k}: ${v.toFixed(6)}`)
+                    .join('<br>') || 'None';
+            }
+
+            // Trades
+            const tradesBody = document.querySelector('#trades-table tbody');
+            tradesBody.innerHTML = '';
+            if (data.trades) {
+                data.trades.slice().reverse().forEach(t => {
+                    const row = tradesBody.insertRow();
+                    row.insertCell().textContent = new Date(t.timestamp).toLocaleTimeString();
+                    row.insertCell().textContent = t.side?.toUpperCase();
+                    row.insertCell().textContent = t.symbol;
+                    row.insertCell().textContent = t.amount?.toFixed(6);
+                    row.insertCell().textContent = t.price?.toFixed(4);
+                });
+            }
+
+            // Profit
+            const profitDiv = document.getElementById('profit');
+            if (data.profit) {
+                const p = data.profit;
+                profitDiv.innerHTML = `
+                    Initial: ${p.initial_balance?.toFixed(2)}<br>
+                    Current: ${p.current_balance?.toFixed(2)}<br>
+                    Open Value: ${p.open_value?.toFixed(2)}<br>
+                    P&L: <span class="${p.total_pnl >= 0 ? 'green' : 'red'}">${p.total_pnl?.toFixed(2)} (${p.pnl_percent?.toFixed(2)}%)</span>
+                `;
+            }
+        }
+
+        connect();
+    </script>
+</body>
+</html>
