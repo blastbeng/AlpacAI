@@ -8,6 +8,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   bot:
     build: .
@@ -17,10 +22,10 @@ services:
     env_file:
       - .env
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     volumes:
       - ./src:/app/src   # for development hot-reload (optional)
-      - ./.env:/app/.env
 
 volumes:
   redis_data:
