@@ -296,6 +296,8 @@ class TradingEngine:
                     del self.positions[symbol]
                 else:
                     self.positions[symbol]["amount"] = actual_balance
+                    self.positions[symbol]["cost_basis"] = cost_basis - prorated_cost_basis
+                    self.positions[symbol]["net_base"] = net_base - sold_amount
             elif actual_balance > recorded_amount + 1e-8:
                 # External deposit – sync to actual balance
                 logger.warning(
