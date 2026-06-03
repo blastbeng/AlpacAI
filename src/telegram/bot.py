@@ -23,7 +23,6 @@ class TelegramBot:
             ],
             resize_keyboard=True,
         )
-        self._initialized = False
 
     def _register_handlers(self):
         self.app.add_handler(CommandHandler("start", self.cmd_start))
@@ -49,6 +48,7 @@ class TelegramBot:
 
     async def handle_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text
+        logger.debug(f"Received button text: {text}")
         if text == "📊 Status":
             await self.cmd_status(update, context)
         elif text == "📈 Trades":
@@ -235,17 +235,15 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"Failed to send Telegram notification: {e}", exc_info=True)
 
-    async def initialize(self):
-        """Initialize and start the bot application (idempotent)."""
-        if not self._initialized:
-            await self.app.initialize()
-            await self.app.start()
-            self._initialized = True
-
-    async def run(self):
-        """Start polling for updates."""
-        await self.initialize()
+    async def start(self):
+        """Start the bot (initialize, start polling, start application)."""
+        await self.app.initialize()
         await self.app.updater.start_polling()
-        # Keep the task alive
-        while True:
-            await asyncio.sleep(3600)
+        await self.app.start()
+        logger.info("Telegram bot started and polling.")
+
+    async def stop(self):
+        """Stop the bot gracefully."""
+        await self.app.updater.stop()
+        await self.app.stop()
+        await self.app.shutdown()

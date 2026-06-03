@@ -64,9 +64,8 @@ async def main():
         telegram_bot = TelegramBot(engine)
         engine.set_notifier(telegram_bot)
 
-        await telegram_bot.initialize()
+        await telegram_bot.start()
         await telegram_bot.send_notification("🤖 Bengobot started! Use the buttons below to control me.")
-        asyncio.create_task(telegram_bot.run())
 
     asyncio.create_task(engine.run())
 
