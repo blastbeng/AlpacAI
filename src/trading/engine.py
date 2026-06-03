@@ -68,6 +68,7 @@ class TradingEngine:
 
     def _restore_paper_state(self):
         """Replay trade history to restore paper simulator balances and positions with cost basis."""
+        old_positions = self.positions.copy()  # preserve LLM-set risk params
         # Reset simulator to initial state
         self.trader.balances = {self.base_currency: self.initial_balance}
         self.trader.trades = []
@@ -120,6 +121,19 @@ class TradingEngine:
 
             self.trader.trades.append(trade)
 
+        # Merge saved risk parameters from old positions (LLM-defined)
+        for sym, pos in positions.items():
+            if sym in old_positions:
+                old = old_positions[sym]
+                # Only override if the old position had explicit risk params (from LLM)
+                if "stop_loss" in old:
+                    pos["stop_loss"] = old["stop_loss"]
+                if "take_profit" in old:
+                    pos["take_profit"] = old["take_profit"]
+                if "trailing_stop" in old:
+                    pos["trailing_stop"] = old["trailing_stop"]
+                if "trailing_stop_distance_pct" in old:
+                    pos["trailing_stop_distance_pct"] = old["trailing_stop_distance_pct"]
         self.positions = positions
 
     def _ensure_cost_basis(self):
@@ -644,7 +658,7 @@ class TradingEngine:
 
             # Use per-coin budget as the buy amount, capped at available balance
             quote_balance = balance.get(quote, 0.0)
-            position_fraction = params.get("position_size_fraction", 1.0)
+            position_fraction = params["position_size_fraction"]
             per_coin_budget = (quote_balance / self.effective_max_coins) * position_fraction if self.effective_max_coins > 0 else 0.0
             amount = min(per_coin_budget, quote_balance)
             if amount <= 0:
@@ -687,11 +701,11 @@ class TradingEngine:
                 cost_basis = order['cost'] + (fee_cost if fee_currency == quote else 0.0)
                 net_base = order['amount'] - (fee_cost if fee_currency == base else 0.0)
 
-                # Determine stop-loss and take-profit percentages
-                sl_pct = params.get("stop_loss_pct", STOP_LOSS_PCT)
-                tp_pct = params.get("take_profit_pct", TAKE_PROFIT_PCT)
-                trailing_stop = params.get("trailing_stop", False)
-                trailing_stop_distance_pct = params.get("trailing_stop_distance_pct")
+                # Risk parameters are guaranteed by the validator
+                sl_pct = params["stop_loss_pct"]
+                tp_pct = params["take_profit_pct"]
+                trailing_stop = params["trailing_stop"]
+                trailing_stop_distance_pct = params.get("trailing_stop_distance_pct")  # may be None if trailing_stop False
 
                 if symbol in self.positions:
                     # Accumulate: weighted average price with cost basis
