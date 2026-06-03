@@ -87,23 +87,24 @@ class TradingEngine:
                 # Update balances
                 self.trader.balances[quote] = self.trader.balances.get(quote, 0) - cost
                 net_base = amount - (fee_cost if fee_currency == base else 0.0)
+                cost_basis = cost + (fee_cost if fee_currency == quote else 0.0)
                 self.trader.balances[base] = self.trader.balances.get(base, 0) + net_base
 
                 # Update position
                 if symbol in positions:
                     pos = positions[symbol]
-                    pos['cost_basis'] += cost
+                    pos['cost_basis'] += cost_basis
                     pos['net_base'] += net_base
                     pos['amount'] += net_base
                     pos['price'] = pos['cost_basis'] / pos['net_base'] if pos['net_base'] else price
                 else:
-                    entry_price = cost / net_base if net_base else price
+                    entry_price = cost_basis / net_base if net_base else price
                     positions[symbol] = {
                         'symbol': symbol,
                         'side': 'buy',
                         'amount': net_base,
                         'price': entry_price,
-                        'cost_basis': cost,
+                        'cost_basis': cost_basis,
                         'net_base': net_base,
                         'timestamp': trade['timestamp'],
                         'stop_loss': entry_price * (1 - STOP_LOSS_PCT),
@@ -676,7 +677,7 @@ class TradingEngine:
                 fee = order.get('fee', {})
                 fee_cost = float(fee.get('cost', 0.0) or 0.0)
                 fee_currency = fee.get('currency', '')
-                cost_basis = order['cost']
+                cost_basis = order['cost'] + (fee_cost if fee_currency == quote else 0.0)
                 net_base = order['amount'] - (fee_cost if fee_currency == base else 0.0)
 
                 # Determine stop-loss and take-profit percentages
