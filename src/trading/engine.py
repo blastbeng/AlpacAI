@@ -485,7 +485,8 @@ class TradingEngine:
 
     async def _close_removed_positions(self):
         """Close positions for coins that are no longer in the current selection."""
-        removed = [sym for sym in self.positions if sym not in self.current_coins]
+        current_symbols = {entry["symbol"] for entry in self.current_coins}
+        removed = [sym for sym in self.positions if sym not in current_symbols]
         for sym in removed:
             logger.info(f"Closing position for {sym} as it was removed from coin selection.")
             if self.notifier:
