@@ -59,6 +59,11 @@ def profit():
     engine = get_engine()
     return engine.get_profit_summary()
 
+@app.get("/api/performance")
+def performance():
+    engine = get_engine()
+    return engine.get_performance_summary()
+
 @app.get("/api/config")
 def config():
     return {
@@ -106,6 +111,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "balances": engine.trader.fetch_balance(),
                     "trades": engine.trade_history[-20:],
                     "profit": engine.get_profit_summary(),
+                    "performance": engine.get_performance_summary(),
                     "paused": redis.get("trading:paused") == "1",
                 })
                 await websocket.send_text(json.dumps(data))

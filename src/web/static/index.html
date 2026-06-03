@@ -189,6 +189,11 @@
             background: rgba(255,255,255,0.02);
         }
 
+        tfoot td {
+            font-weight: 700;
+            border-top: 2px solid var(--border);
+        }
+
         .green { color: var(--green); }
         .red { color: var(--red); }
 
@@ -286,6 +291,17 @@
             <div class="card">
                 <h2>Profit Summary</h2>
                 <div id="profit">-</div>
+            </div>
+
+            <div class="card card-full">
+                <h2>Performance</h2>
+                <div class="table-wrapper">
+                    <table id="performance-table">
+                        <thead><tr><th>Symbol</th><th>Timeframe</th><th>Trades</th><th>Profit</th><th>Profit %</th><th>Win Rate</th></tr></thead>
+                        <tbody></tbody>
+                        <tfoot></tfoot>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -391,6 +407,53 @@
                     Fees Paid: ${p.total_fees?.toFixed(2)}<br>
                     P&L: <span class="${p.total_pnl >= 0 ? 'green' : 'red'}">${p.total_pnl?.toFixed(2)} (${p.pnl_percent?.toFixed(2)}%)</span>
                 `;
+            }
+
+            // Performance
+            const perfBody = document.querySelector('#performance-table tbody');
+            const perfFoot = document.querySelector('#performance-table tfoot');
+            perfBody.innerHTML = '';
+            perfFoot.innerHTML = '';
+            if (data.performance) {
+                const perf = data.performance;
+                if (perf.rows && perf.rows.length > 0) {
+                    perf.rows.forEach(r => {
+                        const row = perfBody.insertRow();
+                        row.insertCell().textContent = r.symbol;
+                        row.insertCell().textContent = r.timeframe || '—';
+                        row.insertCell().textContent = r.trade_count;
+                        const profitCell = row.insertCell();
+                        profitCell.textContent = r.profit?.toFixed(4);
+                        profitCell.className = r.profit >= 0 ? 'green' : 'red';
+                        const profitPctCell = row.insertCell();
+                        profitPctCell.textContent = r.profit_pct?.toFixed(2) + '%';
+                        profitPctCell.className = r.profit_pct >= 0 ? 'green' : 'red';
+                        row.insertCell().textContent = r.win_rate?.toFixed(1) + '%';
+                    });
+                } else {
+                    const row = perfBody.insertRow();
+                    const cell = row.insertCell();
+                    cell.colSpan = 6;
+                    cell.textContent = 'No closed sell trades yet';
+                    cell.style.textAlign = 'center';
+                    cell.style.color = 'var(--text-secondary)';
+                }
+                if (perf.total) {
+                    const t = perf.total;
+                    const footRow = perfFoot.insertRow();
+                    footRow.insertCell().textContent = t.symbol;
+                    footRow.insertCell().textContent = t.timeframe || '—';
+                    footRow.insertCell().textContent = t.trade_count;
+                    const totalProfitCell = footRow.insertCell();
+                    totalProfitCell.textContent = t.profit?.toFixed(4);
+                    totalProfitCell.className = t.profit >= 0 ? 'green' : 'red';
+                    const totalProfitPctCell = footRow.insertCell();
+                    totalProfitPctCell.textContent = t.profit_pct?.toFixed(2) + '%';
+                    totalProfitPctCell.className = t.profit_pct >= 0 ? 'green' : 'red';
+                    footRow.insertCell().textContent = t.win_rate?.toFixed(1) + '%';
+                    footRow.style.fontWeight = 'bold';
+                    footRow.style.borderTop = '2px solid var(--border)';
+                }
             }
         }
 
