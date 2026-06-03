@@ -21,9 +21,6 @@ class Settings(BaseSettings):
     # Minimum profit margin after fees (e.g., 0.001 = 0.1%)
     MIN_PROFIT_MARGIN: float = 0.001
 
-    # Minimum profit margin after fees (e.g., 0.001 = 0.1%)
-    MIN_PROFIT_MARGIN: float = 0.001
-
     @field_validator("TRADING_MODE")
     @classmethod
     def validate_trading_mode(cls, v: str) -> str:
