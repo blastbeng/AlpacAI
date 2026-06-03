@@ -16,8 +16,33 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _migrate_db():
+    """Add missing columns to existing tables (schema migrations)."""
+    conn = get_connection()
+    cursor = conn.execute("PRAGMA table_info(trade_history)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+
+    migrations = [
+        ("timeframe", "ALTER TABLE trade_history ADD COLUMN timeframe TEXT"),
+        ("cost_basis", "ALTER TABLE trade_history ADD COLUMN cost_basis REAL"),
+        ("strategy_type", "ALTER TABLE trade_history ADD COLUMN strategy_type TEXT"),
+        ("note", "ALTER TABLE trade_history ADD COLUMN note TEXT"),
+        ("status", "ALTER TABLE trade_history ADD COLUMN status TEXT"),
+    ]
+
+    for column_name, sql in migrations:
+        if column_name not in existing_columns:
+            try:
+                conn.execute(sql)
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass  # Column already exists (race with another process)
+
+    conn.close()
+
+
 def init_db():
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist, then run migrations."""
     conn = get_connection()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS trading_state (
@@ -56,6 +81,7 @@ def init_db():
     """)
     conn.commit()
     conn.close()
+    _migrate_db()
 
 
 def insert_trade(trade: Dict[str, Any]):
