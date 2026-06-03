@@ -162,6 +162,8 @@ class TradingEngine:
         now = time.time()
         coin_stats = defaultdict(lambda: {"trades": 0, "wins": 0, "total_pnl": 0.0, "last_trade_ts": 0})
         strategy_stats = defaultdict(lambda: {"trades": 0, "wins": 0, "total_pnl": 0.0})
+        coin_stop_losses = defaultdict(int)
+        coin_hold_times = defaultdict(list)
 
         for trade in self.trade_history:
             if trade.get("side") != "sell":
@@ -169,6 +171,12 @@ class TradingEngine:
             symbol = trade["symbol"]
             pnl = trade.get("realized_pnl", 0.0)
             strategy = trade.get("strategy_type", "unknown")
+            exit_reason = trade.get("exit_reason", "")
+            if exit_reason == "stop_loss":
+                coin_stop_losses[symbol] += 1
+            hold_time = trade.get("hold_time_seconds")
+            if hold_time is not None:
+                coin_hold_times[symbol].append(hold_time)
 
             coin_stats[symbol]["trades"] += 1
             coin_stats[symbol]["total_pnl"] += pnl
@@ -192,6 +200,8 @@ class TradingEngine:
                 "avg_pnl": round(avg_pnl, 4),
                 "total_pnl": round(s["total_pnl"], 4),
                 "last_trade_seconds_ago": round(now - s["last_trade_ts"]) if s["last_trade_ts"] else None,
+                "stop_loss_hits": coin_stop_losses.get(sym, 0),
+                "avg_hold_time_seconds": round(sum(coin_hold_times[sym]) / len(coin_hold_times[sym]), 1) if coin_hold_times.get(sym) else None,
             }
 
         strategy_perf = {}
@@ -254,6 +264,7 @@ class TradingEngine:
                         "fee": {"cost": 0.0, "currency": self.base_currency},
                         "timestamp": time.time() * 1000,
                         "note": "delisted",
+                        "exit_reason": "delisted",
                         "realized_pnl": -cost_basis,
                         "cost_basis": cost_basis,
                     }
@@ -290,7 +301,8 @@ class TradingEngine:
                     "cost": cost,
                     "fee": {"cost": fee_cost, "currency": self.base_currency},
                     "timestamp": time.time() * 1000,
-                    "note": "external_sell"
+                    "note": "external_sell",
+                    "exit_reason": "external_sell"
                 }
                 # Compute realized P&L for the externally sold portion
                 cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
@@ -334,7 +346,7 @@ class TradingEngine:
                         f"🔻 Closing {symbol} – missing LLM risk parameters."
                     )
                 signal = Signal(action="SELL", confidence=1.0, reasoning="Missing LLM risk parameters")
-                await self._execute_signal(symbol, signal)
+                await self._execute_signal(symbol, signal, exit_reason="force_close")
 
         # Persist any changes made during reconciliation
         await self._save_state()
@@ -943,7 +955,7 @@ class TradingEngine:
                             await self.notifier.send_notification(
                                 f"⏰ Max hold time reached for {symbol} – closing position."
                             )
-                        await self._execute_signal(symbol, Signal(action="SELL", confidence=1.0, reasoning="Max hold time"))
+                        await self._execute_signal(symbol, Signal(action="SELL", confidence=1.0, reasoning="Max hold time"), exit_reason="max_hold_time")
                         continue   # skip further checks for this symbol
 
                 if current_price <= pos["stop_loss"]:
@@ -952,18 +964,18 @@ class TradingEngine:
                         await self.notifier.send_notification(
                             f"⛔ Stop‑loss triggered for {symbol} at {current_price:.4f}"
                         )
-                    await self._execute_signal(symbol, Signal(action="SELL", confidence=1.0, reasoning="Stop-loss"))
+                    await self._execute_signal(symbol, Signal(action="SELL", confidence=1.0, reasoning="Stop-loss"), exit_reason="stop_loss")
                 elif current_price >= pos["take_profit"]:
                     logger.info(f"Take-profit triggered for {symbol} at {current_price}")
                     if self.notifier:
                         await self.notifier.send_notification(
                             f"✅ Take‑profit triggered for {symbol} at {current_price:.4f}"
                         )
-                    await self._execute_signal(symbol, Signal(action="SELL", confidence=1.0, reasoning="Take-profit"))
+                    await self._execute_signal(symbol, Signal(action="SELL", confidence=1.0, reasoning="Take-profit"), exit_reason="take_profit")
             except Exception as e:
                 logger.error(f"Risk check failed for {symbol}: {e}")
 
-    async def _execute_signal(self, symbol: str, signal, timeframe: str = None):
+    async def _execute_signal(self, symbol: str, signal, timeframe: str = None, exit_reason: str = None):
         """Execute a BUY or SELL signal."""
         base, quote = symbol.split("/")
         balance = await asyncio.to_thread(self.trader.fetch_balance)
@@ -989,6 +1001,9 @@ class TradingEngine:
             # Use per-coin budget as the buy amount, capped at available balance
             quote_balance = balance.get(quote, 0.0)
             position_fraction = params["position_size_fraction"]
+            risk_multiplier = {"low": 0.5, "medium": 1.0, "high": 1.5}.get(signal.risk_level, 1.0)
+            position_fraction *= risk_multiplier
+            position_fraction = max(0.1, min(1.0, position_fraction))
             per_coin_budget = (quote_balance / self.effective_max_coins) * position_fraction if self.effective_max_coins > 0 else 0.0
             amount = min(per_coin_budget, quote_balance)
             if amount <= 0:
@@ -1136,6 +1151,12 @@ class TradingEngine:
                 tf = timeframe or (pos.get("timeframe") if pos else None)
                 order["timeframe"] = tf
                 order["strategy_type"] = signal.strategy_type
+                order["exit_reason"] = exit_reason
+                if pos and "timestamp" in pos:
+                    hold_time = (order["timestamp"] - pos["timestamp"]) / 1000.0
+                    order["hold_time_seconds"] = hold_time
+                else:
+                    order["hold_time_seconds"] = None
                 # Remove position
                 self.positions.pop(symbol, None)
                 self.trade_history.append(order)

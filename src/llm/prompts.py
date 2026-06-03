@@ -138,6 +138,7 @@ When asked to generate a strategy for a specific coin, return a JSON object with
   "action": "BUY" | "SELL" | "HOLD",
   "confidence": 0.0 to 1.0,
   "reasoning": "short explanation",
+  "risk_level": "low" | "medium" | "high",
   "strategy": {
     "type": "scalping" | "momentum" | "mean_reversion" | "breakout",
     "parameters": {
@@ -145,6 +146,11 @@ When asked to generate a strategy for a specific coin, return a JSON object with
     }
   }
 }
+The "risk_level" field controls overall risk appetite for this trade:
+- "low": use smaller position sizes, wider stops, only trade when very confident.
+- "medium": normal risk (default).
+- "high": aggressive, larger position sizes, tighter stops (only when market conditions are extremely favourable).
+
 If action is BUY or SELL, include a strategy. If HOLD, strategy can be null.
 
 You MUST include the following risk parameters inside the "parameters" object for every BUY or SELL action. All numeric values must be numbers, not strings.
@@ -399,7 +405,7 @@ Return a JSON object as specified."""
         equity = performance.get("equity_curve", {})
         perf_text = f"""
 Historical Performance:
-- This coin's past performance: {json.dumps(coin_perf)}
+- This coin's past performance: {json.dumps(coin_perf)} (stop_loss_hits = number of times stop-loss was triggered; avg_hold_time_seconds = average trade duration)
 - Overall equity curve: {json.dumps(equity)}
 - Strategy performance summary: {json.dumps(strategy_perf)}
 

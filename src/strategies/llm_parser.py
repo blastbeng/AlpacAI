@@ -21,12 +21,17 @@ def parse_llm_response(response_text: str) -> Signal:
             strategy_type = strategy.get("type")
             strategy_params = strategy.get("parameters")   # can be None or a dict
 
+        risk_level = data.get("risk_level")
+        if risk_level not in ("low", "medium", "high"):
+            risk_level = "medium"
+
         return Signal(
             action=action,
             confidence=confidence,
             reasoning=reasoning,
             strategy_type=strategy_type,
             strategy_params=strategy_params,
+            risk_level=risk_level,
         )
     except (json.JSONDecodeError, ValueError, TypeError):
         return Signal(action="HOLD", confidence=0.0, reasoning="Failed to parse LLM response")

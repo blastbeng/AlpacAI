@@ -9,6 +9,7 @@ class Signal:
     reasoning: str
     strategy_type: Optional[str] = None
     strategy_params: Optional[Dict[str, Any]] = None   # LLM-defined parameters
+    risk_level: Optional[str] = None   # "low", "medium", "high"
 
 
 class Strategy:
