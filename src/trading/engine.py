@@ -646,6 +646,9 @@ class TradingEngine:
             bid_wall_volume = None
             ask_wall_volume = None
             order_book_pressure = None
+            depth_imbalances = None
+            order_book_slope = None
+            mid_price_bias = None
 
             bids = order_book.get('bids', [])
             asks = order_book.get('asks', [])
