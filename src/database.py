@@ -34,6 +34,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             order_id TEXT,
             symbol TEXT NOT NULL,
+            timeframe TEXT,
             side TEXT NOT NULL,
             type TEXT,
             amount REAL NOT NULL,
@@ -51,6 +52,7 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_trade_history_symbol ON trade_history(symbol);
         CREATE INDEX IF NOT EXISTS idx_trade_history_timestamp ON trade_history(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_trade_history_symbol_timeframe ON trade_history(symbol, timeframe);
     """)
     conn.commit()
     conn.close()
@@ -62,14 +64,15 @@ def insert_trade(trade: Dict[str, Any]):
     conn.execute(
         """
         INSERT INTO trade_history (
-            order_id, symbol, side, type, amount, price, cost,
+            order_id, symbol, timeframe, side, type, amount, price, cost,
             fee_cost, fee_currency, realized_pnl, cost_basis,
             strategy_type, note, status, timestamp
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             trade.get("id"),
             trade["symbol"],
+            trade.get("timeframe"),
             trade["side"],
             trade.get("type"),
             trade["amount"],
@@ -137,6 +140,77 @@ def get_telegram_chat_id() -> Optional[int]:
         except (ValueError, TypeError):
             return None
     return None
+
+
+def get_performance() -> Dict[str, Any]:
+    """Return performance summary grouped by coin and timeframe, plus a TOTAL row."""
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT
+            symbol,
+            timeframe,
+            COUNT(*) AS trade_count,
+            SUM(realized_pnl) AS total_profit,
+            SUM(CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END) AS wins,
+            SUM(CASE WHEN realized_pnl < 0 THEN 1 ELSE 0 END) AS losses,
+            SUM(cost_basis) AS total_cost_basis
+        FROM trade_history
+        WHERE side = 'sell' AND realized_pnl IS NOT NULL
+        GROUP BY symbol, timeframe
+        ORDER BY symbol, timeframe
+    """).fetchall()
+    conn.close()
+
+    performance = []
+    total_trades = 0
+    total_profit = 0.0
+    total_wins = 0
+    total_losses = 0
+    total_cost_basis = 0.0
+
+    for row in rows:
+        symbol = row["symbol"]
+        timeframe = row["timeframe"] or "N/A"
+        trade_count = row["trade_count"]
+        profit = row["total_profit"] or 0.0
+        wins = row["wins"] or 0
+        losses = row["losses"] or 0
+        cost_basis = row["total_cost_basis"] or 0.0
+
+        profit_pct = (profit / cost_basis * 100) if cost_basis else 0.0
+        win_rate = (wins / trade_count * 100) if trade_count else 0.0
+
+        performance.append({
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "trade_count": trade_count,
+            "profit": round(profit, 4),
+            "profit_pct": round(profit_pct, 2),
+            "win_rate": round(win_rate, 2),
+        })
+
+        total_trades += trade_count
+        total_profit += profit
+        total_wins += wins
+        total_losses += losses
+        total_cost_basis += cost_basis
+
+    total_profit_pct = (total_profit / total_cost_basis * 100) if total_cost_basis else 0.0
+    total_win_rate = (total_wins / total_trades * 100) if total_trades else 0.0
+
+    total_row = {
+        "symbol": "TOTAL",
+        "timeframe": "",
+        "trade_count": total_trades,
+        "profit": round(total_profit, 4),
+        "profit_pct": round(total_profit_pct, 2),
+        "win_rate": round(total_win_rate, 2),
+    }
+
+    return {
+        "rows": performance,
+        "total": total_row,
+    }
 
 
 def set_telegram_chat_id(chat_id: int):

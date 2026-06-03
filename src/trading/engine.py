@@ -682,7 +682,7 @@ class TradingEngine:
                 return
 
             if validated.action != "HOLD":
-                await self._execute_signal(symbol, validated)
+                await self._execute_signal(symbol, validated, timeframe=assigned_tf)
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}", exc_info=True)
             if self.notifier:
@@ -778,7 +778,7 @@ class TradingEngine:
             except Exception as e:
                 logger.error(f"Risk check failed for {symbol}: {e}")
 
-    async def _execute_signal(self, symbol: str, signal):
+    async def _execute_signal(self, symbol: str, signal, timeframe: str = None):
         """Execute a BUY or SELL signal."""
         base, quote = symbol.split("/")
         balance = await asyncio.to_thread(self.trader.fetch_balance)
@@ -875,6 +875,7 @@ class TradingEngine:
                     self.positions[symbol]["take_profit"] = new_price * (1 + tp_pct)
                     self.positions[symbol]["trailing_stop"] = trailing_stop
                     self.positions[symbol]["trailing_stop_distance_pct"] = trailing_stop_distance_pct
+                    self.positions[symbol]["timeframe"] = timeframe
                 else:
                     entry_price = cost_basis / net_base if net_base > 0 else order["price"]
                     self.positions[symbol] = {
@@ -889,8 +890,10 @@ class TradingEngine:
                         "net_base": net_base,
                         "trailing_stop": trailing_stop,
                         "trailing_stop_distance_pct": trailing_stop_distance_pct,
+                        "timeframe": timeframe,
                     }
                 order["strategy_type"] = signal.strategy_type
+                order["timeframe"] = timeframe
                 self.trade_history.append(order)
                 await asyncio.to_thread(insert_trade, order)
                 await self._save_state()
@@ -930,6 +933,8 @@ class TradingEngine:
                     realized_pnl = 0.0
                 order["realized_pnl"] = realized_pnl
                 order["cost_basis"] = pos.get("cost_basis", 0.0) if pos else 0.0
+                tf = timeframe or (pos.get("timeframe") if pos else None)
+                order["timeframe"] = tf
                 order["strategy_type"] = signal.strategy_type
                 # Remove position
                 self.positions.pop(symbol, None)
