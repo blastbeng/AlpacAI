@@ -332,7 +332,7 @@ class TradingEngine:
         last_key = "trading:last_coin_eval"
         last_eval = await asyncio.to_thread(self.redis.get, last_key)
         now = time.time()
-        if last_eval and (now - float(last_eval)) < COIN_REVALUATION_INTERVAL:
+        if last_eval and (now - float(last_eval)) < COIN_REVALUATION_INTERVAL and self.current_coins:
             return
 
         available_pairs = await asyncio.to_thread(get_available_pairs, self.exchange, self.base_currency)

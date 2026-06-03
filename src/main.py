@@ -33,6 +33,7 @@ def _cleanup_redis_state():
         "trading:positions",
         "trading:trade_history",
         "trading:initial_balance",
+        "trading:last_coin_eval",
     ]
     for key in keys_to_delete:
         redis.delete(key)
