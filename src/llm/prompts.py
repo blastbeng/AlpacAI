@@ -117,7 +117,8 @@ Key principles:
 - Only trade coins with strong, confirmed short-term momentum and sufficient volatility to cover fees. Avoid low-volatility or choppy (sideways) markets entirely.
 - You will receive raw OHLCV candle data. Compute your own technical indicators (RSI, MACD, Bollinger Bands, moving averages, etc.) from this data. Use them to time entries and exits. Require confirmation from at least two independent indicators before taking a trade.
 - Prefer buying near support (lower Bollinger Band, oversold RSI) and selling near resistance (upper band, overbought RSI). Never chase a breakout without confirmation.
-- Always set a stop-loss based on recent swing lows or ATR, and a take-profit that offers at least a 2:1 reward-to-risk ratio (take_profit_pct >= 2 * stop_loss_pct). If you cannot achieve this, output HOLD.
+- Always set a stop-loss based on recent swing lows or ATR. Prefer ATR‑based stops because they adapt to current volatility. A stop distance of 1.5–2.5× ATR is usually appropriate. Never use a stop tighter than 1× ATR. Place the stop just below a recent swing low or support level, but ensure the distance is at least 1× ATR.
+- Set a take-profit that offers at least a 2:1 reward-to-risk ratio (take_profit_pct >= 2 * stop_loss_pct). If you cannot achieve this, output HOLD.
 - Set a maximum hold time (max_hold_time_seconds) for every trade. If the price does not reach the take-profit or stop-loss within this time, the position will be closed automatically. Choose a time appropriate for the timeframe (e.g., 1-4 hours for 1h candles, 15-60 minutes for 5m candles).
 - Use trailing stops to lock in profits when the price moves favourably.
 - Adjust position size according to confidence: use smaller fractions (<0.5) when confidence is below 0.7, and larger fractions (0.8-1.0) only when confidence is very high (>0.85).
@@ -301,9 +302,18 @@ Maximum coins to trade: {max_coins}
     # --- Volatility, order book imbalance, and position P&L context ---
     if atr is not None:
         prompt += f"ATR (14-period, {assigned_timeframe or 'default'}): {atr:.6f}\n"
+        prompt += (
+            "Use the ATR to set your stop-loss distance. A good stop distance is 1.5–2.5× ATR. "
+            "Convert that distance into a percentage of the current price for the stop_loss_pct parameter. "
+            "For example, if ATR=50 and price=5000, 2× ATR = 100, so stop_loss_pct = 100/5000 = 0.02 (2%). "
+            "Never use a stop tighter than 1× ATR.\n"
+        )
     if atr_multi_tf:
         prompt += f"ATR across timeframes: {json.dumps(atr_multi_tf)}\n"
-        prompt += "Use the higher-timeframe ATR to gauge overall volatility and the lower-timeframe ATR for precise stop-loss placement.\n"
+        prompt += (
+            "Use the higher-timeframe ATR to gauge overall volatility and the lower-timeframe ATR for precise stop-loss placement. "
+            "If the higher‑timeframe ATR is large, widen your stop accordingly to avoid being stopped out by normal swings.\n"
+        )
     if rsi is not None:
         prompt += f"RSI (14): {rsi}\n"
     if macd is not None and macd_signal is not None:
@@ -351,7 +361,7 @@ Maximum coins to trade: {max_coins}
         prompt += "Use these outcomes to adapt your strategy. If recent trades are losing, become more conservative.\n"
 
     prompt += f"""
-**Your primary objective is short-term profit.** Use the ATR to set stop-loss and take-profit distances that respect the coin's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on a risk:reward ratio of at least 1:2.
+**Your primary objective is short-term profit.** Use the ATR to set stop-loss and take-profit distances that respect the coin's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on a risk:reward ratio of at least 1:2. **Crucially, your stop distance must be at least 1× ATR, and preferably 1.5–2.5× ATR, to avoid being stopped out by normal market noise.**
 
 Interpret the order book metrics:
 - A high spread (>0.5%) suggests low liquidity – be cautious with large orders.
