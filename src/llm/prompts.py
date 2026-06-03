@@ -157,14 +157,22 @@ If action is BUY or SELL, include a strategy. If HOLD, strategy can be null.
 
 You MUST include the following risk parameters inside the "parameters" object for every BUY or SELL action. All numeric values must be numbers, not strings.
 
-- "stop_loss_pct": a decimal between 0.001 and 0.5 (e.g., 0.02 for 2%). Must be greater than 0 and less than 1.0.
+- "stop_loss_pct": a decimal between 0.001 and 0.5 (e.g., 0.02 for 2%). Must be greater than 0 and less than 1.0. This is required unless you use the "atr_multiple" stop-loss method (see below).
 - "take_profit_pct": a decimal between 0.005 and 2.0 (e.g., 0.05 for 5%). Must be greater than stop_loss_pct and at least 2× the fee rate.
 - "trailing_stop": true or false to enable a trailing stop.
 - "trailing_stop_distance_pct": required if "trailing_stop" is true; a decimal between 0.001 and 0.1 (e.g., 0.01 for 1%). Must be less than stop_loss_pct. If "trailing_stop" is false, set this to null.
 - "position_size_fraction": a decimal between 0.1 and 1.0 (e.g., 0.5 for 50% of budget). Must be > 0 and ≤ 1.
 - "max_hold_time_seconds": a positive integer number of seconds (e.g., 3600 for 1 hour). Must be > 0.
 
-The bot will NOT use any default values. If you omit any of these parameters, the trade will be skipped.
+You may also include the following optional parameters to fine-tune risk management:
+
+- "stop_loss_method": "fixed" (default) or "atr_multiple". If "atr_multiple", the stop distance is computed as stop_loss_atr_multiple × ATR, and "stop_loss_pct" is optional (if provided, it will be ignored). Use this to set a volatility-based stop.
+- "stop_loss_atr_multiple": required if stop_loss_method is "atr_multiple". A positive float (e.g., 2.0 for 2× ATR). The stop distance will be (multiplier × ATR) / current_price.
+- "trailing_stop_activation_pct": a decimal between 0 and 1.0 (e.g., 0.02 for 2%). The trailing stop will only start updating once the price has moved in your favor by at least this percentage from the entry price. If omitted, the trailing stop is active immediately.
+- "max_risk_per_trade_pct": a decimal between 0 and 1.0 (e.g., 0.02 for 2% of portfolio). The position size will be limited so that the potential loss (entry - stop) does not exceed this fraction of your total portfolio value. If omitted, position sizing uses only position_size_fraction.
+- "entry_confidence_threshold": a decimal between 0 and 1.0. Overrides the global minimum confidence for this specific trade. Use this to raise the bar for risky trades or lower it for high-conviction setups.
+
+The bot will NOT use any default values for required parameters. If you omit any required parameter, the trade will be skipped. Optional parameters are not required; if omitted, the bot will use its standard behavior.
 """
 
 def build_coin_selection_prompt(
@@ -383,7 +391,8 @@ If the position is already in profit, consider trailing the stop.
 - Use these in combination with order book data to time entries.
 
 You MUST include the following risk parameters in the "parameters" object:
-- stop_loss_pct, take_profit_pct, trailing_stop, trailing_stop_distance_pct, position_size_fraction, max_hold_time_seconds.
+- stop_loss_pct (required unless using stop_loss_method="atr_multiple"), take_profit_pct, trailing_stop, trailing_stop_distance_pct, position_size_fraction, max_hold_time_seconds.
+You may also include optional parameters: stop_loss_method, stop_loss_atr_multiple, trailing_stop_activation_pct, max_risk_per_trade_pct, entry_confidence_threshold. See the system prompt for details.
 The bot will NOT use any default values. If you omit any required parameter, the trade will be skipped.
 
 **Fee awareness:** You MUST account for trading fees when setting take-profit and trailing stop distances. Ensure that after deducting fees (both entry and exit), a take-profit or trailing stop exit results in a net profit. The bot will enforce a minimum take-profit percentage of at least 2× the fee rate plus a small margin.
