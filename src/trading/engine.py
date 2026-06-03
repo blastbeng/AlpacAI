@@ -137,6 +137,14 @@ class TradingEngine:
                     pos["trailing_stop"] = old["trailing_stop"]
                 if "trailing_stop_distance_pct" in old:
                     pos["trailing_stop_distance_pct"] = old["trailing_stop_distance_pct"]
+                if "max_hold_time_seconds" in old:
+                    pos["max_hold_time_seconds"] = old["max_hold_time_seconds"]
+                if "timeframe" in old:
+                    pos["timeframe"] = old["timeframe"]
+        # Re-apply force_close for positions still missing risk parameters
+        for sym, pos in positions.items():
+            if "stop_loss" not in pos or "take_profit" not in pos:
+                pos["_force_close"] = True
         self.positions = positions
 
     def _ensure_cost_basis(self):
@@ -236,6 +244,7 @@ class TradingEngine:
                 self.current_coins.remove(entry)
                 if coin in self.positions:
                     pos = self.positions.pop(coin)
+                    cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
                     trade = {
                         "symbol": coin,
                         "side": "sell",
@@ -244,9 +253,12 @@ class TradingEngine:
                         "cost": 0.0,
                         "fee": {"cost": 0.0, "currency": self.base_currency},
                         "timestamp": time.time() * 1000,
-                        "note": "delisted"
+                        "note": "delisted",
+                        "realized_pnl": -cost_basis,
+                        "cost_basis": cost_basis,
                     }
                     self.trade_history.append(trade)
+                    await asyncio.to_thread(insert_trade, trade)
                     logger.warning(f"Delisted coin {coin}: recorded forced sell of {pos['amount']} at 0.")
 
         # --- Externally modified balances ---
@@ -288,6 +300,7 @@ class TradingEngine:
                 trade["realized_pnl"] = net_quote - prorated_cost_basis
                 trade["cost_basis"] = prorated_cost_basis
                 self.trade_history.append(trade)
+                await asyncio.to_thread(insert_trade, trade)
                 logger.warning(
                     f"External sell detected for {symbol}: {sold_amount} sold at ~{current_price}. "
                     f"Updating position from {recorded_amount} to {actual_balance}."
@@ -322,6 +335,9 @@ class TradingEngine:
                     )
                 signal = Signal(action="SELL", confidence=1.0, reasoning="Missing LLM risk parameters")
                 await self._execute_signal(symbol, signal)
+
+        # Persist any changes made during reconciliation
+        await self._save_state()
 
     def _load_state(self):
         """Load current coins, positions, trade history, and initial balance from SQLite."""
