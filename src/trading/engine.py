@@ -36,6 +36,7 @@ class TradingEngine:
         self.exchange = get_exchange()
         self.base_currency = settings.BASE_CURRENCY
         self.max_coins = settings.MAX_COINS
+        self.effective_max_coins = self.max_coins
         self.redis = get_redis_client()
 
         if settings.TRADING_MODE == "paper":
@@ -394,11 +395,30 @@ class TradingEngine:
                 'min_amount': min_amount,
             }
 
+        # Compute effective max coins based on budget and minimum trade costs
+        min_costs = [lim['min_cost'] for lim in market_limits.values() if lim['min_cost'] > 0]
+        if min_costs:
+            min_min_cost = min(min_costs)
+            max_affordable = int(base_balance // min_min_cost) if min_min_cost > 0 else self.max_coins
+        else:
+            max_affordable = self.max_coins
+        self.effective_max_coins = max(1, min(self.max_coins, max_affordable)) if max_affordable > 0 else 0
+
+        if self.effective_max_coins == 0:
+            logger.warning("Insufficient balance to trade any coin. Clearing coin list.")
+            self.current_coins = []
+            self.coin_timeframes = {}
+            await asyncio.to_thread(self.redis.set, last_key, now)
+            return
+
+        # Recompute per-coin budget with the effective max
+        per_coin_budget = base_balance / self.effective_max_coins
+
         perf = self._compute_performance_metrics()
         prompt = build_coin_selection_prompt(
             available_pairs=sample_pairs,
             current_coins=self.current_coins,
-            max_coins=self.max_coins,
+            max_coins=self.effective_max_coins,
             base_currency=self.base_currency,
             tickers=tickers,
             base_balance=base_balance,
@@ -454,7 +474,7 @@ class TradingEngine:
                 min_cost = market_limits.get(sym, {}).get('min_cost', 0)
                 if per_coin_budget >= min_cost:
                     fallback_coins.append(sym)
-                if len(fallback_coins) >= self.max_coins:
+                if len(fallback_coins) >= self.effective_max_coins:
                     break
             self.current_coins = fallback_coins
             # Assign default timeframe to fallback coins
@@ -504,7 +524,7 @@ class TradingEngine:
 
             # Compute per-coin budget for this coin
             base_balance = balance.get(self.base_currency, 0.0)
-            per_coin_budget = base_balance / self.max_coins if self.max_coins > 0 else 0.0
+            per_coin_budget = base_balance / self.effective_max_coins if self.effective_max_coins > 0 else 0.0
 
             perf = self._compute_performance_metrics()
             prompt = build_strategy_prompt(
@@ -514,7 +534,7 @@ class TradingEngine:
                 balance=balance,
                 open_positions=open_positions,
                 per_coin_budget=per_coin_budget,
-                max_coins=self.max_coins,
+                max_coins=self.effective_max_coins,
                 performance=perf,
                 ohlcv_data=ohlcv_data,
                 assigned_timeframe=assigned_tf,
@@ -621,13 +641,37 @@ class TradingEngine:
             # Use per-coin budget as the buy amount, capped at available balance
             quote_balance = balance.get(quote, 0.0)
             position_fraction = params.get("position_size_fraction", 1.0)
-            per_coin_budget = (quote_balance / self.max_coins) * position_fraction if self.max_coins > 0 else 0.0
+            per_coin_budget = (quote_balance / self.effective_max_coins) * position_fraction if self.effective_max_coins > 0 else 0.0
             amount = min(per_coin_budget, quote_balance)
             if amount <= 0:
                 logger.info(f"Insufficient {quote} to buy {symbol}")
                 if self.notifier:
                     await self.notifier.send_notification(f"⚠️ Insufficient {quote} to buy {symbol}")
                 return
+
+            # Check minimum order size
+            try:
+                ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                price = ticker['last']
+                base_amount = amount / price
+                market = self.exchange.markets.get(symbol, {})
+                limits = market.get('limits', {})
+                min_amount_limit = limits.get('amount', {}).get('min')
+                min_cost_limit = limits.get('cost', {}).get('min')
+
+                if min_amount_limit is not None and base_amount < float(min_amount_limit):
+                    logger.info(f"BUY amount {base_amount:.6f} {base} below min amount {min_amount_limit} for {symbol}, skipping")
+                    if self.notifier:
+                        await self.notifier.send_notification(f"⚠️ BUY skipped for {symbol}: amount too small")
+                    return
+                if min_cost_limit is not None and amount < float(min_cost_limit):
+                    logger.info(f"BUY cost {amount:.2f} {quote} below min cost {min_cost_limit} for {symbol}, skipping")
+                    if self.notifier:
+                        await self.notifier.send_notification(f"⚠️ BUY skipped for {symbol}: cost too small")
+                    return
+            except Exception as e:
+                logger.warning(f"Could not verify min order size for {symbol}: {e}")
+
             try:
                 order = await asyncio.to_thread(self.trader.create_market_buy_order, symbol, amount)
                 logger.info(f"BUY {symbol}: {order}")
