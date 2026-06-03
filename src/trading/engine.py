@@ -15,6 +15,7 @@ from src.llm.prompts import (
     SYSTEM_PROMPT,
     build_coin_selection_prompt,
     build_strategy_prompt,
+    compute_atr,
 )
 from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm
@@ -555,6 +556,30 @@ class TradingEngine:
             per_coin_budget = base_balance / self.effective_max_coins if self.effective_max_coins > 0 else 0.0
 
             perf = self._compute_performance_metrics()
+
+            # --- Compute additional metrics for the LLM ---
+            atr = None
+            if ohlcv_data and assigned_tf in ohlcv_data:
+                candles = ohlcv_data[assigned_tf]
+                if candles:
+                    atr = compute_atr(candles)
+
+            # Order book imbalance (bid volume / ask volume, top 5 levels)
+            bids_vol = sum(bid[1] for bid in order_book.get('bids', [])[:5])
+            asks_vol = sum(ask[1] for ask in order_book.get('asks', [])[:5])
+            order_book_imbalance = bids_vol / asks_vol if asks_vol > 0 else None
+
+            # Unrealized P&L for current position (if any)
+            unrealized_pnl = None
+            position_info = None
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                position_info = pos
+                current_price = ticker['last']
+                entry_price = pos['price']
+                amount = pos['amount']
+                unrealized_pnl = (current_price - entry_price) * amount
+
             prompt = build_strategy_prompt(
                 symbol=symbol,
                 ticker=ticker,
@@ -566,6 +591,10 @@ class TradingEngine:
                 performance=perf,
                 ohlcv_data=ohlcv_data,
                 assigned_timeframe=assigned_tf,
+                atr=atr,
+                order_book_imbalance=order_book_imbalance,
+                unrealized_pnl=unrealized_pnl,
+                position_info=position_info,
             )
             response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 60)
             strategy = create_strategy_from_llm(response)

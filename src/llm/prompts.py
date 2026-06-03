@@ -2,6 +2,23 @@ import json
 from typing import List, Dict, Any, Optional
 from src.config.settings import settings
 
+
+def compute_atr(candles: List[List], period: int = 14) -> float:
+    """Compute ATR from OHLCV candles (each candle: [timestamp, open, high, low, close, volume])."""
+    if len(candles) < 2:
+        return 0.0
+    true_ranges = []
+    for i in range(1, len(candles)):
+        high = candles[i][2]
+        low = candles[i][3]
+        prev_close = candles[i - 1][4]
+        tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+        true_ranges.append(tr)
+    if not true_ranges:
+        return 0.0
+    period = min(period, len(true_ranges))
+    return sum(true_ranges[-period:]) / period
+
 SYSTEM_PROMPT = """You are a professional cryptocurrency trading bot assistant. Your primary goal is to generate short-term profit by identifying coins with strong recent momentum, high volatility, and clear short-term trends. Prioritize quick gains over long-term holding. Avoid coins that are stagnant or have low short-term potential.
 
 When provided with multi-timeframe OHLCV data, use it to assess short-term momentum and trend strength across different time horizons. Prefer coins showing consistent upward momentum across multiple timeframes.
@@ -128,6 +145,10 @@ def build_strategy_prompt(
     performance: Optional[Dict[str, Any]] = None,
     ohlcv_data: Optional[Dict[str, List]] = None,
     assigned_timeframe: Optional[str] = None,
+    atr: Optional[float] = None,
+    order_book_imbalance: Optional[float] = None,
+    unrealized_pnl: Optional[float] = None,
+    position_info: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -140,14 +161,24 @@ Maximum coins to trade: {max_coins}
 """
     if assigned_timeframe:
         prompt += f"\nAssigned trading timeframe for this coin: {assigned_timeframe}. Base your decision primarily on the OHLCV data for this timeframe.\n"
-    prompt += f"""
-**Your primary objective is short-term profit.** Focus on quick gains. Prefer strategies like scalping or momentum if the coin shows strong short-term movement. If the coin is stagnant or the budget is too small for a meaningful position, choose HOLD.
 
-Based on the above, decide whether to BUY, SELL, or HOLD. Consider the per-coin budget: only BUY if the budget is sufficient to meet the minimum trade size and the position size is meaningful. If the budget is too small, prefer HOLD. Provide a strategy if action is BUY or SELL. Return a JSON object as specified.
+    # --- Volatility, order book imbalance, and position P&L context ---
+    if atr is not None:
+        prompt += f"ATR (14-period, {assigned_timeframe or 'default'}): {atr:.6f}\n"
+    if order_book_imbalance is not None:
+        prompt += f"Order book imbalance (bid_vol / ask_vol): {order_book_imbalance:.2f} ( >1 = buying pressure)\n"
+    if unrealized_pnl is not None and position_info:
+        prompt += f"Current position unrealized P&L: {unrealized_pnl:.2f} {symbol.split('/')[1]}\n"
+        prompt += f"Position details: entry price {position_info.get('price')}, amount {position_info.get('amount')}\n"
+
+    prompt += f"""
+**Your primary objective is short-term profit.** Use the ATR to set stop-loss and take-profit distances that respect the coin's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on a risk:reward ratio of at least 1:2. If the order book shows strong buying pressure, you may tighten the stop. If the position is already in profit, consider trailing the stop.
 
 You MUST include the following risk parameters in the "parameters" object:
 - stop_loss_pct, take_profit_pct, trailing_stop, trailing_stop_distance_pct, position_size_fraction.
-The bot will NOT use any default values. If you omit any required parameter, the trade will be skipped."""
+The bot will NOT use any default values. If you omit any required parameter, the trade will be skipped.
+
+Return a JSON object as specified."""
     # Add OHLCV summary if available
     if ohlcv_data:
         ohlcv_summary = {}
