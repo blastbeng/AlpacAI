@@ -20,3 +20,23 @@ def get_tickers(exchange: ccxt.Exchange, symbols: Optional[List[str]] = None) ->
 def get_order_book(exchange: ccxt.Exchange, symbol: str, limit: int = 20) -> Dict[str, Any]:
     """Fetch order book for a symbol."""
     return exchange.fetch_order_book(symbol, limit)
+
+def get_multi_timeframe_ohlcv(
+    exchange: ccxt.Exchange,
+    symbol: str,
+    timeframes: List[str],
+    limit: int = 24
+) -> Dict[str, List[List[float]]]:
+    """
+    Fetch OHLCV data for a symbol across multiple timeframes.
+    Returns a dict mapping timeframe -> list of candles.
+    """
+    result = {}
+    for tf in timeframes:
+        try:
+            ohlcv = exchange.fetch_ohlcv(symbol, tf, limit=limit)
+            result[tf] = ohlcv
+        except Exception:
+            # Skip on failure
+            result[tf] = []
+    return result

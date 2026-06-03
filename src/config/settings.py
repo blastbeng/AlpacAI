@@ -32,6 +32,16 @@ class Settings(BaseSettings):
             raise ValueError("MAX_COINS must be at least 1")
         return v
 
+    # OHLCV timeframes for multi-timeframe analysis
+    OHLCV_TIMEFRAMES: list[str] = ["5m", "15m", "1h", "4h"]
+
+    @field_validator("OHLCV_TIMEFRAMES")
+    @classmethod
+    def validate_ohlcv_timeframes(cls, v: list[str]) -> list[str]:
+        if not isinstance(v, list) or not all(isinstance(tf, str) for tf in v):
+            raise ValueError("OHLCV_TIMEFRAMES must be a list of strings")
+        return v
+
     # Paper trading
     PAPER_INITIAL_BALANCE: float = 10000.0
 

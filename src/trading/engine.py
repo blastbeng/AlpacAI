@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any
 from src.config.settings import settings
 from src.exchanges.fees import get_fee_rate
 from src.exchanges.factory import get_exchange
-from src.exchanges.market_data import get_available_pairs, get_tickers, get_order_book
+from src.exchanges.market_data import get_available_pairs, get_tickers, get_order_book, get_multi_timeframe_ohlcv
 from src.trading.paper_simulator import PaperSimulator
 from src.trading.live_trader import LiveTrader
 from src.llm.cache import get_cached_ollama_response
@@ -346,6 +346,28 @@ class TradingEngine:
         sample_pairs = available_pairs[:50]
         tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_pairs)
 
+        # Determine top coins by volume for OHLCV fetch (limit to 20 to avoid rate limits)
+        def volume(sym):
+            t = tickers.get(sym, {})
+            return t.get('quoteVolume', 0) or 0
+        sorted_by_vol = sorted(sample_pairs, key=volume, reverse=True)[:20]
+
+        # Fetch multi-timeframe OHLCV for these coins
+        ohlcv_data = {}
+        if settings.OHLCV_TIMEFRAMES:
+            async def fetch_ohlcv_for_symbol(sym):
+                try:
+                    data = await asyncio.to_thread(
+                        get_multi_timeframe_ohlcv, self.exchange, sym, settings.OHLCV_TIMEFRAMES, limit=24
+                    )
+                    return sym, data
+                except Exception as e:
+                    logger.warning(f"OHLCV fetch failed for {sym}: {e}")
+                    return sym, {}
+            tasks = [fetch_ohlcv_for_symbol(sym) for sym in sorted_by_vol]
+            results = await asyncio.gather(*tasks)
+            ohlcv_data = dict(results)
+
         # Build market_limits with a concrete min_cost for each symbol
         market_limits = {}
         for symbol in sample_pairs:
@@ -380,6 +402,7 @@ class TradingEngine:
             per_coin_budget=per_coin_budget,
             market_limits=market_limits,
             performance=perf,
+            ohlcv_data=ohlcv_data,
         )
         response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 300)
         logger.info(f"LLM coin selection raw response: {response}")
@@ -437,6 +460,16 @@ class TradingEngine:
             ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
             order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
             balance = await asyncio.to_thread(self.trader.fetch_balance)
+
+            # Fetch multi-timeframe OHLCV for this coin
+            ohlcv_data = {}
+            if settings.OHLCV_TIMEFRAMES:
+                try:
+                    ohlcv_data = await asyncio.to_thread(
+                        get_multi_timeframe_ohlcv, self.exchange, symbol, settings.OHLCV_TIMEFRAMES, limit=24
+                    )
+                except Exception as e:
+                    logger.warning(f"OHLCV fetch failed for {symbol}: {e}")
             open_positions = [
                 pos for pos in self.positions.values() if pos.get("symbol") == symbol
             ]
@@ -455,6 +488,7 @@ class TradingEngine:
                 per_coin_budget=per_coin_budget,
                 max_coins=self.max_coins,
                 performance=perf,
+                ohlcv_data=ohlcv_data,
             )
             response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 60)
             strategy = create_strategy_from_llm(response)

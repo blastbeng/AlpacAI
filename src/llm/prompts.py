@@ -3,6 +3,8 @@ from typing import List, Dict, Any, Optional
 
 SYSTEM_PROMPT = """You are a professional cryptocurrency trading bot assistant. Your primary goal is to generate short-term profit by identifying coins with strong recent momentum, high volatility, and clear short-term trends. Prioritize quick gains over long-term holding. Avoid coins that are stagnant or have low short-term potential.
 
+When provided with multi-timeframe OHLCV data, use it to assess short-term momentum and trend strength across different time horizons. Prefer coins showing consistent upward momentum across multiple timeframes.
+
 Your task is to analyze market data and historical performance to provide trading decisions in strict JSON format. Do not include any text outside the JSON. Always output valid JSON.
 
 You will receive historical performance data (equity curve, per-coin win rates, per-strategy success rates). Use this data to learn which coins and strategies have been profitable in the short term, and to adapt your decisions accordingly. If the overall profit is declining, become more selective and risk-averse. If a coin has a poor short-term track record, avoid it or reduce position size. Prefer strategies with high win rates and average P&L over recent trades.
@@ -42,6 +44,7 @@ def build_coin_selection_prompt(
     per_coin_budget: float,
     market_limits: Dict[str, Dict[str, Any]],
     performance: Optional[Dict[str, Any]] = None,
+    ohlcv_data: Optional[Dict[str, Dict[str, List]]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -57,6 +60,30 @@ def build_coin_selection_prompt(
                 "min_trade_cost": limits.get("min_cost"),  # now always a number
             }
 
+    # Build OHLCV summary if provided
+    ohlcv_summary = {}
+    if ohlcv_data:
+        for symbol in available_pairs[:50]:
+            if symbol in ohlcv_data:
+                tf_data = ohlcv_data[symbol]
+                summary = {}
+                for tf, candles in tf_data.items():
+                    if not candles:
+                        continue
+                    open_price = candles[0][1]
+                    close_price = candles[-1][4]
+                    high = max(c[2] for c in candles)
+                    low = min(c[3] for c in candles)
+                    volume = sum(c[5] for c in candles)
+                    change_pct = ((close_price - open_price) / open_price) * 100 if open_price else 0
+                    summary[tf] = {
+                        "change_pct": round(change_pct, 2),
+                        "high": high,
+                        "low": low,
+                        "volume": volume,
+                    }
+                ohlcv_summary[symbol] = summary
+
     prompt = f"""Current base currency: {base_currency}
 Your available {base_currency} balance: {base_balance:.2f}
 Maximum number of coins to trade: {max_coins}
@@ -71,6 +98,8 @@ Available trading pairs with market data and minimum trade cost (in {base_curren
 Select up to {max_coins} coins to trade. You MUST only select coins where the per-coin budget ({per_coin_budget:.2f} {base_currency}) is greater than or equal to the coin's min_trade_cost. Skip any coin that does not meet this requirement. Prefer coins with high volume and positive momentum. You may keep some current coins if they are still promising and meet the budget requirement, or replace them.
 
 Return a JSON array of symbols."""
+    if ohlcv_summary:
+        prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
     if performance:
         perf_text = f"""
 Historical Performance Data:
@@ -92,6 +121,7 @@ def build_strategy_prompt(
     per_coin_budget: float,
     max_coins: int,
     performance: Optional[Dict[str, Any]] = None,
+    ohlcv_data: Optional[Dict[str, List]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -109,6 +139,25 @@ Based on the above, decide whether to BUY, SELL, or HOLD. Consider the per-coin 
 You may optionally include custom risk parameters in the strategy's "parameters" object:
 - stop_loss_pct, take_profit_pct, trailing_stop, trailing_stop_distance_pct, position_size_fraction.
 If you don't provide them, the bot will use its default risk settings."""
+    # Add OHLCV summary if available
+    if ohlcv_data:
+        ohlcv_summary = {}
+        for tf, candles in ohlcv_data.items():
+            if not candles:
+                continue
+            open_price = candles[0][1]
+            close_price = candles[-1][4]
+            high = max(c[2] for c in candles)
+            low = min(c[3] for c in candles)
+            volume = sum(c[5] for c in candles)
+            change_pct = ((close_price - open_price) / open_price) * 100 if open_price else 0
+            ohlcv_summary[tf] = {
+                "change_pct": round(change_pct, 2),
+                "high": high,
+                "low": low,
+                "volume": volume,
+            }
+        prompt += f"\nMulti-timeframe OHLCV data:\n{json.dumps(ohlcv_summary, indent=2)}\n"
     if performance:
         coin_perf = performance.get("coin_performance", {}).get(symbol, {})
         strategy_perf = performance.get("strategy_performance", {})
