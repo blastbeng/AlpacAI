@@ -277,6 +277,9 @@ class TradingEngine:
                 pos["stop_loss"] = pos["price"] * (1 - STOP_LOSS_PCT)
             if "take_profit" not in pos:
                 pos["take_profit"] = pos["price"] * (1 + TAKE_PROFIT_PCT)
+            # New fields defaults
+            pos.setdefault("trailing_stop", False)
+            pos.setdefault("trailing_stop_distance_pct", None)
 
         self.trade_history = state.get("trade_history", [])
 
@@ -512,11 +515,20 @@ class TradingEngine:
         }
 
     async def _check_risk_management(self):
-        """Check open positions and close if stop-loss or take-profit is hit."""
+        """Check open positions and close if stop-loss, take-profit, or trailing stop is hit."""
         for symbol, pos in list(self.positions.items()):
             try:
                 ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
                 current_price = ticker['last']
+
+                # Trailing stop update (only if enabled)
+                if pos.get("trailing_stop") and pos.get("trailing_stop_distance_pct"):
+                    distance = pos["trailing_stop_distance_pct"]
+                    new_stop = current_price * (1 - distance)
+                    if new_stop > pos["stop_loss"]:
+                        pos["stop_loss"] = new_stop
+                        logger.debug(f"Trailing stop updated for {symbol}: new stop {new_stop:.4f}")
+
                 if current_price <= pos["stop_loss"]:
                     logger.info(f"Stop-loss triggered for {symbol} at {current_price}")
                     if self.notifier:
@@ -543,6 +555,9 @@ class TradingEngine:
             # Use per-coin budget as the buy amount, capped at available balance
             quote_balance = balance.get(quote, 0.0)
             per_coin_budget = quote_balance / self.max_coins if self.max_coins > 0 else 0.0
+            # Apply custom position size fraction if provided
+            if signal.position_size_fraction is not None:
+                per_coin_budget *= signal.position_size_fraction
             amount = min(per_coin_budget, quote_balance)
             if amount <= 0:
                 logger.info(f"Insufficient {quote} to buy {symbol}")
@@ -560,6 +575,10 @@ class TradingEngine:
                 cost_basis = order['cost']
                 net_base = order['amount'] - (fee_cost if fee_currency == base else 0.0)
 
+                # Determine stop-loss and take-profit percentages
+                sl_pct = signal.stop_loss_pct if signal.stop_loss_pct is not None else STOP_LOSS_PCT
+                tp_pct = signal.take_profit_pct if signal.take_profit_pct is not None else TAKE_PROFIT_PCT
+
                 if symbol in self.positions:
                     # Accumulate: weighted average price with cost basis
                     old_cost_basis = self.positions[symbol].get("cost_basis", self.positions[symbol]["amount"] * self.positions[symbol]["price"])
@@ -571,8 +590,11 @@ class TradingEngine:
                     self.positions[symbol]["price"] = new_price
                     self.positions[symbol]["cost_basis"] = new_cost_basis
                     self.positions[symbol]["net_base"] = new_net_base
-                    self.positions[symbol]["stop_loss"] = new_price * (1 - STOP_LOSS_PCT)
-                    self.positions[symbol]["take_profit"] = new_price * (1 + TAKE_PROFIT_PCT)
+                    self.positions[symbol]["stop_loss"] = new_price * (1 - sl_pct)
+                    self.positions[symbol]["take_profit"] = new_price * (1 + tp_pct)
+                    # Update trailing stop settings from signal
+                    self.positions[symbol]["trailing_stop"] = signal.trailing_stop
+                    self.positions[symbol]["trailing_stop_distance_pct"] = signal.trailing_stop_distance_pct
                 else:
                     entry_price = cost_basis / net_base if net_base > 0 else order["price"]
                     self.positions[symbol] = {
@@ -581,10 +603,12 @@ class TradingEngine:
                         "amount": net_base,
                         "price": entry_price,
                         "timestamp": order["timestamp"],
-                        "stop_loss": entry_price * (1 - STOP_LOSS_PCT),
-                        "take_profit": entry_price * (1 + TAKE_PROFIT_PCT),
+                        "stop_loss": entry_price * (1 - sl_pct),
+                        "take_profit": entry_price * (1 + tp_pct),
                         "cost_basis": cost_basis,
                         "net_base": net_base,
+                        "trailing_stop": signal.trailing_stop,
+                        "trailing_stop_distance_pct": signal.trailing_stop_distance_pct,
                     }
                 order["strategy_type"] = signal.strategy_type
                 self.trade_history.append(order)

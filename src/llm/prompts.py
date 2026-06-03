@@ -22,6 +22,14 @@ When asked to generate a strategy for a specific coin, return a JSON object with
   }
 }
 If action is BUY or SELL, include a strategy. If HOLD, strategy can be null.
+
+When you provide a strategy, you may include the following optional parameters inside the "parameters" object:
+- "stop_loss_pct": a decimal (e.g., 0.05 for 5%) below entry price to set a stop-loss.
+- "take_profit_pct": a decimal (e.g., 0.10 for 10%) above entry price to set a take-profit.
+- "trailing_stop": true/false to enable a trailing stop.
+- "trailing_stop_distance_pct": the distance (e.g., 0.03 for 3%) for the trailing stop.
+- "position_size_fraction": a fraction (0.0–1.0) of the per-coin budget to use for this trade (default is 1.0).
+If you omit these, the bot will use its default values.
 """
 
 def build_coin_selection_prompt(
@@ -96,7 +104,11 @@ Maximum coins to trade: {max_coins}
 
 **Your primary objective is short-term profit.** Focus on quick gains. Prefer strategies like scalping or momentum if the coin shows strong short-term movement. If the coin is stagnant or the budget is too small for a meaningful position, choose HOLD.
 
-Based on the above, decide whether to BUY, SELL, or HOLD. Consider the per-coin budget: only BUY if the budget is sufficient to meet the minimum trade size and the position size is meaningful. If the budget is too small, prefer HOLD. Provide a strategy if action is BUY or SELL. Return a JSON object as specified."""
+Based on the above, decide whether to BUY, SELL, or HOLD. Consider the per-coin budget: only BUY if the budget is sufficient to meet the minimum trade size and the position size is meaningful. If the budget is too small, prefer HOLD. Provide a strategy if action is BUY or SELL. Return a JSON object as specified.
+
+You may optionally include custom risk parameters in the strategy's "parameters" object:
+- stop_loss_pct, take_profit_pct, trailing_stop, trailing_stop_distance_pct, position_size_fraction.
+If you don't provide them, the bot will use its default risk settings."""
     if performance:
         coin_perf = performance.get("coin_performance", {}).get(symbol, {})
         strategy_perf = performance.get("strategy_performance", {})

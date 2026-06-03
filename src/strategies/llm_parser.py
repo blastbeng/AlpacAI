@@ -20,12 +20,32 @@ def parse_llm_response(response_text: str) -> Signal:
         if isinstance(strategy, dict):
             strategy_type = strategy.get("type")
             parameters = strategy.get("parameters")
+
+        # Extract richer strategy parameters
+        stop_loss_pct = None
+        take_profit_pct = None
+        trailing_stop = False
+        trailing_stop_distance_pct = None
+        position_size_fraction = None
+
+        if isinstance(parameters, dict):
+            stop_loss_pct = parameters.get("stop_loss_pct")
+            take_profit_pct = parameters.get("take_profit_pct")
+            trailing_stop = bool(parameters.get("trailing_stop", False))
+            trailing_stop_distance_pct = parameters.get("trailing_stop_distance_pct")
+            position_size_fraction = parameters.get("position_size_fraction")
+
         return Signal(
             action=action,
             confidence=confidence,
             reasoning=reasoning,
             strategy_type=strategy_type,
             parameters=parameters,
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
+            trailing_stop=trailing_stop,
+            trailing_stop_distance_pct=trailing_stop_distance_pct,
+            position_size_fraction=position_size_fraction,
         )
     except (json.JSONDecodeError, ValueError, TypeError):
         return Signal(action="HOLD", confidence=0.0, reasoning="Failed to parse LLM response")

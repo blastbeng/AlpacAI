@@ -238,7 +238,7 @@
                 <h2>Positions</h2>
                 <div class="table-wrapper">
                     <table id="positions-table">
-                        <thead><tr><th>Symbol</th><th>Amount</th><th>Entry Price</th><th>Stop Loss</th><th>Take Profit</th></tr></thead>
+                        <thead><tr><th>Symbol</th><th>Amount</th><th>Entry Price</th><th>Stop Loss</th><th>Take Profit</th><th>Trailing</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -296,6 +296,7 @@
                     row.insertCell().textContent = pos.price?.toFixed(4) || '';
                     row.insertCell().textContent = pos.stop_loss?.toFixed(4) || '';
                     row.insertCell().textContent = pos.take_profit?.toFixed(4) || '';
+                    row.insertCell().textContent = pos.trailing_stop ? 'Yes' : 'No';
                 }
             }
 
