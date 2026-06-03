@@ -16,6 +16,9 @@ from src.llm.prompts import (
     build_coin_selection_prompt,
     build_strategy_prompt,
     compute_atr,
+    compute_rsi,
+    compute_macd,
+    compute_bollinger_bands,
 )
 from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm
@@ -25,8 +28,8 @@ from src.database import load_trading_state, save_trading_state, delete_trading_
 
 logger = logging.getLogger(__name__)
 
-COIN_REVALUATION_INTERVAL = 300  # seconds (5 minutes)
-STRATEGY_INTERVAL = 60           # seconds (1 minute)
+COIN_REVALUATION_INTERVAL = 900  # seconds (15 minutes)
+STRATEGY_INTERVAL = 300           # seconds (5 minutes)
 
 
 class TradingEngine:
@@ -199,6 +202,17 @@ class TradingEngine:
         total_recent_pnl = sum(recent_pnl)
         trend = "up" if total_recent_pnl > 0 else "down" if total_recent_pnl < 0 else "flat"
 
+        # Compute drawdown
+        equity_series = []
+        running_equity = 0.0
+        for trade in self.trade_history:
+            if trade.get("side") == "sell":
+                running_equity += trade.get("realized_pnl", 0.0)
+            equity_series.append(running_equity)
+        peak = max(equity_series) if equity_series else 0.0
+        current_equity = equity_series[-1] if equity_series else 0.0
+        drawdown_pct = ((peak - current_equity) / peak * 100) if peak > 0 else 0.0
+
         return {
             "coin_performance": coin_perf,
             "strategy_performance": strategy_perf,
@@ -206,6 +220,7 @@ class TradingEngine:
                 "total_pnl": round(sum(t.get("realized_pnl", 0.0) for t in self.trade_history if t.get("side") == "sell"), 4),
                 "recent_10_trades_pnl": round(total_recent_pnl, 4),
                 "trend": trend,
+                "drawdown_pct": round(drawdown_pct, 2),
             },
         }
 
@@ -387,6 +402,27 @@ class TradingEngine:
         sample_pairs = available_pairs[:50]
         tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_pairs)
 
+        # Overall market trend (use BTC/USDT as benchmark)
+        market_trend = None
+        btc_symbol = "BTC/USDT"
+        if btc_symbol in tickers:
+            btc_ticker = tickers[btc_symbol]
+            market_trend = {
+                "symbol": btc_symbol,
+                "change_24h": btc_ticker.get("percentage"),
+                "last": btc_ticker.get("last"),
+            }
+        elif sample_pairs:
+            # fallback to first available pair
+            first = sample_pairs[0]
+            if first in tickers:
+                t = tickers[first]
+                market_trend = {
+                    "symbol": first,
+                    "change_24h": t.get("percentage"),
+                    "last": t.get("last"),
+                }
+
         # Determine top coins by volume for OHLCV fetch (limit to 20 to avoid rate limits)
         def volume(sym):
             t = tickers.get(sym, {})
@@ -462,6 +498,7 @@ class TradingEngine:
             market_limits=market_limits,
             performance=perf,
             ohlcv_data=ohlcv_data,
+            market_trend=market_trend,
         )
         response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 300)
         logger.info(f"LLM coin selection raw response: {response}")
@@ -564,6 +601,26 @@ class TradingEngine:
                 if candles:
                     atr = compute_atr(candles)
 
+            # --- Technical indicators from OHLCV ---
+            rsi = None
+            macd = None
+            macd_signal = None
+            macd_hist = None
+            bb_upper = None
+            bb_middle = None
+            bb_lower = None
+
+            if ohlcv_data and assigned_tf in ohlcv_data:
+                candles = ohlcv_data[assigned_tf]
+                if candles and len(candles) >= 26:
+                    closes = [c[4] for c in candles]
+                    # RSI (14)
+                    rsi = compute_rsi(closes, 14)
+                    # MACD (12, 26, 9)
+                    macd, macd_signal, macd_hist = compute_macd(closes)
+                    # Bollinger Bands (20, 2)
+                    bb_upper, bb_middle, bb_lower = compute_bollinger_bands(closes)
+
             # Order book imbalance (bid volume / ask volume, top 5 levels)
             bids_vol = sum(bid[1] for bid in order_book.get('bids', [])[:5])
             asks_vol = sum(ask[1] for ask in order_book.get('asks', [])[:5])
@@ -657,6 +714,14 @@ class TradingEngine:
                 order_book_slope=order_book_slope,
                 mid_price_bias=mid_price_bias,
                 fee_rate=fee_rate,
+                rsi=rsi,
+                macd=macd,
+                macd_signal=macd_signal,
+                macd_hist=macd_hist,
+                bb_upper=bb_upper,
+                bb_middle=bb_middle,
+                bb_lower=bb_lower,
+                drawdown_pct=perf.get("equity_curve", {}).get("drawdown_pct"),
             )
             response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 60)
             strategy = create_strategy_from_llm(response)

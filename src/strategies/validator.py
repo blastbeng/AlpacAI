@@ -1,7 +1,7 @@
 from .base import Signal
 from typing import Dict, Any, Optional
 
-MIN_CONFIDENCE = 0.5
+MIN_CONFIDENCE = 0.6
 VALID_STRATEGY_TYPES = {"scalping", "momentum", "mean_reversion", "breakout"}
 
 

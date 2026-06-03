@@ -19,7 +19,17 @@ def compute_atr(candles: List[List], period: int = 14) -> float:
     period = min(period, len(true_ranges))
     return sum(true_ranges[-period:]) / period
 
-SYSTEM_PROMPT = """You are a professional cryptocurrency trading bot assistant. Your primary goal is to generate short-term profit by identifying coins with strong recent momentum, high volatility, and clear short-term trends. Prioritize quick gains over long-term holding. Avoid coins that are stagnant or have low short-term potential.
+SYSTEM_PROMPT = """You are a professional cryptocurrency trading bot assistant. Your primary goal is to generate consistent short-term profit while preserving capital. You must avoid large drawdowns and only trade when there is a clear edge.
+
+Key principles:
+- Only trade coins with strong, confirmed short-term momentum and sufficient volatility to cover fees.
+- Avoid trading in choppy, sideways, or low-volume markets. If the overall market (e.g., BTC) is flat or declining, be more selective.
+- Use the provided technical indicators (RSI, MACD, Bollinger Bands, ATR) to time entries and exits. Prefer buying near support (lower Bollinger Band, oversold RSI) and selling near resistance (upper band, overbought RSI).
+- Always set a stop-loss based on recent swing lows or ATR, and a take-profit that offers at least a 2:1 reward-to-risk ratio (take_profit_pct >= 2 * stop_loss_pct). If you cannot achieve this, output HOLD.
+- Use trailing stops to lock in profits when the price moves favourably.
+- Adjust position size according to confidence: use smaller fractions (<0.5) when confidence is below 0.7, and larger fractions (0.8-1.0) only when confidence is very high (>0.85).
+- If the account is in drawdown (drawdown_pct > 5%), reduce position sizes further and be extremely selective.
+- Learn from historical performance: avoid coins and strategies with poor win rates or negative average P&L.
 
 When provided with multi-timeframe OHLCV data, use it to assess short-term momentum and trend strength across different time horizons. Prefer coins showing consistent upward momentum across multiple timeframes.
 
@@ -64,6 +74,7 @@ def build_coin_selection_prompt(
     market_limits: Dict[str, Dict[str, Any]],
     performance: Optional[Dict[str, Any]] = None,
     ohlcv_data: Optional[Dict[str, Dict[str, List]]] = None,
+    market_trend: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -122,6 +133,8 @@ You may select the same coin multiple times with different timeframes if you bel
 Return a JSON array of objects, each with "symbol" and "timeframe" fields. The timeframe must be one of the available timeframes (e.g., "5m", "15m", "1h", "4h") that you believe is most suitable for trading that coin based on the multi-timeframe OHLCV data. Example: [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, ...]"""
     if ohlcv_summary:
         prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
+    if market_trend:
+        prompt += f"\nOverall market trend ({market_trend['symbol']}): 24h change {market_trend.get('change_24h')}%, last price {market_trend.get('last')}\n"
     if performance:
         perf_text = f"""
 Historical Performance Data:
@@ -157,6 +170,14 @@ def build_strategy_prompt(
     order_book_slope: Optional[float] = None,
     mid_price_bias: Optional[float] = None,
     fee_rate: Optional[float] = None,
+    rsi: Optional[float] = None,
+    macd: Optional[float] = None,
+    macd_signal: Optional[float] = None,
+    macd_hist: Optional[float] = None,
+    bb_upper: Optional[float] = None,
+    bb_middle: Optional[float] = None,
+    bb_lower: Optional[float] = None,
+    drawdown_pct: Optional[float] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -195,6 +216,16 @@ Maximum coins to trade: {max_coins}
         prompt += f"Current position unrealized P&L: {unrealized_pnl:.2f} {symbol.split('/')[1]}\n"
         prompt += f"Position details: entry price {position_info.get('price')}, amount {position_info.get('amount')}\n"
 
+    # --- Technical indicators ---
+    if rsi is not None:
+        prompt += f"RSI (14): {rsi}\n"
+    if macd is not None and macd_signal is not None:
+        prompt += f"MACD: {macd}, Signal: {macd_signal}, Histogram: {macd_hist}\n"
+    if bb_upper is not None:
+        prompt += f"Bollinger Bands (20,2): Upper={bb_upper}, Middle={bb_middle}, Lower={bb_lower}\n"
+    if drawdown_pct is not None:
+        prompt += f"Current account drawdown: {drawdown_pct}%\n"
+
     prompt += f"""
 **Your primary objective is short-term profit.** Use the ATR to set stop-loss and take-profit distances that respect the coin's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on a risk:reward ratio of at least 1:2.
 
@@ -208,6 +239,12 @@ Interpret the order book metrics:
 - Mid-price bias: a positive bias (near ask) suggests sellers are aggressive; a negative bias (near bid) suggests buyers are aggressive.
 
 If the position is already in profit, consider trailing the stop.
+
+**Technical indicators:**
+- RSI > 70 suggests overbought (consider SELL or HOLD); RSI < 30 suggests oversold (consider BUY).
+- MACD histogram turning positive from negative is a bullish signal; turning negative from positive is bearish.
+- Price near the lower Bollinger Band may indicate a buying opportunity; near the upper band a selling opportunity.
+- Use these in combination with order book data to time entries.
 
 You MUST include the following risk parameters in the "parameters" object:
 - stop_loss_pct, take_profit_pct, trailing_stop, trailing_stop_distance_pct, position_size_fraction.
