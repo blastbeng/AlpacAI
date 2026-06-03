@@ -18,7 +18,8 @@ class TelegramBot:
         self.keyboard = ReplyKeyboardMarkup(
             [
                 [KeyboardButton("📊 Status"), KeyboardButton("📈 Trades")],
-                [KeyboardButton("💰 Profit"), KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
+                [KeyboardButton("💰 Profit"), KeyboardButton("📊 Performance")],
+                [KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
             ],
             resize_keyboard=True,
         )
@@ -32,6 +33,7 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("status", self.cmd_status))
         self.app.add_handler(CommandHandler("trades", self.cmd_trades))
         self.app.add_handler(CommandHandler("profit", self.cmd_profit))
+        self.app.add_handler(CommandHandler("performance", self.cmd_performance))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_button))
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -53,6 +55,8 @@ class TelegramBot:
             await self.cmd_trades(update, context)
         elif text == "💰 Profit":
             await self.cmd_profit(update, context)
+        elif text == "📊 Performance":
+            await self.cmd_performance(update, context)
         elif text == "⏸️ Pause":
             await self.cmd_pause(update, context)
         elif text == "▶️ Resume":
@@ -135,6 +139,52 @@ class TelegramBot:
 
         await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
 
+    async def cmd_performance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show performance summary grouped by coin and timeframe."""
+        try:
+            perf = await asyncio.to_thread(self.engine.get_performance_summary)
+            rows = perf.get("rows", [])
+            total = perf.get("total", {})
+
+            if not rows:
+                await update.message.reply_text(
+                    "📊 No closed sell trades yet.", reply_markup=self.keyboard
+                )
+                return
+
+            msg = "<b>📊 Performance by Coin</b>\n\n"
+            for r in rows:
+                symbol = r["symbol"]
+                tf = r.get("timeframe") or "—"
+                trades = r["trade_count"]
+                profit = r["profit"]
+                profit_pct = r["profit_pct"]
+                win_rate = r["win_rate"]
+
+                profit_emoji = "📈" if profit >= 0 else "📉"
+                profit_sign = "+" if profit >= 0 else ""
+                msg += (
+                    f"<b>{symbol}</b> ({tf})\n"
+                    f"  Trades: {trades}  |  {profit_emoji} {profit_sign}{profit:.4f} ({profit_sign}{profit_pct:.2f}%)\n"
+                    f"  Win Rate: {win_rate:.1f}%\n\n"
+                )
+
+            if total:
+                t = total
+                t_profit = t["profit"]
+                t_sign = "+" if t_profit >= 0 else ""
+                t_emoji = "📈" if t_profit >= 0 else "📉"
+                msg += (
+                    f"<b>── TOTAL ──</b>\n"
+                    f"  Trades: {t['trade_count']}  |  {t_emoji} {t_sign}{t_profit:.4f} ({t_sign}{t['profit_pct']:.2f}%)\n"
+                    f"  Win Rate: {t['win_rate']:.1f}%"
+                )
+        except Exception as e:
+            logger.error(f"Failed to get performance summary: {e}", exc_info=True)
+            msg = "⚠️ Could not retrieve performance summary. Please try again later."
+
+        await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
+
     async def cmd_profit(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             summary = await asyncio.to_thread(self.engine.get_profit_summary)
@@ -174,7 +224,8 @@ class TelegramBot:
             self.keyboard = ReplyKeyboardMarkup(
                 [
                     [KeyboardButton("📊 Status"), KeyboardButton("📈 Trades")],
-                    [KeyboardButton("💰 Profit"), KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
+                    [KeyboardButton("💰 Profit"), KeyboardButton("📊 Performance")],
+                    [KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
                 ],
                 resize_keyboard=True,
             )
