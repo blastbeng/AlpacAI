@@ -26,13 +26,14 @@ When asked to generate a strategy for a specific coin, return a JSON object with
 }
 If action is BUY or SELL, include a strategy. If HOLD, strategy can be null.
 
-When you provide a strategy, you may include the following optional parameters inside the "parameters" object:
+You MUST include the following risk parameters inside the "parameters" object for every BUY or SELL action:
 - "stop_loss_pct": a decimal (e.g., 0.05 for 5%) below entry price to set a stop-loss.
 - "take_profit_pct": a decimal (e.g., 0.10 for 10%) above entry price to set a take-profit.
-- "trailing_stop": true/false to enable a trailing stop.
-- "trailing_stop_distance_pct": the distance (e.g., 0.03 for 3%) for the trailing stop.
-- "position_size_fraction": a fraction (0.0–1.0) of the per-coin budget to use for this trade (default is 1.0).
-If you omit these, the bot will use its default values.
+- "trailing_stop": true or false to enable a trailing stop.
+- "trailing_stop_distance_pct": required if "trailing_stop" is true; the distance (e.g., 0.03 for 3%) for the trailing stop. If "trailing_stop" is false, set this to null.
+- "position_size_fraction": a fraction (0.0–1.0) of the per-coin budget to use for this trade.
+
+The bot will NOT use any default values. If you omit any of these parameters, the trade will be skipped.
 """
 
 def build_coin_selection_prompt(
@@ -144,9 +145,9 @@ Maximum coins to trade: {max_coins}
 
 Based on the above, decide whether to BUY, SELL, or HOLD. Consider the per-coin budget: only BUY if the budget is sufficient to meet the minimum trade size and the position size is meaningful. If the budget is too small, prefer HOLD. Provide a strategy if action is BUY or SELL. Return a JSON object as specified.
 
-You may optionally include custom risk parameters in the strategy's "parameters" object:
+You MUST include the following risk parameters in the "parameters" object:
 - stop_loss_pct, take_profit_pct, trailing_stop, trailing_stop_distance_pct, position_size_fraction.
-If you don't provide them, the bot will use its default risk settings."""
+The bot will NOT use any default values. If you omit any required parameter, the trade will be skipped."""
     # Add OHLCV summary if available
     if ohlcv_data:
         ohlcv_summary = {}
