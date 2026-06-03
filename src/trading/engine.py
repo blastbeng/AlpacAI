@@ -305,6 +305,9 @@ class TradingEngine:
                     f"Updating position."
                 )
                 self.positions[symbol]["amount"] = actual_balance
+                self.positions[symbol]["net_base"] = actual_balance
+                cost_basis = self.positions[symbol].get("cost_basis", 0.0)
+                self.positions[symbol]["price"] = cost_basis / actual_balance if actual_balance > 0 else 0.0
 
         # --- Close positions that were loaded without LLM risk parameters ---
         for symbol, pos in list(self.positions.items()):
