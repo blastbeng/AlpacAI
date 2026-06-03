@@ -712,6 +712,20 @@ class TradingEngine:
         total_value = current_balance + open_value
         pnl = total_value - self.initial_balance
         pnl_percent = (pnl / self.initial_balance * 100) if self.initial_balance else 0.0
+
+        # Win/Loss stats
+        wins = 0
+        losses = 0
+        for t in self.trade_history:
+            if t.get('side') == 'sell' and 'realized_pnl' in t:
+                pnl_val = t['realized_pnl']
+                if pnl_val > 0:
+                    wins += 1
+                elif pnl_val < 0:
+                    losses += 1
+        total_closed = wins + losses
+        win_rate = (wins / total_closed) if total_closed > 0 else 0.0
+
         return {
             "initial_balance": self.initial_balance,
             "current_balance": current_balance,
@@ -719,6 +733,9 @@ class TradingEngine:
             "total_pnl": pnl,
             "pnl_percent": pnl_percent,
             "total_fees": total_fees,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": round(win_rate, 4),
         }
 
     async def _check_risk_management(self):

@@ -151,6 +151,11 @@ class TelegramBot:
             msg += f"💼 Total Wallet:     {total_wallet:,.2f}\n"
             msg += f"🧾 Fees Paid:        {summary['total_fees']:,.2f}\n"
             msg += f"{pnl_emoji} Total P&L:         {pnl_sign}{pnl:,.2f}  ({pnl_sign}{pnl_pct:.2f}%)\n"
+            wins = summary.get('wins', 0)
+            losses = summary.get('losses', 0)
+            win_rate = summary.get('win_rate', 0.0)
+            msg += f"\n🏆 Wins: {wins}  💔 Losses: {losses}\n"
+            msg += f"📊 Win Rate: {win_rate*100:.1f}%\n"
         except Exception as e:
             logger.error(f"Failed to get profit summary: {e}", exc_info=True)
             msg = "⚠️ Could not retrieve profit summary. Please try again later."
