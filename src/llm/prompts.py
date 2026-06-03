@@ -45,7 +45,7 @@ def compute_rsi(closes: List[float], period: int = 14) -> Optional[float]:
         return None
 
 
-def _ema(data: List[float], period: int) -> List[float]:
+def compute_ema(data: List[float], period: int) -> List[float]:
     """Compute Exponential Moving Average using the LLM."""
     if len(data) < period:
         return []
@@ -264,6 +264,8 @@ def build_strategy_prompt(
     bb_upper: Optional[float] = None,
     bb_middle: Optional[float] = None,
     bb_lower: Optional[float] = None,
+    ema_9: Optional[float] = None,
+    ema_21: Optional[float] = None,
     order_book_imbalance: Optional[float] = None,
     unrealized_pnl: Optional[float] = None,
     position_info: Optional[Dict[str, Any]] = None,
@@ -300,6 +302,10 @@ Maximum coins to trade: {max_coins}
         prompt += f"MACD: {macd}, Signal: {macd_signal}, Histogram: {macd_hist}\n"
     if bb_upper is not None:
         prompt += f"Bollinger Bands (20,2): Upper={bb_upper}, Middle={bb_middle}, Lower={bb_lower}\n"
+    if ema_9 is not None:
+        prompt += f"EMA (9): {ema_9}\n"
+    if ema_21 is not None:
+        prompt += f"EMA (21): {ema_21}\n"
     if order_book_imbalance is not None:
         prompt += f"Order book imbalance (bid_vol / ask_vol): {order_book_imbalance:.2f} ( >1 = buying pressure)\n"
     if spread_pct is not None:
@@ -354,6 +360,7 @@ If the position is already in profit, consider trailing the stop.
 - RSI > 70 suggests overbought (consider SELL or HOLD); RSI < 30 suggests oversold (consider BUY).
 - MACD histogram turning positive from negative is a bullish signal; turning negative from positive is bearish.
 - Price near the lower Bollinger Band may indicate a buying opportunity; near the upper band a selling opportunity.
+- EMA(9) crossing above EMA(21) is a bullish signal (golden cross); crossing below is bearish (death cross).
 - Use these in combination with order book data to time entries.
 
 You MUST include the following risk parameters in the "parameters" object:

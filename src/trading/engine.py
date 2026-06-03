@@ -19,6 +19,7 @@ from src.llm.prompts import (
     compute_rsi,
     compute_macd,
     compute_bollinger_bands,
+    compute_ema,
 )
 from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm
@@ -603,6 +604,8 @@ class TradingEngine:
             bb_upper = None
             bb_middle = None
             bb_lower = None
+            ema_9 = None
+            ema_21 = None
             if ohlcv_data and assigned_tf in ohlcv_data:
                 candles = ohlcv_data[assigned_tf]
                 if candles:
@@ -612,6 +615,13 @@ class TradingEngine:
                         rsi = compute_rsi(closes)
                         macd, macd_signal, macd_hist = compute_macd(closes)
                         bb_upper, bb_middle, bb_lower = compute_bollinger_bands(closes)
+                        # Compute EMAs via LLM
+                        ema_9_list = compute_ema(closes, 9)
+                        ema_21_list = compute_ema(closes, 21)
+                        if ema_9_list:
+                            ema_9 = ema_9_list[-1]
+                        if ema_21_list:
+                            ema_21 = ema_21_list[-1]
 
             # Extract raw candles for the assigned timeframe
             raw_candles = None
@@ -720,6 +730,8 @@ class TradingEngine:
                 bb_upper=bb_upper,
                 bb_middle=bb_middle,
                 bb_lower=bb_lower,
+                ema_9=ema_9,
+                ema_21=ema_21,
                 order_book_imbalance=order_book_imbalance,
                 unrealized_pnl=unrealized_pnl,
                 position_info=position_info,
