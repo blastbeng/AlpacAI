@@ -49,9 +49,12 @@ def status():
     }
 
 @app.get("/api/trades")
-def trades(limit: int = 20):
+def trades(limit: int = 0):
     engine = get_engine()
-    trades = engine.trade_history[-limit:]
+    if limit > 0:
+        trades = engine.trade_history[-limit:]
+    else:
+        trades = engine.trade_history
     return {"trades": trades}
 
 @app.get("/api/profit")
@@ -109,7 +112,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "current_coins": engine.current_coins,
                     "positions": engine.positions,
                     "balances": engine.trader.fetch_balance(),
-                    "trades": engine.trade_history[-20:],
+                    "trades": engine.trade_history,
                     "profit": engine.get_profit_summary(),
                     "performance": engine.get_performance_summary(),
                     "paused": redis.get("trading:paused") == "1",

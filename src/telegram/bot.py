@@ -110,7 +110,7 @@ class TelegramBot:
         await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
 
     async def cmd_trades(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        trades = await asyncio.to_thread(lambda: self.engine.trade_history[-10:])
+        trades = await asyncio.to_thread(lambda: self.engine.trade_history)
         if not trades:
             await update.message.reply_text("No trades yet.", reply_markup=self.keyboard)
             return
