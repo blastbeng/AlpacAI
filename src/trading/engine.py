@@ -411,7 +411,6 @@ class TradingEngine:
         if self.effective_max_coins == 0:
             logger.warning("Insufficient balance to trade any coin. Clearing coin list.")
             self.current_coins = []
-            self.coin_timeframes = {}
             await asyncio.to_thread(self.redis.set, last_key, now)
             return
 
@@ -430,36 +429,28 @@ class TradingEngine:
             market_limits=market_limits,
             performance=perf,
             ohlcv_data=ohlcv_data,
-            coin_timeframes=self.coin_timeframes,
         )
         response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 300)
         logger.info(f"LLM coin selection raw response: {response}")
 
         try:
             parsed = json.loads(response)
-            new_coins = []
-            new_timeframes = {}
+            new_coins: List[Dict[str, str]] = []
             if isinstance(parsed, list):
                 for item in parsed:
                     if isinstance(item, dict) and "symbol" in item:
                         sym = item["symbol"]
                         if sym in available_pairs:
-                            new_coins.append(sym)
                             tf = item.get("timeframe")
-                            # Validate timeframe is in allowed list
-                            if tf in settings.OHLCV_TIMEFRAMES:
-                                new_timeframes[sym] = tf
-                            else:
-                                # fallback to first timeframe
-                                new_timeframes[sym] = settings.OHLCV_TIMEFRAMES[0]
+                            if tf not in settings.OHLCV_TIMEFRAMES:
+                                tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
+                            new_coins.append({"symbol": sym, "timeframe": tf})
                     elif isinstance(item, str):
                         # backward compatibility: plain string
                         if item in available_pairs:
-                            new_coins.append(item)
-                            new_timeframes[item] = settings.OHLCV_TIMEFRAMES[0]
+                            default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
+                            new_coins.append({"symbol": item, "timeframe": default_tf})
                 self.current_coins = new_coins[: self.max_coins]
-                # Keep timeframes only for selected coins
-                self.coin_timeframes = {sym: new_timeframes[sym] for sym in self.current_coins if sym in new_timeframes}
             else:
                 logger.error("LLM coin selection response is not a list.")
         except json.JSONDecodeError:
@@ -473,22 +464,21 @@ class TradingEngine:
                 t = tickers.get(sym, {})
                 return t.get('quoteVolume', 0) or 0
             sorted_pairs = sorted(sample_pairs, key=volume, reverse=True)
-            fallback_coins = []
+            fallback_coins: List[Dict[str, str]] = []
+            default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
             for sym in sorted_pairs:
                 min_cost = market_limits.get(sym, {}).get('min_cost', 0)
                 if per_coin_budget >= min_cost:
-                    fallback_coins.append(sym)
+                    fallback_coins.append({"symbol": sym, "timeframe": default_tf})
                 if len(fallback_coins) >= self.effective_max_coins:
                     break
             self.current_coins = fallback_coins
-            # Assign default timeframe to fallback coins
-            default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
-            self.coin_timeframes = {sym: default_tf for sym in fallback_coins}
 
-        logger.info(f"Selected coins: {self.current_coins}")
+        coin_labels = [f"{c['symbol']}({c['timeframe']})" for c in self.current_coins]
+        logger.info(f"Selected coins: {coin_labels}")
         if self.notifier:
             await self.notifier.send_notification(
-                f"🔄 Coins updated: {', '.join(self.current_coins) if self.current_coins else 'None'}"
+                f"🔄 Coins updated: {', '.join(coin_labels) if coin_labels else 'None'}"
             )
 
         await asyncio.to_thread(self.redis.set, last_key, now)

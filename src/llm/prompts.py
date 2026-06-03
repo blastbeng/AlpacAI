@@ -37,7 +37,7 @@ If you omit these, the bot will use its default values.
 
 def build_coin_selection_prompt(
     available_pairs: List[str],
-    current_coins: List[str],
+    current_coins: List[Dict[str, str]],
     max_coins: int,
     base_currency: str,
     tickers: Dict[str, Any],
@@ -46,7 +46,6 @@ def build_coin_selection_prompt(
     market_limits: Dict[str, Dict[str, Any]],
     performance: Optional[Dict[str, Any]] = None,
     ohlcv_data: Optional[Dict[str, Dict[str, List]]] = None,
-    coin_timeframes: Optional[Dict[str, str]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -86,15 +85,12 @@ def build_coin_selection_prompt(
                     }
                 ohlcv_summary[symbol] = summary
 
-    if coin_timeframes is None:
-        coin_timeframes = {}
     prompt = f"""Current base currency: {base_currency}
 Your available {base_currency} balance: {base_balance:.2f}
 Maximum number of coins to trade: {max_coins}
 Budget per coin (balance / max_coins): {per_coin_budget:.2f} {base_currency}
 Available timeframes: {json.dumps(settings.OHLCV_TIMEFRAMES)}
-Currently tracked coins and their timeframes: {json.dumps(dict(zip(current_coins, [coin_timeframes.get(c, settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h") for c in current_coins]))) if current_coins else "None"}
-Currently traded coins: {json.dumps(current_coins)}
+Currently tracked coins (with assigned timeframes): {json.dumps(current_coins) if current_coins else "None"}
 
 Available trading pairs with market data and minimum trade cost (in {base_currency}):
 {json.dumps(ticker_summary, indent=2)}
