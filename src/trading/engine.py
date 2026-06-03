@@ -21,7 +21,7 @@ from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm
 from src.strategies.validator import validate_signal
 from src.utils.redis_client import get_redis_client
-from src.database import load_trading_state, save_trading_state, delete_trading_state
+from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade
 
 logger = logging.getLogger(__name__)
 
@@ -892,6 +892,7 @@ class TradingEngine:
                     }
                 order["strategy_type"] = signal.strategy_type
                 self.trade_history.append(order)
+                await asyncio.to_thread(insert_trade, order)
                 await self._save_state()
                 if self.notifier:
                     await self.notifier.send_notification(
@@ -933,6 +934,7 @@ class TradingEngine:
                 # Remove position
                 self.positions.pop(symbol, None)
                 self.trade_history.append(order)
+                await asyncio.to_thread(insert_trade, order)
                 await self._save_state()
                 if self.notifier:
                     await self.notifier.send_notification(
