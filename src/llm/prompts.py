@@ -255,6 +255,7 @@ def build_strategy_prompt(
     ohlcv_data: Optional[Dict[str, List]] = None,
     assigned_timeframe: Optional[str] = None,
     atr: Optional[float] = None,
+    atr_multi_tf: Optional[Dict[str, float]] = None,
     rsi: Optional[float] = None,
     macd: Optional[float] = None,
     macd_signal: Optional[float] = None,
@@ -294,6 +295,9 @@ Maximum coins to trade: {max_coins}
     # --- Volatility, order book imbalance, and position P&L context ---
     if atr is not None:
         prompt += f"ATR (14-period, {assigned_timeframe or 'default'}): {atr:.6f}\n"
+    if atr_multi_tf:
+        prompt += f"ATR across timeframes: {json.dumps(atr_multi_tf)}\n"
+        prompt += "Use the higher-timeframe ATR to gauge overall volatility and the lower-timeframe ATR for precise stop-loss placement.\n"
     if rsi is not None:
         prompt += f"RSI (14): {rsi}\n"
     if macd is not None and macd_signal is not None:
