@@ -668,6 +668,15 @@ class TradingEngine:
                     f"(confidence: {validated.confidence:.2f}) – {validated.reasoning}"
                 )
 
+            # Prevent SELL without an open position (no shorting)
+            if validated.action == "SELL" and symbol not in self.positions:
+                logger.info(f"Skipping SELL for {symbol}: no open position.")
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"⚠️ Skipping SELL for {symbol}: no open position."
+                    )
+                return
+
             if validated.action != "HOLD":
                 await self._execute_signal(symbol, validated)
         except Exception as e:

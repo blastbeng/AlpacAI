@@ -210,6 +210,8 @@ You MUST include the following risk parameters in the "parameters" object:
 - stop_loss_pct, take_profit_pct, trailing_stop, trailing_stop_distance_pct, position_size_fraction.
 The bot will NOT use any default values. If you omit any required parameter, the trade will be skipped.
 
+You are trading spot only (no shorting). Only output SELL if you currently hold the coin.
+
 Return a JSON object as specified."""
     # Add OHLCV summary if available
     if ohlcv_data:
