@@ -893,28 +893,11 @@ class TradingEngine:
             # Extract known parameters from the LLM's strategy_params (if any)
             params = signal.strategy_params or {}
 
-            # Enforce minimum take-profit and trailing stop distances after fees
+            # Use LLM-provided risk parameters directly (no hardcoded minimums)
             fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
-            min_take_profit_pct = 2 * fee_rate + settings.MIN_PROFIT_MARGIN
-
             tp_pct = params["take_profit_pct"]
-            if tp_pct < min_take_profit_pct:
-                logger.warning(
-                    f"LLM take_profit_pct {tp_pct:.4f} for {symbol} is below minimum {min_take_profit_pct:.4f}. "
-                    f"Adjusting to {min_take_profit_pct:.4f}."
-                )
-                tp_pct = min_take_profit_pct
-
             trailing_stop = params["trailing_stop"]
             trailing_stop_distance_pct = params.get("trailing_stop_distance_pct")
-            if trailing_stop:
-                min_trailing_stop_pct = 2 * fee_rate + settings.MIN_PROFIT_MARGIN
-                if trailing_stop_distance_pct is None or trailing_stop_distance_pct < min_trailing_stop_pct:
-                    logger.warning(
-                        f"LLM trailing_stop_distance_pct {trailing_stop_distance_pct} for {symbol} is below minimum "
-                        f"{min_trailing_stop_pct:.4f}. Adjusting to {min_trailing_stop_pct:.4f}."
-                    )
-                    trailing_stop_distance_pct = min_trailing_stop_pct
 
             # Use per-coin budget as the buy amount, capped at available balance
             quote_balance = balance.get(quote, 0.0)
