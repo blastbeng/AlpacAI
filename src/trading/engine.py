@@ -1025,6 +1025,28 @@ class TradingEngine:
                 if self.notifier:
                     await self.notifier.send_notification(f"⚠️ No {base} to sell for {symbol}")
                 return
+
+            # Check minimum sell size
+            try:
+                ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                price = ticker['last']
+                market = self.exchange.markets.get(symbol, {})
+                limits = market.get('limits', {})
+                min_amount_limit = limits.get('amount', {}).get('min')
+                min_cost_limit = limits.get('cost', {}).get('min')
+                if min_amount_limit is not None and gross_amount < float(min_amount_limit):
+                    logger.info(f"SELL amount {gross_amount:.6f} {base} below min amount {min_amount_limit} for {symbol}, skipping")
+                    if self.notifier:
+                        await self.notifier.send_notification(f"⚠️ SELL skipped for {symbol}: amount too small")
+                    return
+                if min_cost_limit is not None and gross_amount * price < float(min_cost_limit):
+                    logger.info(f"SELL cost {gross_amount * price:.2f} {quote} below min cost {min_cost_limit} for {symbol}, skipping")
+                    if self.notifier:
+                        await self.notifier.send_notification(f"⚠️ SELL skipped for {symbol}: cost too small")
+                    return
+            except Exception as e:
+                logger.warning(f"Could not verify min sell size for {symbol}: {e}")
+
             try:
                 order = await asyncio.to_thread(self.trader.create_market_sell_order, symbol, gross_amount)
                 logger.info(f"SELL {symbol}: {order}")
