@@ -323,8 +323,8 @@ class TradingEngine:
 
                 await self._reevaluate_coins()
                 await self._close_removed_positions()
-                for symbol in self.current_coins:
-                    await self._process_coin(symbol)
+                for coin_entry in self.current_coins:
+                    await self._process_coin(coin_entry)
                 await self._check_risk_management()
                 await self._save_state()
             except Exception as e:
@@ -495,15 +495,16 @@ class TradingEngine:
             signal = Signal(action="SELL", confidence=1.0, reasoning="Coin removed from selection")
             await self._execute_signal(sym, signal)
 
-    async def _process_coin(self, symbol: str):
+    async def _process_coin(self, coin_entry: Dict[str, str]):
         """Fetch market data, get LLM strategy, validate, and execute."""
+        symbol = coin_entry["symbol"]
+        assigned_tf = coin_entry["timeframe"]
         try:
             ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
             order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
             balance = await asyncio.to_thread(self.trader.fetch_balance)
 
             # Fetch OHLCV for the coin's assigned timeframe
-            assigned_tf = self.coin_timeframes.get(symbol, settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h")
             ohlcv_data = {}
             if settings.OHLCV_TIMEFRAMES:
                 try:
