@@ -251,6 +251,13 @@ class TradingEngine:
                     "timestamp": time.time(),
                     "note": "external_sell"
                 }
+                # Compute realized P&L for the externally sold portion
+                cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
+                net_base = pos.get("net_base", pos["amount"])
+                prorated_cost_basis = cost_basis * (sold_amount / net_base) if net_base > 0 else 0.0
+                net_quote = cost - fee_cost
+                trade["realized_pnl"] = net_quote - prorated_cost_basis
+                trade["cost_basis"] = prorated_cost_basis
                 self.trade_history.append(trade)
                 logger.warning(
                     f"External sell detected for {symbol}: {sold_amount} sold at ~{current_price}. "
