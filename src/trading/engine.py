@@ -425,10 +425,10 @@ class TradingEngine:
                 }
 
         # Determine top coins by volume for OHLCV fetch (limit to 20 to avoid rate limits)
-        def volume(sym):
+        def _volume(sym):
             t = tickers.get(sym, {})
             return t.get('quoteVolume', 0) or 0
-        sorted_by_vol = sorted(sample_pairs, key=volume, reverse=True)[:20]
+        sorted_by_vol = sorted(sample_pairs, key=_volume, reverse=True)[:20]
 
         # Fetch multi-timeframe OHLCV for these coins
         ohlcv_data = {}
@@ -521,7 +521,15 @@ class TradingEngine:
                         if item in available_pairs:
                             default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
                             new_coins.append({"symbol": item, "timeframe": default_tf})
-                self.current_coins = new_coins[: self.max_coins]
+                # Deduplicate by symbol, keeping first occurrence
+                seen = set()
+                deduped = []
+                for entry in new_coins:
+                    sym = entry["symbol"]
+                    if sym not in seen:
+                        seen.add(sym)
+                        deduped.append(entry)
+                self.current_coins = deduped[: self.max_coins]
             else:
                 logger.error("LLM coin selection response is not a list.")
         except json.JSONDecodeError:
@@ -531,10 +539,7 @@ class TradingEngine:
         if not self.current_coins:
             logger.warning("LLM returned no coins – using volume-based fallback.")
             # Sort sample_pairs by 24h volume descending
-            def volume(sym):
-                t = tickers.get(sym, {})
-                return t.get('quoteVolume', 0) or 0
-            sorted_pairs = sorted(sample_pairs, key=volume, reverse=True)
+            sorted_pairs = sorted(sample_pairs, key=_volume, reverse=True)
             fallback_coins: List[Dict[str, str]] = []
             default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
             for sym in sorted_pairs:
@@ -575,6 +580,10 @@ class TradingEngine:
             ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
             order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
             balance = await asyncio.to_thread(self.trader.fetch_balance)
+            base_balance = balance.get(self.base_currency, 0.0)
+            if base_balance <= 0 or self.effective_max_coins == 0:
+                logger.debug(f"Skipping {symbol}: insufficient balance or effective_max_coins=0")
+                return
 
             # Fetch OHLCV for the coin's assigned timeframe
             ohlcv_data = {}
@@ -590,7 +599,6 @@ class TradingEngine:
             ]
 
             # Compute per-coin budget for this coin
-            base_balance = balance.get(self.base_currency, 0.0)
             per_coin_budget = base_balance / self.effective_max_coins if self.effective_max_coins > 0 else 0.0
 
             perf = self._compute_performance_metrics()
@@ -750,7 +758,7 @@ class TradingEngine:
             response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 60)
             strategy = create_strategy_from_llm(response)
             signal = strategy.generate_signal({})
-            validated = validate_signal(signal)
+            validated = validate_signal(signal, fee_rate=fee_rate)
 
             # Log and notify the decision
             logger.info(f"Decision for {symbol}: {validated.action} (confidence: {validated.confidence:.2f})")
@@ -896,6 +904,14 @@ class TradingEngine:
             # Use LLM-provided risk parameters directly (no hardcoded minimums)
             fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
             tp_pct = params["take_profit_pct"]
+            min_tp = 2 * fee_rate + 0.001   # 0.1% margin
+            if tp_pct < min_tp:
+                logger.info(f"Take-profit {tp_pct:.4%} too low to cover fees (min {min_tp:.4%}). Skipping BUY for {symbol}.")
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"⚠️ Skipping BUY for {symbol}: take-profit too low ({tp_pct:.4%})"
+                    )
+                return
             trailing_stop = params["trailing_stop"]
             trailing_stop_distance_pct = params.get("trailing_stop_distance_pct")
 
