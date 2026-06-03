@@ -19,6 +19,19 @@
             --shadow: 0 4px 24px rgba(0,0,0,0.4);
         }
 
+        body.light-theme {
+            --bg: #ffffff;
+            --card-bg: #f6f8fa;
+            --text: #1f2328;
+            --text-secondary: #656d76;
+            --accent: #0969da;
+            --accent-glow: rgba(9, 105, 218, 0.1);
+            --green: #1a7f37;
+            --red: #cf222e;
+            --border: #d0d7de;
+            --shadow: 0 4px 24px rgba(0,0,0,0.08);
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -220,6 +233,9 @@
             <span class="status-dot" id="status-dot"></span>
             <span id="status-text">Connecting...</span>
         </div>
+        <button id="theme-toggle" title="Toggle theme" style="background: none; border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 1rem;">
+            🌙
+        </button>
     </header>
 
     <div class="container">
@@ -348,6 +364,30 @@
                 `;
             }
         }
+
+        // Theme toggle
+        const themeToggle = document.getElementById('theme-toggle');
+        const body = document.body;
+
+        function setTheme(isLight) {
+            if (isLight) {
+                body.classList.add('light-theme');
+                themeToggle.textContent = '☀️';
+            } else {
+                body.classList.remove('light-theme');
+                themeToggle.textContent = '🌙';
+            }
+            localStorage.setItem('theme', isLight ? 'light' : 'dark');
+        }
+
+        // Load saved theme (default dark)
+        const savedTheme = localStorage.getItem('theme');
+        setTheme(savedTheme === 'light');
+
+        themeToggle.addEventListener('click', () => {
+            const isLight = body.classList.contains('light-theme');
+            setTheme(!isLight);
+        });
 
         connect();
     </script>
