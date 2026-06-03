@@ -16,6 +16,7 @@
             --red: #f85149;
             --border: #30363d;
             --radius: 12px;
+            --header-bg: linear-gradient(135deg, #1a1d27 0%, #0f1117 100%);
             --shadow: 0 4px 24px rgba(0,0,0,0.4);
         }
 
@@ -29,6 +30,7 @@
             --green: #1a7f37;
             --red: #cf222e;
             --border: #d0d7de;
+            --header-bg: #ffffff;
             --shadow: 0 4px 24px rgba(0,0,0,0.08);
         }
 
@@ -50,7 +52,7 @@
 
         /* Header */
         .header {
-            background: linear-gradient(135deg, #1a1d27 0%, #0f1117 100%);
+            background: var(--header-bg);
             border-bottom: 1px solid var(--border);
             padding: 16px 24px;
             display: flex;
