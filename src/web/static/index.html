@@ -376,7 +376,10 @@
             if (data.trades) {
                 data.trades.slice().reverse().forEach(t => {
                     const row = tradesBody.insertRow();
-                    row.insertCell().textContent = new Date(t.timestamp).toLocaleTimeString();
+                    // Formatted timestamp: date + time
+                    const ts = new Date(t.timestamp);
+                    const formattedTs = ts.toLocaleString();
+                    row.insertCell().textContent = formattedTs;
                     row.insertCell().textContent = t.side?.toUpperCase();
                     row.insertCell().textContent = t.symbol;
                     row.insertCell().textContent = t.amount?.toFixed(6);
@@ -387,11 +390,19 @@
                     row.insertCell().textContent = feeStr;
                     // P&L (only for sells)
                     const pnlCell = row.insertCell();
+                    // Profit % cell
+                    const pnlPctCell = row.insertCell();
                     if (t.side === 'sell' && t.realized_pnl !== undefined) {
                         pnlCell.textContent = t.realized_pnl.toFixed(4);
                         pnlCell.className = t.realized_pnl >= 0 ? 'green' : 'red';
+                        // Compute profit percentage
+                        const costBasis = t.cost_basis || 0;
+                        const pnlPct = costBasis > 0 ? (t.realized_pnl / costBasis) * 100 : 0;
+                        pnlPctCell.textContent = pnlPct.toFixed(2) + '%';
+                        pnlPctCell.className = pnlPct >= 0 ? 'green' : 'red';
                     } else {
                         pnlCell.textContent = '-';
+                        pnlPctCell.textContent = '-';
                     }
                 });
             }
