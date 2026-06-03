@@ -51,11 +51,8 @@ def status():
 @app.get("/api/trades")
 def trades(limit: int = 0):
     engine = get_engine()
-    if limit > 0:
-        trades = engine.trade_history[-limit:]
-    else:
-        trades = engine.trade_history
-    return {"trades": trades}
+    # limit is ignored – open trades are always all current positions
+    return {"trades": engine.get_open_trades()}
 
 @app.get("/api/profit")
 def profit():

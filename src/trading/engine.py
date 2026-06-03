@@ -866,6 +866,42 @@ class TradingEngine:
             "win_rate": round(win_rate, 4),
         }
 
+    def get_open_trades(self) -> List[Dict[str, Any]]:
+        """Return current open positions as trade-like dicts with unrealized P&L."""
+        open_trades = []
+        for symbol, pos in self.positions.items():
+            try:
+                ticker = self.exchange.fetch_ticker(symbol)
+                current_price = ticker['last']
+            except Exception:
+                current_price = pos['price']  # fallback to entry price
+
+            entry_price = pos['price']
+            amount = pos['amount']
+            cost_basis = pos.get('cost_basis', amount * entry_price)
+            unrealized_pnl = (current_price - entry_price) * amount
+            unrealized_pnl_pct = (unrealized_pnl / cost_basis * 100) if cost_basis > 0 else 0.0
+
+            # Try to get fee from the most recent buy trade for this symbol
+            fee = {}
+            for t in reversed(self.trade_history):
+                if t['symbol'] == symbol and t['side'] == 'buy':
+                    fee = t.get('fee', {})
+                    break
+
+            open_trades.append({
+                'symbol': symbol,
+                'side': 'buy',
+                'amount': amount,
+                'price': entry_price,
+                'timestamp': pos.get('timestamp', 0),
+                'fee': fee,
+                'unrealized_pnl': unrealized_pnl,
+                'unrealized_pnl_pct': unrealized_pnl_pct,
+                'cost_basis': cost_basis,
+            })
+        return open_trades
+
     def get_performance_summary(self) -> Dict[str, Any]:
         """Return performance summary grouped by coin and timeframe from trade_history table."""
         return get_performance()

@@ -110,14 +110,13 @@ class TelegramBot:
         await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
 
     async def cmd_trades(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        trades = await asyncio.to_thread(lambda: self.engine.trade_history)
-        if not trades:
-            await update.message.reply_text("No trades yet.", reply_markup=self.keyboard)
+        open_trades = await asyncio.to_thread(self.engine.get_open_trades)
+        if not open_trades:
+            await update.message.reply_text("No open trades.", reply_markup=self.keyboard)
             return
 
-        msg = "<b>📜 Recent Trades (last 10)</b>\n\n"
-        for t in trades:
-            side = t['side'].upper()
+        msg = "<b>📈 Open Trades</b>\n\n"
+        for t in open_trades:
             sym = t['symbol']
             amt = t['amount']
             price = t['price']
@@ -126,22 +125,18 @@ class TelegramBot:
             fee_currency = fee.get('currency', '')
             fee_str = f"{fee_cost:.6f} {fee_currency}" if fee_cost else "—"
 
-            # Formatted timestamp
             ts = datetime.fromtimestamp(t['timestamp'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
 
-            emoji = "🟢" if side == "BUY" else "🔴"
-            line = f"{emoji} <b>{side}</b> <code>{sym}</code>\n"
+            line = f"🟢 <b>BUY</b> <code>{sym}</code>\n"
             line += f"   🕒 {ts}\n"
-            line += f"   Amount: {amt:.6f}  Price: {price:.4f}\n"
-            line += f"   Fee: {fee_str}"
+            line += f"   Amount: {amt:.6f}  Entry: {price:.4f}\n"
+            line += f"   Fee: {fee_str}\n"
 
-            if t['side'] == 'sell' and 'realized_pnl' in t:
-                pnl = t['realized_pnl']
-                pnl_sign = "+" if pnl >= 0 else ""
-                cost_basis = t.get('cost_basis', 0)
-                pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0.0
-                pnl_pct_sign = "+" if pnl_pct >= 0 else ""
-                line += f"  P&L: {pnl_sign}{pnl:.4f} ({pnl_pct_sign}{pnl_pct:.2f}%)"
+            pnl = t['unrealized_pnl']
+            pnl_pct = t['unrealized_pnl_pct']
+            pnl_sign = "+" if pnl >= 0 else ""
+            pnl_pct_sign = "+" if pnl_pct >= 0 else ""
+            line += f"   Unrealized P&L: {pnl_sign}{pnl:.4f} ({pnl_pct_sign}{pnl_pct:.2f}%)"
 
             msg += line + "\n\n"
 
