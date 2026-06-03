@@ -243,7 +243,7 @@ class TradingEngine:
                         "price": 0.0,
                         "cost": 0.0,
                         "fee": {"cost": 0.0, "currency": self.base_currency},
-                        "timestamp": time.time(),
+                        "timestamp": time.time() * 1000,
                         "note": "delisted"
                     }
                     self.trade_history.append(trade)
@@ -277,7 +277,7 @@ class TradingEngine:
                     "price": current_price,
                     "cost": cost,
                     "fee": {"cost": fee_cost, "currency": self.base_currency},
-                    "timestamp": time.time(),
+                    "timestamp": time.time() * 1000,
                     "note": "external_sell"
                 }
                 # Compute realized P&L for the externally sold portion
