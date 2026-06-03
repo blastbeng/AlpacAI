@@ -57,6 +57,7 @@ async def main():
     )
     server = uvicorn.Server(config)
     server_task = asyncio.create_task(server.serve())
+    await server.startup()  # wait until the server is actually listening
 
     # Now set up Telegram (may take time) and start the engine loop
     if settings.TELEGRAM_BOT_TOKEN:
