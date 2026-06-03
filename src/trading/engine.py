@@ -787,6 +787,14 @@ class TradingEngine:
             signal = strategy.generate_signal({})
             validated = validate_signal(signal, fee_rate=fee_rate)
 
+            # Log raw response if validation turned a non-HOLD into HOLD
+            if signal.action != "HOLD" and validated.action == "HOLD":
+                logger.warning(
+                    f"LLM signal for {symbol} rejected by validator. "
+                    f"Original action={signal.action}, confidence={signal.confidence}, "
+                    f"reasoning={validated.reasoning}. Raw LLM response: {response}"
+                )
+
             # Log and notify the decision
             logger.info(f"Decision for {symbol}: {validated.action} (confidence: {validated.confidence:.2f})")
             if self.notifier:

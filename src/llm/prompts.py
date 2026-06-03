@@ -147,13 +147,14 @@ When asked to generate a strategy for a specific coin, return a JSON object with
 }
 If action is BUY or SELL, include a strategy. If HOLD, strategy can be null.
 
-You MUST include the following risk parameters inside the "parameters" object for every BUY or SELL action:
-- "stop_loss_pct": a decimal (e.g., 0.05 for 5%) below entry price to set a stop-loss.
-- "take_profit_pct": a decimal (e.g., 0.10 for 10%) above entry price to set a take-profit.
+You MUST include the following risk parameters inside the "parameters" object for every BUY or SELL action. All numeric values must be numbers, not strings.
+
+- "stop_loss_pct": a decimal between 0.001 and 0.5 (e.g., 0.02 for 2%). Must be greater than 0 and less than 1.0.
+- "take_profit_pct": a decimal between 0.005 and 2.0 (e.g., 0.05 for 5%). Must be greater than stop_loss_pct and at least 2× the fee rate.
 - "trailing_stop": true or false to enable a trailing stop.
-- "trailing_stop_distance_pct": required if "trailing_stop" is true; the distance (e.g., 0.03 for 3%) for the trailing stop. If "trailing_stop" is false, set this to null.
-- "position_size_fraction": a fraction (0.0–1.0) of the per-coin budget to use for this trade.
-- "max_hold_time_seconds": maximum time (in seconds) to hold the position before auto-closing. Must be a positive number.
+- "trailing_stop_distance_pct": required if "trailing_stop" is true; a decimal between 0.001 and 0.1 (e.g., 0.01 for 1%). Must be less than stop_loss_pct. If "trailing_stop" is false, set this to null.
+- "position_size_fraction": a decimal between 0.1 and 1.0 (e.g., 0.5 for 50% of budget). Must be > 0 and ≤ 1.
+- "max_hold_time_seconds": a positive integer number of seconds (e.g., 3600 for 1 hour). Must be > 0.
 
 The bot will NOT use any default values. If you omit any of these parameters, the trade will be skipped.
 """
