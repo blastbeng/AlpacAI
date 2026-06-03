@@ -620,6 +620,9 @@ class TradingEngine:
                     mid_price_bias = (mid - best_bid) / (best_ask - best_bid) - 0.5  # range -0.5 to +0.5
                     mid_price_bias *= 2  # scale to -1..1
 
+            # Fee rate for this symbol
+            fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
+
             # Unrealized P&L for current position (if any)
             unrealized_pnl = None
             position_info = None
@@ -653,6 +656,7 @@ class TradingEngine:
                 depth_imbalances=depth_imbalances,
                 order_book_slope=order_book_slope,
                 mid_price_bias=mid_price_bias,
+                fee_rate=fee_rate,
             )
             response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 60)
             strategy = create_strategy_from_llm(response)
@@ -783,6 +787,29 @@ class TradingEngine:
             # Extract known parameters from the LLM's strategy_params (if any)
             params = signal.strategy_params or {}
 
+            # Enforce minimum take-profit and trailing stop distances after fees
+            fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
+            min_take_profit_pct = 2 * fee_rate + settings.MIN_PROFIT_MARGIN
+
+            tp_pct = params["take_profit_pct"]
+            if tp_pct < min_take_profit_pct:
+                logger.warning(
+                    f"LLM take_profit_pct {tp_pct:.4f} for {symbol} is below minimum {min_take_profit_pct:.4f}. "
+                    f"Adjusting to {min_take_profit_pct:.4f}."
+                )
+                tp_pct = min_take_profit_pct
+
+            trailing_stop = params["trailing_stop"]
+            trailing_stop_distance_pct = params.get("trailing_stop_distance_pct")
+            if trailing_stop:
+                min_trailing_stop_pct = 2 * fee_rate + 0.002
+                if trailing_stop_distance_pct is None or trailing_stop_distance_pct < min_trailing_stop_pct:
+                    logger.warning(
+                        f"LLM trailing_stop_distance_pct {trailing_stop_distance_pct} for {symbol} is below minimum "
+                        f"{min_trailing_stop_pct:.4f}. Adjusting to {min_trailing_stop_pct:.4f}."
+                    )
+                    trailing_stop_distance_pct = min_trailing_stop_pct
+
             # Use per-coin budget as the buy amount, capped at available balance
             quote_balance = balance.get(quote, 0.0)
             position_fraction = params["position_size_fraction"]
@@ -829,10 +856,9 @@ class TradingEngine:
                 net_base = order['amount'] - (fee_cost if fee_currency == base else 0.0)
 
                 # Risk parameters are guaranteed by the validator
+                # sl_pct, tp_pct, trailing_stop, trailing_stop_distance_pct are already
+                # computed above (with fee-aware minimum enforcement)
                 sl_pct = params["stop_loss_pct"]
-                tp_pct = params["take_profit_pct"]
-                trailing_stop = params["trailing_stop"]
-                trailing_stop_distance_pct = params.get("trailing_stop_distance_pct")  # may be None if trailing_stop False
 
                 if symbol in self.positions:
                     # Accumulate: weighted average price with cost basis

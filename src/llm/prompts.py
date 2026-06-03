@@ -156,6 +156,7 @@ def build_strategy_prompt(
     depth_imbalances: Optional[Dict[str, float]] = None,
     order_book_slope: Optional[float] = None,
     mid_price_bias: Optional[float] = None,
+    fee_rate: Optional[float] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -188,6 +189,8 @@ Maximum coins to trade: {max_coins}
         prompt += f"Order book slope (volume change per 0.5% price move): {order_book_slope:.2f}\n"
     if mid_price_bias is not None:
         prompt += f"Mid-price bias (-1 = near bid, +1 = near ask): {mid_price_bias:.2f}\n"
+    if fee_rate is not None:
+        prompt += f"Taker fee rate for this symbol: {fee_rate*100:.2f}%\n"
     if unrealized_pnl is not None and position_info:
         prompt += f"Current position unrealized P&L: {unrealized_pnl:.2f} {symbol.split('/')[1]}\n"
         prompt += f"Position details: entry price {position_info.get('price')}, amount {position_info.get('amount')}\n"
@@ -209,6 +212,8 @@ If the position is already in profit, consider trailing the stop.
 You MUST include the following risk parameters in the "parameters" object:
 - stop_loss_pct, take_profit_pct, trailing_stop, trailing_stop_distance_pct, position_size_fraction.
 The bot will NOT use any default values. If you omit any required parameter, the trade will be skipped.
+
+**Fee awareness:** You MUST account for trading fees when setting take-profit and trailing stop distances. Ensure that after deducting fees (both entry and exit), a take-profit or trailing stop exit results in a net profit. The bot will enforce a minimum take-profit percentage of at least 2× the fee rate plus a small margin.
 
 You are trading spot only (no shorting). Only output SELL if you currently hold the coin.
 
