@@ -1,84 +1,118 @@
 import json
+import logging
 from typing import List, Dict, Any, Optional
 from src.config.settings import settings
+from src.llm.cache import get_cached_ollama_response
+
+logger = logging.getLogger(__name__)
 
 
 def compute_atr(candles: List[List], period: int = 14) -> float:
-    """Compute ATR from OHLCV candles (each candle: [timestamp, open, high, low, close, volume])."""
+    """Compute ATR from OHLCV candles using the LLM."""
     if len(candles) < 2:
         return 0.0
-    true_ranges = []
-    for i in range(1, len(candles)):
-        high = candles[i][2]
-        low = candles[i][3]
-        prev_close = candles[i - 1][4]
-        tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
-        true_ranges.append(tr)
-    if not true_ranges:
+    # Take only the last 30 candles to keep prompt size reasonable
+    recent = candles[-30:]
+    prompt = (
+        f"Given the following OHLCV candles (each: [timestamp, open, high, low, close, volume]), "
+        f"compute the Average True Range (ATR) with period {period}. "
+        f"Return ONLY the numeric ATR value, nothing else.\n\n"
+        f"Candles:\n{json.dumps(recent)}"
+    )
+    try:
+        response = get_cached_ollama_response(prompt, "", ttl=60)
+        return float(response.strip())
+    except Exception as e:
+        logger.warning(f"LLM ATR computation failed: {e}")
         return 0.0
-    period = min(period, len(true_ranges))
-    return sum(true_ranges[-period:]) / period
 
 
 def compute_rsi(closes: List[float], period: int = 14) -> Optional[float]:
-    """Compute RSI for a list of closing prices."""
+    """Compute RSI from closing prices using the LLM."""
     if len(closes) < period + 1:
         return None
-    gains = []
-    losses = []
-    for i in range(1, len(closes)):
-        diff = closes[i] - closes[i-1]
-        if diff >= 0:
-            gains.append(diff)
-            losses.append(0)
-        else:
-            gains.append(0)
-            losses.append(-diff)
-    avg_gain = sum(gains[-period:]) / period
-    avg_loss = sum(losses[-period:]) / period
-    if avg_loss == 0:
-        return 100.0
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return round(rsi, 2)
+    recent = closes[-50:]  # enough for RSI calculation
+    prompt = (
+        f"Given the following closing prices, compute the Relative Strength Index (RSI) with period {period}. "
+        f"Return ONLY the numeric RSI value, nothing else.\n\n"
+        f"Closing prices:\n{json.dumps(recent)}"
+    )
+    try:
+        response = get_cached_ollama_response(prompt, "", ttl=60)
+        return float(response.strip())
+    except Exception as e:
+        logger.warning(f"LLM RSI computation failed: {e}")
+        return None
 
 
 def _ema(data: List[float], period: int) -> List[float]:
-    """Exponential moving average."""
+    """Compute Exponential Moving Average using the LLM."""
     if len(data) < period:
         return []
-    ema = [sum(data[:period]) / period]
-    multiplier = 2 / (period + 1)
-    for price in data[period:]:
-        ema.append((price - ema[-1]) * multiplier + ema[-1])
-    return ema
+    recent = data[-100:]  # limit input size
+    prompt = (
+        f"Given the following data points, compute the Exponential Moving Average (EMA) with period {period}. "
+        f"Return ONLY a JSON array of the EMA values, nothing else.\n\n"
+        f"Data:\n{json.dumps(recent)}"
+    )
+    try:
+        response = get_cached_ollama_response(prompt, "", ttl=60)
+        ema_values = json.loads(response.strip())
+        if isinstance(ema_values, list) and all(isinstance(v, (int, float)) for v in ema_values):
+            return ema_values
+        else:
+            raise ValueError(f"Unexpected response format: {response}")
+    except Exception as e:
+        logger.warning(f"LLM EMA computation failed: {e}")
+        return []
 
 
 def compute_macd(closes: List[float], fast: int = 12, slow: int = 26, signal: int = 9):
-    """Compute MACD line, signal line, and histogram. Returns (macd, signal, hist) or Nones."""
+    """Compute MACD line, signal line, and histogram using the LLM. Returns (macd, signal, hist) or Nones."""
     if len(closes) < slow + signal:
         return None, None, None
-    ema_fast = _ema(closes, fast)
-    ema_slow = _ema(closes, slow)
-    macd_line = [f - s for f, s in zip(ema_fast, ema_slow)]
-    signal_line = _ema(macd_line, signal)
-    # Align lengths
-    macd_line = macd_line[-len(signal_line):]
-    hist = [m - s for m, s in zip(macd_line, signal_line)]
-    return round(macd_line[-1], 6), round(signal_line[-1], 6), round(hist[-1], 6)
+    recent = closes[-100:]  # enough for MACD
+    prompt = (
+        f"Given the following closing prices, compute the MACD (Moving Average Convergence Divergence) "
+        f"with fast period {fast}, slow period {slow}, and signal period {signal}. "
+        f"Return ONLY three numbers separated by commas: macd_line, signal_line, histogram. "
+        f"Example: 0.0012,0.0008,0.0004\n\n"
+        f"Closing prices:\n{json.dumps(recent)}"
+    )
+    try:
+        response = get_cached_ollama_response(prompt, "", ttl=60)
+        parts = response.strip().split(",")
+        if len(parts) == 3:
+            return float(parts[0]), float(parts[1]), float(parts[2])
+        else:
+            raise ValueError(f"Unexpected response format: {response}")
+    except Exception as e:
+        logger.warning(f"LLM MACD computation failed: {e}")
+        return None, None, None
 
 
 def compute_bollinger_bands(closes: List[float], period: int = 20, std_dev: float = 2.0):
-    """Return (upper, middle, lower) Bollinger Bands for the most recent candle."""
+    """Compute Bollinger Bands (upper, middle, lower) using the LLM."""
     if len(closes) < period:
         return None, None, None
-    recent = closes[-period:]
-    middle = sum(recent) / period
-    variance = sum((x - middle) ** 2 for x in recent) / period
-    std = variance ** 0.5
-    upper = middle + std_dev * std
-    lower = middle - std_dev * std
-    return round(upper, 6), round(middle, 6), round(lower, 6)
+    recent = closes[-50:]  # enough for BB
+    prompt = (
+        f"Given the following closing prices, compute the Bollinger Bands with period {period} "
+        f"and standard deviation multiplier {std_dev}. "
+        f"Return ONLY three numbers separated by commas: upper_band, middle_band, lower_band. "
+        f"Example: 105.2,100.0,94.8\n\n"
+        f"Closing prices:\n{json.dumps(recent)}"
+    )
+    try:
+        response = get_cached_ollama_response(prompt, "", ttl=60)
+        parts = response.strip().split(",")
+        if len(parts) == 3:
+            return float(parts[0]), float(parts[1]), float(parts[2])
+        else:
+            raise ValueError(f"Unexpected response format: {response}")
+    except Exception as e:
+        logger.warning(f"LLM Bollinger Bands computation failed: {e}")
+        return None, None, None
 
 SYSTEM_PROMPT = """You are a professional cryptocurrency trading bot assistant. Your primary goal is to generate consistent short-term profit while preserving capital. You must avoid large drawdowns and only trade when there is a clear edge.
 
