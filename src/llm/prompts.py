@@ -332,7 +332,7 @@ Maximum coins to trade: {max_coins}
     if raw_candles:
         prompt += f"\nRaw OHLCV data for {assigned_timeframe} timeframe (each candle: [timestamp, open, high, low, close, volume]):\n{json.dumps(raw_candles)}\n"
         prompt += (
-            "The technical indicators (RSI, MACD, Bollinger Bands) have already been computed for you from this data. "
+            "The technical indicators (RSI, MACD, Bollinger Bands, EMA) have already been computed for you from this data. "
             "Use them together with the raw candles to time entries and exits. "
             "Explain in your reasoning how the indicators support your decision.\n"
         )

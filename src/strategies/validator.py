@@ -54,8 +54,6 @@ def validate_signal(signal: Signal, market_data: Optional[Dict[str, Any]] = None
         # Logical consistency checks (no hardcoded values)
         if tp <= sl:
             return Signal(action="HOLD", confidence=0.0, reasoning="take_profit_pct must be greater than stop_loss_pct")
-        if tp < 2 * sl:
-            return Signal(action="HOLD", confidence=0.0, reasoning="take_profit_pct must be at least 2x stop_loss_pct")
         if trailing:
             tsd = params.get("trailing_stop_distance_pct")
             if tsd is not None and tsd >= sl:

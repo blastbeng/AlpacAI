@@ -436,7 +436,7 @@ class TradingEngine:
             async def fetch_ohlcv_for_symbol(sym):
                 try:
                     data = await asyncio.to_thread(
-                        get_multi_timeframe_ohlcv, self.exchange, sym, settings.OHLCV_TIMEFRAMES, limit=24
+                        get_multi_timeframe_ohlcv, self.exchange, sym, settings.OHLCV_TIMEFRAMES, limit=50
                     )
                     return sym, data
                 except Exception as e:
@@ -908,7 +908,7 @@ class TradingEngine:
             trailing_stop = params["trailing_stop"]
             trailing_stop_distance_pct = params.get("trailing_stop_distance_pct")
             if trailing_stop:
-                min_trailing_stop_pct = 2 * fee_rate + 0.002
+                min_trailing_stop_pct = 2 * fee_rate + settings.MIN_PROFIT_MARGIN
                 if trailing_stop_distance_pct is None or trailing_stop_distance_pct < min_trailing_stop_pct:
                     logger.warning(
                         f"LLM trailing_stop_distance_pct {trailing_stop_distance_pct} for {symbol} is below minimum "
