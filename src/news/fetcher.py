@@ -232,7 +232,7 @@ def discover_trending_coins(
             "page": 1,
             "sparkline": "false",
         }
-        response = httpx.get(url, params=params, timeout=15.0)
+        response = httpx.get(url, params=params, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         coins_data = response.json()
     except Exception as e:
@@ -288,7 +288,7 @@ def _fetch_newsapi(symbol: str) -> List[Dict[str, str]]:
             "pageSize": settings.NEWS_MAX_ARTICLES_PER_SYMBOL,
             "apiKey": settings.NEWS_API_KEY,
         }
-        response = httpx.get(url, params=params, timeout=10.0)
+        response = httpx.get(url, params=params, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
         articles = []
@@ -326,7 +326,7 @@ def _fetch_twitter(symbol: str) -> List[Dict[str, str]]:
         logger.warning("tweepy not installed. Install with: pip install tweepy")
         return []
     try:
-        client = tweepy.Client(bearer_token=settings.TWITTER_BEARER_TOKEN, timeout=10)
+        client = tweepy.Client(bearer_token=settings.TWITTER_BEARER_TOKEN, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         query = f"${symbol} crypto -is:retweet lang:en"
         tweets = client.search_recent_tweets(
             query=query,
@@ -370,7 +370,7 @@ def _fetch_reddit(symbol: str) -> List[Dict[str, str]]:
             client_id=settings.REDDIT_CLIENT_ID,
             client_secret=settings.REDDIT_CLIENT_SECRET,
             user_agent=settings.REDDIT_USER_AGENT,
-            timeout=10,
+            timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS,
         )
         submissions = reddit.subreddit("all").search(
             f"{symbol} crypto",
@@ -413,7 +413,7 @@ def _fetch_facebook(symbol: str) -> List[Dict[str, str]]:
             "limit": settings.FACEBOOK_POST_LIMIT,
             "access_token": settings.FACEBOOK_PAGE_ACCESS_TOKEN,
         }
-        response = httpx.get(url, params=params, timeout=10.0)
+        response = httpx.get(url, params=params, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
         articles = []
@@ -457,7 +457,7 @@ def _fetch_youtube(symbol: str) -> List[Dict[str, str]]:
             "relevanceLanguage": "en",
             "key": settings.YOUTUBE_API_KEY,
         }
-        response = httpx.get(url, params=params, timeout=10.0)
+        response = httpx.get(url, params=params, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
         articles = []
@@ -498,7 +498,7 @@ def _fetch_cryptopanic(symbol: str) -> List[Dict[str, str]]:
             "kind": "news",
             "public": "true",
         }
-        response = httpx.get(url, params=params, timeout=10.0)
+        response = httpx.get(url, params=params, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
         articles = []
@@ -537,7 +537,7 @@ def _fetch_cryptocompare(symbol: str) -> List[Dict[str, str]]:
             "lang": "EN",
             "api_key": settings.CRYPTOCOMPARE_API_KEY,
         }
-        response = httpx.get(url, params=params, timeout=10.0)
+        response = httpx.get(url, params=params, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
         articles = []
@@ -578,7 +578,7 @@ def _fetch_lunarcrush(symbol: str) -> List[Dict[str, str]]:
             "key": settings.LUNARCRUSH_API_KEY,
             "symbol": base,
         }
-        response = httpx.get(url, params=params, timeout=10.0)
+        response = httpx.get(url, params=params, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
         articles = []
@@ -624,7 +624,7 @@ def _fetch_santiment(symbol: str) -> List[Dict[str, str]]:
             "limit": settings.SANTIMENT_MAX_ARTICLES,
         }
         headers = {"Authorization": f"Apikey {settings.SANTIMENT_API_KEY}"}
-        response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+        response = httpx.get(url, params=params, headers=headers, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
         articles = []
@@ -660,7 +660,7 @@ def _fetch_messari(symbol: str) -> List[Dict[str, str]]:
         base = symbol.split("/")[0].lower()
         url = f"https://data.messari.io/api/v1/news/{base}"
         headers = {"x-messari-api-key": settings.MESSARI_API_KEY}
-        response = httpx.get(url, headers=headers, timeout=10.0)
+        response = httpx.get(url, headers=headers, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
         articles = []
@@ -700,7 +700,7 @@ def _fetch_coinmarketcap(symbol: str) -> List[Dict[str, str]]:
             "limit": settings.COINMARKETCAP_MAX_ARTICLES,
         }
         headers = {"X-CMC_PRO_API_KEY": settings.COINMARKETCAP_API_KEY}
-        response = httpx.get(url, params=params, headers=headers, timeout=10.0)
+        response = httpx.get(url, params=params, headers=headers, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
         articles = []
@@ -770,7 +770,7 @@ def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
         ticker = f"{base}.X"
         url = f"https://api.stocktwits.com/api/2/streams/symbol/{ticker}.json"
         params = {"access_token": settings.STOCKTWITS_API_KEY, "limit": settings.STOCKTWITS_MAX_POSTS}
-        response = httpx.get(url, params=params, timeout=10.0)
+        response = httpx.get(url, params=params, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
         articles = []
@@ -818,7 +818,7 @@ def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
     for feed_url in settings.RSS_FEEDS:
         try:
             # Fetch feed content with timeout
-            resp = httpx.get(feed_url, timeout=10.0, follow_redirects=True)
+            resp = httpx.get(feed_url, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS, follow_redirects=True)
             resp.raise_for_status()
             feed = feedparser.parse(resp.text)
             for entry in feed.entries:
