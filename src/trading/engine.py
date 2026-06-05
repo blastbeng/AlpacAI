@@ -82,6 +82,22 @@ class TradingEngine:
             logger.warning("News module not available; skipping background news refresh.")
             return
 
+        # Perform an initial fetch immediately so news is available on startup
+        try:
+            symbols_to_refresh = set(entry["symbol"] for entry in self.current_coins)
+            if symbols_to_refresh:
+                logger.info(f"Performing initial news fetch for {len(symbols_to_refresh)} tracked coins...")
+                for sym in symbols_to_refresh:
+                    try:
+                        articles = await asyncio.to_thread(fetch_news_for_symbol, sym)
+                        if articles:
+                            await asyncio.to_thread(store_news_articles, sym, articles)
+                    except Exception as e:
+                        logger.debug(f"Initial news fetch failed for {sym}: {e}")
+                logger.info("Initial news fetch complete.")
+        except Exception as e:
+            logger.warning(f"Initial news fetch error: {e}")
+
         while True:
             try:
                 cycle_start = time.time()
