@@ -1,6 +1,7 @@
 import logging
 from typing import List, Dict, Optional
 import hashlib
+import httpx
 import json
 
 from src.config.settings import settings
@@ -41,6 +42,9 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
 
     if "reddit" in settings.NEWS_SOURCES:
         articles.extend(_fetch_reddit(symbol))
+
+    if "facebook" in settings.NEWS_SOURCES:
+        articles.extend(_fetch_facebook(symbol))
 
     # Deduplicate by URL
     seen = set()
@@ -177,4 +181,42 @@ def _fetch_reddit(symbol: str) -> List[Dict[str, str]]:
         return articles
     except Exception as e:
         logger.warning(f"Reddit fetch failed for {symbol}: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Facebook (Graph API)
+# ---------------------------------------------------------------------------
+
+def _fetch_facebook(symbol: str) -> List[Dict[str, str]]:
+    if not settings.FACEBOOK_PAGE_ACCESS_TOKEN or not settings.FACEBOOK_PAGE_ID:
+        return []
+    try:
+        url = f"https://graph.facebook.com/v19.0/{settings.FACEBOOK_PAGE_ID}/posts"
+        params = {
+            "fields": "message,created_time,permalink_url",
+            "limit": settings.FACEBOOK_POST_LIMIT,
+            "access_token": settings.FACEBOOK_PAGE_ACCESS_TOKEN,
+        }
+        response = httpx.get(url, params=params, timeout=10.0)
+        response.raise_for_status()
+        data = response.json()
+        articles = []
+        for post in data.get("data", []):
+            message = post.get("message", "")
+            if not message:
+                continue
+            # Simple relevance check: symbol appears in the post
+            if symbol.lower() not in message.lower():
+                continue
+            articles.append({
+                "title": message[:100],
+                "source": "Facebook",
+                "url": post.get("permalink_url", ""),
+                "published_at": post.get("created_time", ""),
+                "summary": message[:300],
+            })
+        return articles
+    except Exception as e:
+        logger.warning(f"Facebook fetch failed for {symbol}: {e}")
         return []

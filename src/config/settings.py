@@ -84,8 +84,6 @@ class Settings(BaseSettings):
                 raise ValueError("REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET are required when reddit source is selected")
             if "facebook" in self.NEWS_SOURCES and (not self.FACEBOOK_PAGE_ACCESS_TOKEN or not self.FACEBOOK_PAGE_ID):
                 raise ValueError("FACEBOOK_PAGE_ACCESS_TOKEN and FACEBOOK_PAGE_ID are required when facebook source is selected")
-            if "facebook" in self.NEWSWS_SOURCES and (not self.FACEBOOK_PAGE_ACCESS_TOKEN or not self.FACEBOOK_PAGE_ID):
-                raise ValueError("FACEBOOK_PAGE_ACCESS_TOKEN and FACEBOOK_PAGE_ID are required when facebook source is selected")
         return self
 
     # Ollama
