@@ -135,9 +135,6 @@ class Settings(BaseSettings):
     CRYPTOPANIC_API_KEY: Optional[str] = None
     CRYPTOPANIC_MAX_POSTS: int = 5
 
-    # CoinGecko News (free, no API key required)
-    COINGECKO_MAX_ARTICLES: int = 5
-
     # CryptoCompare News API
     CRYPTOCOMPARE_API_KEY: Optional[str] = None
     CRYPTOCOMPARE_MAX_ARTICLES: int = 5
@@ -164,12 +161,6 @@ class Settings(BaseSettings):
     # StockTwits API
     STOCKTWITS_API_KEY: Optional[str] = None
     STOCKTWITS_MAX_POSTS: int = 5
-
-    # CoinPaprika (free, no API key)
-    COINPAPRIKA_MAX_ARTICLES: int = 5
-
-    # CoinCodex (free, no API key)
-    COINCODEX_MAX_ARTICLES: int = 5
 
     # News sentiment risk adjustment
     NEWS_SENTIMENT_RISK_ADJUSTMENT: bool = False
