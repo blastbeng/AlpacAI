@@ -21,7 +21,7 @@ class TelegramBot:
             [
                 [KeyboardButton("📊 Status"), KeyboardButton("📈 Trades")],
                 [KeyboardButton("💰 Profit"), KeyboardButton("🚀 Performance")],
-                [KeyboardButton("📰 News")],
+                [KeyboardButton("📰 News (all)")],
                 [KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
             ],
             resize_keyboard=True,
@@ -36,7 +36,7 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("trades", self.cmd_trades))
         self.app.add_handler(CommandHandler("profit", self.cmd_profit))
         self.app.add_handler(CommandHandler("performance", self.cmd_performance))
-        self.app.add_handler(CommandHandler("news", self.cmd_news))
+        self.app.add_handler(CommandHandler("news", self.cmd_news_search))
         self.app.add_handler(CommandHandler("news_status", self.cmd_news_status))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_button))
 
@@ -66,7 +66,7 @@ class TelegramBot:
             await self.cmd_pause(update, context)
         elif text == "▶️ Resume":
             await self.cmd_resume(update, context)
-        elif text == "📰 News":
+        elif text == "📰 News (all)":
             await self.cmd_news(update, context)
 
     async def cmd_pause(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -194,6 +194,33 @@ class TelegramBot:
 
         await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
 
+    async def cmd_news_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show recent news for a specific coin (e.g., /news BTC)."""
+        if not context.args:
+            await update.message.reply_text(
+                "Usage: /news <coin>\nExample: /news BTC",
+                reply_markup=self.keyboard,
+            )
+            return
+
+        coin = context.args[0].upper()
+        # Remove any trailing "/USDT" if user typed a pair
+        if "/" in coin:
+            coin = coin.split("/")[0]
+
+        articles = get_news_for_symbol(coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+        if not articles:
+            await update.message.reply_text(f"No recent news for {coin}.", reply_markup=self.keyboard)
+            return
+
+        formatted = _format_news_for_prompt(articles)
+        msg = f"*{coin}*\n{formatted}"
+        if len(msg) > 4000:
+            for i in range(0, len(msg), 4000):
+                await update.message.reply_text(msg[i:i+4000], parse_mode="Markdown")
+        else:
+            await update.message.reply_text(msg, parse_mode="Markdown")
+
     async def cmd_news(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show recent news for all currently tracked coins."""
         coins = self.engine.current_coins
@@ -276,7 +303,7 @@ class TelegramBot:
                 [
                     [KeyboardButton("📊 Status"), KeyboardButton("📈 Trades")],
                     [KeyboardButton("💰 Profit"), KeyboardButton("🚀 Performance")],
-                    [KeyboardButton("📰 News")],
+                    [KeyboardButton("📰 News (all)")],
                     [KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
                 ],
                 resize_keyboard=True,
