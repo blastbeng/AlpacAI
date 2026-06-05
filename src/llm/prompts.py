@@ -3,11 +3,7 @@ import logging
 import math
 from typing import List, Dict, Any, Optional, Tuple
 from src.config.settings import settings
-try:
-    from src.news.fetcher import fetch_news_for_symbol, get_aggregate_sentiment
-except ImportError:
-    fetch_news_for_symbol = None
-    get_aggregate_sentiment = None
+from src.database import get_news_for_symbol, get_aggregate_sentiment_from_db
 
 logger = logging.getLogger(__name__)
 
@@ -228,8 +224,8 @@ def build_coin_selection_prompt(
                 "volume": t.get("quoteVolume"),
                 "min_trade_cost": limits.get("min_cost"),  # now always a number
             }
-            if settings.NEWS_ENABLED and get_aggregate_sentiment is not None:
-                agg = get_aggregate_sentiment(symbol)
+            if settings.NEWS_ENABLED:
+                agg = get_aggregate_sentiment_from_db(symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
                 if agg:
                     ticker_summary[symbol]["sentiment"] = agg
 
@@ -259,11 +255,11 @@ def build_coin_selection_prompt(
 
     # --- News section ---
     news_section = ""
-    if settings.NEWS_ENABLED and fetch_news_for_symbol is not None:
+    if settings.NEWS_ENABLED:
         news_lines = []
         pairs_to_check = available_pairs[:20]
         for pair in pairs_to_check:
-            articles = fetch_news_for_symbol(pair)
+            articles = get_news_for_symbol(pair, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
             if articles:
                 formatted = _format_news_for_prompt(articles)
                 news_lines.append(f"**{pair}**\n{formatted}")
@@ -417,8 +413,8 @@ Maximum coins to trade: {max_coins}
 
     # --- News section ---
     news_section = ""
-    if settings.NEWS_ENABLED and fetch_news_for_symbol is not None:
-        articles = fetch_news_for_symbol(symbol)
+    if settings.NEWS_ENABLED:
+        articles = get_news_for_symbol(symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
         if articles:
             news_section = "Recent news for this coin:\n" + _format_news_for_prompt(articles)
     if news_section:
