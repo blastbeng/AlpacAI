@@ -1,9 +1,9 @@
 import hashlib
 import json
-from src.llm.ollama_client import get_ollama_response
+from src.llm.llm_client import get_llm_response
 from src.utils.redis_client import get_redis_client
 
-def get_cached_ollama_response(prompt: str, system_prompt: str = "", ttl: int = 300) -> str:
+def get_cached_llm_response(prompt: str, system_prompt: str = "", ttl: int = 300) -> str:
     """
     Get an LLM response, using Redis cache to avoid duplicate calls.
     Cache key is based on the prompt and system prompt.
@@ -20,7 +20,7 @@ def get_cached_ollama_response(prompt: str, system_prompt: str = "", ttl: int = 
         return cached
 
     # Not cached, call LLM
-    response = get_ollama_response(prompt, system_prompt)
+    response = get_llm_response(prompt, system_prompt)
 
     # Store in cache with TTL
     redis_client.setex(cache_key, ttl, response)

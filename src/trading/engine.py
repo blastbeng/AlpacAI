@@ -10,7 +10,7 @@ from src.exchanges.factory import get_exchange
 from src.exchanges.market_data import get_available_pairs, get_tickers, get_order_book, get_multi_timeframe_ohlcv
 from src.trading.paper_simulator import PaperSimulator
 from src.trading.live_trader import LiveTrader
-from src.llm.cache import get_cached_ollama_response
+from src.llm.cache import get_cached_llm_response
 from src.llm.prompts import (
     SYSTEM_PROMPT,
     build_coin_selection_prompt,
@@ -539,7 +539,7 @@ class TradingEngine:
             ohlcv_data=ohlcv_data,
             market_trend=market_trend,
         )
-        response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 300)
+        response = await asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 300)
         logger.info(f"LLM coin selection raw response: {response}")
 
         try:
@@ -796,7 +796,7 @@ class TradingEngine:
                 raw_candles=raw_candles,
                 recent_trades=recent_trades_summary,
             )
-            response = await asyncio.to_thread(get_cached_ollama_response, prompt, SYSTEM_PROMPT, 60)
+            response = await asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 60)
             strategy = create_strategy_from_llm(response)
             signal = strategy.generate_signal({})
             # Extract per-trade confidence threshold if present
