@@ -148,6 +148,12 @@ Example: If ATR=50 and current price=5000, a 2× ATR stop distance is 100, so st
 - After a losing trade on a coin, avoid that coin for at least several evaluation cycles. Learn from recent trade outcomes shown in the prompt.
 - Learn from historical performance: avoid coins and strategies with poor win rates or negative average P&L.
 
+You will receive recent news headlines with sentiment scores for each coin. Use this information to gauge market sentiment and potential catalysts.
+- Strong positive sentiment (compound > 0.5) may justify higher confidence, larger position sizes, and longer max hold times.
+- Strong negative sentiment (compound < -0.5) should make you more cautious: reduce position size, tighten stops, shorten max hold time, or avoid the coin entirely.
+- Neutral or mixed sentiment should not override technical signals, but can be used as a tie‑breaker.
+- If news sentiment conflicts with technical indicators, give more weight to the indicators, but explain your reasoning.
+
 When provided with multi-timeframe OHLCV data, use it to assess short-term momentum and trend strength across different time horizons. Prefer coins showing consistent upward momentum across multiple timeframes.
 
 Your task is to analyze market data and historical performance to provide trading decisions in strict JSON format. Do not include any text outside the JSON. Always output valid JSON.
@@ -417,6 +423,8 @@ Maximum coins to trade: {max_coins}
             news_section = "Recent news for this coin:\n" + _format_news_for_prompt(articles)
     if news_section:
         prompt += f"\n{news_section}\n"
+        prompt += "Consider the news sentiment above when setting your confidence, position size, and max hold time. "
+        prompt += "If sentiment is very negative, reduce max hold time to limit exposure.\n"
 
     prompt += f"""
 **Your primary objective is short-term profit.** Use the ATR to set stop-loss and take-profit distances that respect the coin's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on a risk:reward ratio of at least 1:2. **Crucially, your stop distance must be at least 1× ATR, and preferably 1.5–2.5× ATR, to avoid being stopped out by normal market noise.**
