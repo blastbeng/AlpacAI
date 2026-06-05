@@ -126,6 +126,13 @@ class Settings(BaseSettings):
     FACEBOOK_PAGE_ID: Optional[str] = None
     FACEBOOK_POST_LIMIT: int = 5
 
+    # RSS Feeds
+    RSS_FEEDS: list[str] = [
+        "https://www.coindesk.com/arc/outboundfeeds/rss/",
+        "https://cointelegraph.com/rss",
+        "https://decrypt.co/feed",
+    ]
+
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None

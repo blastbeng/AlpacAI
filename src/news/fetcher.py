@@ -3,6 +3,7 @@ from typing import List, Dict, Optional
 import hashlib
 import httpx
 import json
+import feedparser
 
 from src.config.settings import settings
 from src.utils.redis_client import get_redis_client
@@ -45,6 +46,9 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
 
     if "facebook" in settings.NEWS_SOURCES:
         articles.extend(_fetch_facebook(symbol))
+
+    if settings.RSS_FEEDS:
+        articles.extend(_fetch_rss(symbol))
 
     # Deduplicate by URL
     seen = set()
@@ -220,3 +224,31 @@ def _fetch_facebook(symbol: str) -> List[Dict[str, str]]:
     except Exception as e:
         logger.warning(f"Facebook fetch failed for {symbol}: {e}")
         return []
+
+
+# ---------------------------------------------------------------------------
+# RSS Feeds
+# ---------------------------------------------------------------------------
+
+def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
+    """Fetch news from configured RSS feeds, filtering for symbol mentions."""
+    articles = []
+    for feed_url in settings.RSS_FEEDS:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries:
+                title = entry.get("title", "")
+                summary = entry.get("summary", "") or entry.get("description", "")
+                combined = f"{title} {summary}".lower()
+                if symbol.lower() not in combined:
+                    continue
+                articles.append({
+                    "title": title,
+                    "source": feed.feed.get("title", "RSS"),
+                    "url": entry.get("link", ""),
+                    "published_at": entry.get("published", ""),
+                    "summary": summary[:300],
+                })
+        except Exception as e:
+            logger.warning(f"RSS fetch failed for {feed_url}: {e}")
+    return articles
