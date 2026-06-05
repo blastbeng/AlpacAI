@@ -71,7 +71,9 @@ def config():
         "trading_mode": settings.TRADING_MODE,
         "base_currency": settings.BASE_CURRENCY,
         "max_coins": settings.MAX_COINS,
+        "llm_provider": settings.LLM_PROVIDER,
         "ollama_model": settings.OLLAMA_MODEL,
+        "openai_model": settings.OPENAI_MODEL,
         "web_port": settings.WEB_PORT,
     }
 
