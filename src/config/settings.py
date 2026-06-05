@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     @field_validator("NEWS_SOURCES")
     @classmethod
     def validate_news_sources(cls, v: list[str]) -> list[str]:
-        allowed = {"newsapi", "twitter", "reddit"}
+        allowed = {"newsapi", "twitter", "reddit", "facebook"}
         for source in v:
             if source not in allowed:
                 raise ValueError(f"Invalid news source: {source}. Allowed: {allowed}")
@@ -82,6 +82,10 @@ class Settings(BaseSettings):
                 raise ValueError("TWITTER_BEARER_TOKEN is required when twitter source is selected")
             if "reddit" in self.NEWS_SOURCES and (not self.REDDIT_CLIENT_ID or not self.REDDIT_CLIENT_SECRET):
                 raise ValueError("REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET are required when reddit source is selected")
+            if "facebook" in self.NEWS_SOURCES and (not self.FACEBOOK_PAGE_ACCESS_TOKEN or not self.FACEBOOK_PAGE_ID):
+                raise ValueError("FACEBOOK_PAGE_ACCESS_TOKEN and FACEBOOK_PAGE_ID are required when facebook source is selected")
+            if "facebook" in self.NEWSWS_SOURCES and (not self.FACEBOOK_PAGE_ACCESS_TOKEN or not self.FACEBOOK_PAGE_ID):
+                raise ValueError("FACEBOOK_PAGE_ACCESS_TOKEN and FACEBOOK_PAGE_ID are required when facebook source is selected")
         return self
 
     # Ollama
@@ -118,6 +122,11 @@ class Settings(BaseSettings):
     REDDIT_USER_AGENT: str = "trading-bot/1.0"
     NEWS_MAX_ARTICLES_PER_SYMBOL: int = 5
     NEWS_CACHE_TTL_SECONDS: int = 900        # 15 minutes
+
+    # Facebook (Graph API)
+    FACEBOOK_PAGE_ACCESS_TOKEN: Optional[str] = None
+    FACEBOOK_PAGE_ID: Optional[str] = None
+    FACEBOOK_POST_LIMIT: int = 5
 
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
