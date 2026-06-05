@@ -49,15 +49,6 @@ class Settings(BaseSettings):
             raise ValueError("LLM_PROVIDER must be 'ollama' or 'openai'")
         return v
 
-    @field_validator("NEWS_SOURCES")
-    @classmethod
-    def validate_news_sources(cls, v: list[str]) -> list[str]:
-        allowed = {"newsapi", "twitter", "reddit", "facebook", "youtube", "cryptopanic", "coingecko", "cryptocompare", "lunarcrush", "santiment", "messari", "coinmarketcap", "googlenews", "stocktwits", "coinpaprika", "coincodex"}
-        for source in v:
-            if source not in allowed:
-                raise ValueError(f"Invalid news source: {source}. Allowed: {allowed}")
-        return v
-
     # Paper trading
     PAPER_INITIAL_BALANCE: float = 10000.0
 
@@ -102,8 +93,6 @@ class Settings(BaseSettings):
     NEWS_ENABLED: bool = False
     NEWS_UPDATE_INTERVAL_MINUTES: int = 15
 
-    # News sources
-    NEWS_SOURCES: list[str] = ["newsapi"]  # supported: "newsapi", "twitter", "reddit"
     NEWS_API_KEY: Optional[str] = None       # for NewsAPI.org
     TWITTER_BEARER_TOKEN: Optional[str] = None
     REDDIT_CLIENT_ID: Optional[str] = None
