@@ -215,6 +215,13 @@ class Settings(BaseSettings):
     NEWS_SENTIMENT_POSITION_SIZE_MULTIPLIER_POSITIVE: float = 1.0  # keep normal if positive
     NEWS_SENTIMENT_SKIP_BUY_ON_VERY_NEGATIVE: bool = True  # skip BUY entirely if sentiment below negative threshold
 
+    # News sentiment risk management for open positions
+    NEWS_SENTIMENT_EXIT_ON_VERY_NEGATIVE: bool = False   # force close position if sentiment very negative
+    NEWS_SENTIMENT_EXIT_THRESHOLD: float = -0.7           # compound score below this triggers forced exit
+    NEWS_SENTIMENT_TIGHTEN_STOP: bool = False             # tighten stop-loss when sentiment turns negative
+    NEWS_SENTIMENT_TIGHTEN_STOP_THRESHOLD: float = -0.3   # sentiment below this triggers stop tightening
+    NEWS_SENTIMENT_TIGHTEN_STOP_MULTIPLIER: float = 0.5   # multiply stop distance by this factor (0.5 = halve distance)
+
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None

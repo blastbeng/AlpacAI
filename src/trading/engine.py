@@ -1011,6 +1011,44 @@ class TradingEngine:
                             pos["stop_loss"] = new_stop
                             logger.debug(f"Trailing stop updated for {symbol}: new stop {new_stop:.4f}")
 
+                # --- News sentiment risk adjustment for open positions ---
+                if settings.NEWS_ENABLED and get_aggregate_sentiment is not None:
+                    try:
+                        agg_sent = get_aggregate_sentiment(symbol)
+                        if agg_sent:
+                            compound = agg_sent["avg_compound"]
+                            # Force close if sentiment is extremely negative
+                            if settings.NEWS_SENTIMENT_EXIT_ON_VERY_NEGATIVE and compound < settings.NEWS_SENTIMENT_EXIT_THRESHOLD:
+                                logger.info(f"News sentiment extremely negative for {symbol} ({compound}). Forcing close.")
+                                if self.notifier:
+                                    await self.notifier.send_notification(
+                                        f"🚨 Force closing {symbol}: news sentiment extremely negative ({compound})"
+                                    )
+                                await self._execute_signal(
+                                    symbol,
+                                    Signal(action="SELL", confidence=1.0, reasoning="News sentiment extremely negative"),
+                                    exit_reason="news_sentiment_exit"
+                                )
+                                continue  # skip further checks for this symbol
+
+                            # Tighten stop-loss if sentiment turns negative
+                            if settings.NEWS_SENTIMENT_TIGHTEN_STOP and compound < settings.NEWS_SENTIMENT_TIGHTEN_STOP_THRESHOLD:
+                                original_stop = pos["stop_loss"]
+                                # Compute distance from current price to stop
+                                distance = current_price - original_stop
+                                if distance > 0:
+                                    new_distance = distance * settings.NEWS_SENTIMENT_TIGHTEN_STOP_MULTIPLIER
+                                    new_stop = current_price - new_distance
+                                    # Only tighten, never loosen
+                                    if new_stop > original_stop:
+                                        pos["stop_loss"] = new_stop
+                                        logger.info(
+                                            f"Tightened stop for {symbol} due to negative news sentiment "
+                                            f"({compound}): {original_stop:.4f} -> {new_stop:.4f}"
+                                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to apply news sentiment risk management for {symbol}: {e}")
+
                 # Time‑based exit (LLM‑defined max hold time)
                 max_hold = pos.get("max_hold_time_seconds")
                 if max_hold is not None and max_hold > 0:
