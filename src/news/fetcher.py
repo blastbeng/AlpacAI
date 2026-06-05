@@ -280,31 +280,31 @@ def _fetch_newsapi(symbol: str) -> List[Dict[str, str]]:
     if not settings.NEWS_API_KEY:
         return []
     try:
-        from newsapi import NewsApiClient
-    except ImportError:
-        logger.warning("newsapi-python not installed. Install with: pip install newsapi-python")
-        return []
-    try:
-        client = NewsApiClient(api_key=settings.NEWS_API_KEY)
-        query = f"{symbol} crypto"
-        response = client.get_everything(
-            q=query,
-            language="en",
-            sort_by="publishedAt",
-            page_size=settings.NEWS_MAX_ARTICLES_PER_SYMBOL,
-        )
+        url = "https://newsapi.org/v2/everything"
+        params = {
+            "q": f"{symbol} crypto",
+            "language": "en",
+            "sortBy": "publishedAt",
+            "pageSize": settings.NEWS_MAX_ARTICLES_PER_SYMBOL,
+            "apiKey": settings.NEWS_API_KEY,
+        }
+        response = httpx.get(url, params=params, timeout=10.0)
+        response.raise_for_status()
+        data = response.json()
         articles = []
-        for art in response.get("articles", []):
-            text = f"{art.get('title', '')} {art.get('description', '')}"
+        for art in data.get("articles", []):
+            title = art.get("title", "")
+            description = art.get("description", "") or ""
+            text = f"{title} {description}"
             sentiment = _analyze_sentiment(text)
-            if not _is_relevant(symbol, art.get("title", ""), art.get("description", "") or ""):
+            if not _is_relevant(symbol, title, description):
                 continue
             articles.append({
-                "title": art.get("title", ""),
+                "title": title,
                 "source": art.get("source", {}).get("name", "NewsAPI"),
                 "url": art.get("url", ""),
                 "published_at": art.get("publishedAt", ""),
-                "summary": art.get("description", "") or "",
+                "summary": description[:300],
                 "sentiment": sentiment,
             })
         return articles
@@ -326,7 +326,7 @@ def _fetch_twitter(symbol: str) -> List[Dict[str, str]]:
         logger.warning("tweepy not installed. Install with: pip install tweepy")
         return []
     try:
-        client = tweepy.Client(bearer_token=settings.TWITTER_BEARER_TOKEN)
+        client = tweepy.Client(bearer_token=settings.TWITTER_BEARER_TOKEN, timeout=10)
         query = f"${symbol} crypto -is:retweet lang:en"
         tweets = client.search_recent_tweets(
             query=query,
@@ -370,6 +370,7 @@ def _fetch_reddit(symbol: str) -> List[Dict[str, str]]:
             client_id=settings.REDDIT_CLIENT_ID,
             client_secret=settings.REDDIT_CLIENT_SECRET,
             user_agent=settings.REDDIT_USER_AGENT,
+            timeout=10,
         )
         submissions = reddit.subreddit("all").search(
             f"{symbol} crypto",
@@ -446,24 +447,21 @@ def _fetch_youtube(symbol: str) -> List[Dict[str, str]]:
     if not settings.YOUTUBE_API_KEY:
         return []
     try:
-        from googleapiclient.discovery import build
-    except ImportError:
-        logger.warning("google-api-python-client not installed. Install with: pip install google-api-python-client")
-        return []
-    try:
-        youtube = build("youtube", "v3", developerKey=settings.YOUTUBE_API_KEY)
-        query = f"{symbol} crypto"
-        request = youtube.search().list(
-            part="snippet",
-            q=query,
-            type="video",
-            maxResults=settings.YOUTUBE_MAX_RESULTS,
-            order="date",
-            relevanceLanguage="en",
-        )
-        response = request.execute()
+        url = "https://www.googleapis.com/youtube/v3/search"
+        params = {
+            "part": "snippet",
+            "q": f"{symbol} crypto",
+            "type": "video",
+            "maxResults": settings.YOUTUBE_MAX_RESULTS,
+            "order": "date",
+            "relevanceLanguage": "en",
+            "key": settings.YOUTUBE_API_KEY,
+        }
+        response = httpx.get(url, params=params, timeout=10.0)
+        response.raise_for_status()
+        data = response.json()
         articles = []
-        for item in response.get("items", []):
+        for item in data.get("items", []):
             snippet = item["snippet"]
             title = snippet.get("title", "")
             description = snippet.get("description", "")
@@ -819,7 +817,10 @@ def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
     articles = []
     for feed_url in settings.RSS_FEEDS:
         try:
-            feed = feedparser.parse(feed_url)
+            # Fetch feed content with timeout
+            resp = httpx.get(feed_url, timeout=10.0, follow_redirects=True)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.text)
             for entry in feed.entries:
                 title = entry.get("title", "")
                 summary = entry.get("summary", "") or entry.get("description", "")
