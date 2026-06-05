@@ -182,6 +182,14 @@ class Settings(BaseSettings):
     COINMARKETCAP_API_KEY: Optional[str] = None
     COINMARKETCAP_MAX_ARTICLES: int = 5
 
+    # News sentiment risk adjustment
+    NEWS_SENTIMENT_RISK_ADJUSTMENT: bool = False
+    NEWS_SENTIMENT_NEGATIVE_THRESHOLD: float = -0.5   # compound score below this is very negative
+    NEWS_SENTIMENT_POSITIVE_THRESHOLD: float = 0.5    # above this is very positive
+    NEWS_SENTIMENT_POSITION_SIZE_MULTIPLIER_NEGATIVE: float = 0.5  # reduce position to 50% if negative
+    NEWS_SENTIMENT_POSITION_SIZE_MULTIPLIER_POSITIVE: float = 1.0  # keep normal if positive
+    NEWS_SENTIMENT_SKIP_BUY_ON_VERY_NEGATIVE: bool = True  # skip BUY entirely if sentiment below negative threshold
+
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None

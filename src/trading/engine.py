@@ -21,6 +21,10 @@ from src.llm.prompts import (
     compute_bollinger_bands,
     compute_ema,
 )
+try:
+    from src.news.fetcher import get_aggregate_sentiment
+except ImportError:
+    get_aggregate_sentiment = None
 from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm
 from src.strategies.validator import validate_signal
@@ -1077,6 +1081,37 @@ class TradingEngine:
             risk_multiplier = {"low": 0.5, "medium": 1.0, "high": 1.5}.get(signal.risk_level, 1.0)
             position_fraction *= risk_multiplier
             position_fraction = max(0.1, min(1.0, position_fraction))
+
+            # --- News sentiment risk adjustment ---
+            if settings.NEWS_ENABLED and settings.NEWS_SENTIMENT_RISK_ADJUSTMENT and get_aggregate_sentiment is not None:
+                try:
+                    agg_sent = get_aggregate_sentiment(symbol)
+                    if agg_sent:
+                        compound = agg_sent["avg_compound"]
+                        # Skip BUY if sentiment is extremely negative
+                        if settings.NEWS_SENTIMENT_SKIP_BUY_ON_VERY_NEGATIVE and compound < settings.NEWS_SENTIMENT_NEGATIVE_THRESHOLD:
+                            logger.info(f"Skipping BUY for {symbol}: news sentiment very negative ({compound})")
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⚠️ Skipping BUY for {symbol}: very negative news sentiment ({compound})"
+                                )
+                            return
+                        # Adjust position size multiplier based on sentiment
+                        if compound < settings.NEWS_SENTIMENT_NEGATIVE_THRESHOLD:
+                            multiplier = settings.NEWS_SENTIMENT_POSITION_SIZE_MULTIPLIER_NEGATIVE
+                        elif compound > settings.NEWS_SENTIMENT_POSITIVE_THRESHOLD:
+                            multiplier = settings.NEWS_SENTIMENT_POSITION_SIZE_MULTIPLIER_POSITIVE
+                        else:
+                            multiplier = 1.0
+                        position_fraction *= multiplier
+                        position_fraction = max(0.1, min(1.0, position_fraction))
+                        logger.info(
+                            f"News sentiment adjustment for {symbol}: compound={compound}, "
+                            f"multiplier={multiplier}, new position_fraction={position_fraction}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to apply news sentiment adjustment for {symbol}: {e}")
+
             per_coin_budget = (quote_balance / self.effective_max_coins) * position_fraction if self.effective_max_coins > 0 else 0.0
             amount = min(per_coin_budget, quote_balance)
 
