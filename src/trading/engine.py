@@ -82,19 +82,33 @@ class TradingEngine:
             logger.warning("News module not available; skipping background news refresh.")
             return
 
-        # Perform an initial fetch immediately so news is available on startup
+        # Perform an initial fetch immediately so news is available on startup.
+        # Run all fetches in parallel with a timeout to avoid blocking the bot.
         try:
             symbols_to_refresh = set(entry["symbol"] for entry in self.current_coins)
             if symbols_to_refresh:
-                logger.info(f"Performing initial news fetch for {len(symbols_to_refresh)} tracked coins...")
-                for sym in symbols_to_refresh:
+                logger.info(
+                    f"Starting background initial news fetch for {len(symbols_to_refresh)} coins "
+                    f"(timeout={settings.NEWS_INITIAL_FETCH_TIMEOUT_SECONDS}s). Trading continues immediately."
+                )
+
+                async def _fetch_and_store(sym: str):
                     try:
                         articles = await asyncio.to_thread(fetch_news_for_symbol, sym)
                         if articles:
                             await asyncio.to_thread(store_news_articles, sym, articles)
                     except Exception as e:
                         logger.debug(f"Initial news fetch failed for {sym}: {e}")
+
+                await asyncio.wait_for(
+                    asyncio.gather(*[_fetch_and_store(sym) for sym in symbols_to_refresh]),
+                    timeout=settings.NEWS_INITIAL_FETCH_TIMEOUT_SECONDS,
+                )
                 logger.info("Initial news fetch complete.")
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Initial news fetch timed out. Some news will be missing until the next refresh cycle."
+            )
         except Exception as e:
             logger.warning(f"Initial news fetch error: {e}")
 
