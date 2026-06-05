@@ -22,6 +22,38 @@ _rss_cache = {}
 _rss_cache_lock = threading.Lock()
 
 
+class RateLimiter:
+    """Thread-safe per-source rate limiter."""
+    def __init__(self, min_interval: float):
+        self.min_interval = min_interval
+        self._last_request: Dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def wait(self, source: str):
+        """Block until the required interval has passed since the last request for this source."""
+        if not settings.NEWS_RATE_LIMIT_ENABLED:
+            return
+        with self._lock:
+            now = time.time()
+            last = self._last_request.get(source, 0.0)
+            wait_time = self.min_interval - (now - last)
+            if wait_time > 0:
+                time.sleep(wait_time)
+                now = time.time()  # re-read after sleep
+            self._last_request[source] = now
+
+
+# Global rate limiter instance, initialized lazily to avoid import order issues.
+_rate_limiter: Optional[RateLimiter] = None
+
+
+def _get_rate_limiter() -> RateLimiter:
+    global _rate_limiter
+    if _rate_limiter is None:
+        _rate_limiter = RateLimiter(settings.NEWS_RATE_LIMIT_PER_SOURCE_SECONDS)
+    return _rate_limiter
+
+
 def _get_enabled_sources() -> List[str]:
     """Return a list of source names that are enabled based on configured credentials."""
     sources = []
@@ -286,6 +318,7 @@ def _fetch_newsapi(symbol: str) -> List[Dict[str, str]]:
     if not settings.NEWS_API_KEY:
         return []
     try:
+        _get_rate_limiter().wait("newsapi")
         url = "https://newsapi.org/v2/everything"
         params = {
             "q": f"{symbol} crypto",
@@ -332,6 +365,7 @@ def _fetch_twitter(symbol: str) -> List[Dict[str, str]]:
         logger.warning("tweepy not installed. Install with: pip install tweepy")
         return []
     try:
+        _get_rate_limiter().wait("twitter")
         client = tweepy.Client(bearer_token=settings.TWITTER_BEARER_TOKEN, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         query = f"${symbol} crypto -is:retweet lang:en"
         tweets = client.search_recent_tweets(
@@ -372,6 +406,7 @@ def _fetch_reddit(symbol: str) -> List[Dict[str, str]]:
         logger.warning("praw not installed. Install with: pip install praw")
         return []
     try:
+        _get_rate_limiter().wait("reddit")
         reddit = praw.Reddit(
             client_id=settings.REDDIT_CLIENT_ID,
             client_secret=settings.REDDIT_CLIENT_SECRET,
@@ -413,6 +448,7 @@ def _fetch_facebook(symbol: str) -> List[Dict[str, str]]:
     if not settings.FACEBOOK_PAGE_ACCESS_TOKEN or not settings.FACEBOOK_PAGE_ID:
         return []
     try:
+        _get_rate_limiter().wait("facebook")
         url = f"https://graph.facebook.com/v19.0/{settings.FACEBOOK_PAGE_ID}/posts"
         params = {
             "fields": "message,created_time,permalink_url",
@@ -453,6 +489,7 @@ def _fetch_youtube(symbol: str) -> List[Dict[str, str]]:
     if not settings.YOUTUBE_API_KEY:
         return []
     try:
+        _get_rate_limiter().wait("youtube")
         url = "https://www.googleapis.com/youtube/v3/search"
         params = {
             "part": "snippet",
@@ -497,6 +534,7 @@ def _fetch_cryptopanic(symbol: str) -> List[Dict[str, str]]:
     if not settings.CRYPTOPANIC_API_KEY:
         return []
     try:
+        _get_rate_limiter().wait("cryptopanic")
         url = "https://cryptopanic.com/api/v1/posts/"
         params = {
             "auth_token": settings.CRYPTOPANIC_API_KEY,
@@ -538,6 +576,7 @@ def _fetch_cryptocompare(symbol: str) -> List[Dict[str, str]]:
     if not settings.CRYPTOCOMPARE_API_KEY:
         return []
     try:
+        _get_rate_limiter().wait("cryptocompare")
         url = "https://min-api.cryptocompare.com/data/v2/news/"
         params = {
             "lang": "EN",
@@ -576,6 +615,7 @@ def _fetch_lunarcrush(symbol: str) -> List[Dict[str, str]]:
     if not settings.LUNARCRUSH_API_KEY:
         return []
     try:
+        _get_rate_limiter().wait("lunarcrush")
         # Extract base currency (e.g., BTC from BTC/USDT)
         base = symbol.split("/")[0]
         url = "https://lunarcrush.com/api/v2"
@@ -621,6 +661,7 @@ def _fetch_santiment(symbol: str) -> List[Dict[str, str]]:
     if not settings.SANTIMENT_API_KEY:
         return []
     try:
+        _get_rate_limiter().wait("santiment")
         # Santiment uses asset slugs (e.g., "bitcoin", "ethereum"). We'll map common symbols.
         # For simplicity, we'll use the lowercase base currency as slug.
         base = symbol.split("/")[0].lower()
@@ -663,6 +704,7 @@ def _fetch_messari(symbol: str) -> List[Dict[str, str]]:
     if not settings.MESSARI_API_KEY:
         return []
     try:
+        _get_rate_limiter().wait("messari")
         base = symbol.split("/")[0].lower()
         url = f"https://data.messari.io/api/v1/news/{base}"
         headers = {"x-messari-api-key": settings.MESSARI_API_KEY}
@@ -699,6 +741,7 @@ def _fetch_coinmarketcap(symbol: str) -> List[Dict[str, str]]:
     if not settings.COINMARKETCAP_API_KEY:
         return []
     try:
+        _get_rate_limiter().wait("coinmarketcap")
         base = symbol.split("/")[0]
         url = "https://pro-api.coinmarketcap.com/v1/content/latest"
         params = {
@@ -738,6 +781,7 @@ def _fetch_coinmarketcap(symbol: str) -> List[Dict[str, str]]:
 def _fetch_googlenews(symbol: str) -> List[Dict[str, str]]:
     """Fetch news from Google News RSS feed."""
     try:
+        _get_rate_limiter().wait("googlenews")
         base = symbol.split("/")[0]
         url = f"https://news.google.com/rss/search?q={base}+crypto&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(url)
@@ -771,6 +815,7 @@ def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
     if not settings.STOCKTWITS_API_KEY:
         return []
     try:
+        _get_rate_limiter().wait("stocktwits")
         base = symbol.split("/")[0]
         # StockTwits uses tickers like BTC.X for crypto
         ticker = f"{base}.X"
@@ -832,6 +877,7 @@ def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
                     feed_content = None
 
             if feed_content is None:
+                _get_rate_limiter().wait(feed_url)
                 headers = {
                     "User-Agent": "Mozilla/5.0 (compatible; BengoBot/1.0; +https://github.com/your-repo)"
                 }

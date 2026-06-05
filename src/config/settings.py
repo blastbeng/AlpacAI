@@ -111,11 +111,9 @@ class Settings(BaseSettings):
 
     # RSS Feeds
     RSS_FEEDS: list[str] = [
-        "https://www.coindesk.com/arc/outboundfeeds/rss/",
         "https://cointelegraph.com/rss",
         "https://decrypt.co/feed",
         "https://cryptoslate.com/feed/",
-        "https://ambcrypto.com/feed/",
         "https://bitcoinmagazine.com/feed",
         "https://bitcoinist.com/feed/",
         "https://www.newsbtc.com/feed/",
@@ -184,6 +182,10 @@ class Settings(BaseSettings):
     NEWS_COIN_DISCOVERY_MAX_COINS: int = 5          # max new coins to add from news
     NEWS_COIN_DISCOVERY_MIN_SENTIMENT: float = 0.3  # minimum avg compound to consider
     NEWS_COIN_DISCOVERY_MIN_ARTICLES: int = 3       # minimum articles to be considered
+
+    # Rate limiting for news providers
+    NEWS_RATE_LIMIT_ENABLED: bool = True
+    NEWS_RATE_LIMIT_PER_SOURCE_SECONDS: float = 1.0   # minimum seconds between requests to the same source
 
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
