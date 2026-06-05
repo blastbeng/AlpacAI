@@ -1,0 +1,180 @@
+import logging
+from typing import List, Dict, Optional
+import hashlib
+import json
+
+from src.config.settings import settings
+from src.utils.redis_client import get_redis_client
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
+    """
+    Fetch news articles for a trading symbol from all enabled sources.
+    Returns a list of dicts with keys:
+        title, source, url, published_at, summary
+    Results are cached in Redis for NEWS_CACHE_TTL_SECONDS.
+    """
+    if not settings.NEWS_ENABLED:
+        return []
+
+    redis_client = get_redis_client()
+    cache_key = f"news:{symbol}:{_source_fingerprint()}"
+    cached = redis_client.get(cache_key)
+    if cached:
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
+
+    articles: List[Dict[str, str]] = []
+
+    if "newsapi" in settings.NEWS_SOURCES:
+        articles.extend(_fetch_newsapi(symbol))
+
+    if "twitter" in settings.NEWS_SOURCES:
+        articles.extend(_fetch_twitter(symbol))
+
+    if "reddit" in settings.NEWS_SOURCES:
+        articles.extend(_fetch_reddit(symbol))
+
+    # Deduplicate by URL
+    seen = set()
+    unique = []
+    for a in articles:
+        url = a.get("url", "")
+        if url and url not in seen:
+            seen.add(url)
+            unique.append(a)
+
+    # Limit per symbol
+    unique = unique[:settings.NEWS_MAX_ARTICLES_PER_SYMBOL]
+
+    # Cache
+    try:
+        redis_client.setex(cache_key, settings.NEWS_CACHE_TTL_SECONDS, json.dumps(unique))
+    except Exception as e:
+        logger.warning(f"Failed to cache news for {symbol}: {e}")
+
+    return unique
+
+
+def _source_fingerprint() -> str:
+    """Create a short fingerprint of the current source configuration for cache key."""
+    raw = f"{settings.NEWS_SOURCES}:{settings.NEWS_MAX_ARTICLES_PER_SYMBOL}"
+    return hashlib.md5(raw.encode()).hexdigest()[:8]
+
+
+# ---------------------------------------------------------------------------
+# NewsAPI.org
+# ---------------------------------------------------------------------------
+
+def _fetch_newsapi(symbol: str) -> List[Dict[str, str]]:
+    if not settings.NEWS_API_KEY:
+        return []
+    try:
+        from newsapi import NewsApiClient
+    except ImportError:
+        logger.warning("newsapi-python not installed. Install with: pip install newsapi-python")
+        return []
+    try:
+        client = NewsApiClient(api_key=settings.NEWS_API_KEY)
+        query = f"{symbol} crypto"
+        response = client.get_everything(
+            q=query,
+            language="en",
+            sort_by="publishedAt",
+            page_size=settings.NEWS_MAX_ARTICLES_PER_SYMBOL,
+        )
+        articles = []
+        for art in response.get("articles", []):
+            articles.append({
+                "title": art.get("title", ""),
+                "source": art.get("source", {}).get("name", "NewsAPI"),
+                "url": art.get("url", ""),
+                "published_at": art.get("publishedAt", ""),
+                "summary": art.get("description", "") or "",
+            })
+        return articles
+    except Exception as e:
+        logger.warning(f"NewsAPI fetch failed for {symbol}: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Twitter (X) via API v2
+# ---------------------------------------------------------------------------
+
+def _fetch_twitter(symbol: str) -> List[Dict[str, str]]:
+    if not settings.TWITTER_BEARER_TOKEN:
+        return []
+    try:
+        import tweepy
+    except ImportError:
+        logger.warning("tweepy not installed. Install with: pip install tweepy")
+        return []
+    try:
+        client = tweepy.Client(bearer_token=settings.TWITTER_BEARER_TOKEN)
+        query = f"${symbol} crypto -is:retweet lang:en"
+        tweets = client.search_recent_tweets(
+            query=query,
+            max_results=min(settings.NEWS_MAX_ARTICLES_PER_SYMBOL, 10),
+            tweet_fields=["created_at", "text"],
+        )
+        articles = []
+        if tweets.data:
+            for tweet in tweets.data:
+                articles.append({
+                    "title": tweet.text[:100],
+                    "source": "Twitter",
+                    "url": f"https://twitter.com/i/web/status/{tweet.id}",
+                    "published_at": str(tweet.created_at) if tweet.created_at else "",
+                    "summary": tweet.text,
+                })
+        return articles
+    except Exception as e:
+        logger.warning(f"Twitter fetch failed for {symbol}: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Reddit
+# ---------------------------------------------------------------------------
+
+def _fetch_reddit(symbol: str) -> List[Dict[str, str]]:
+    if not settings.REDDIT_CLIENT_ID or not settings.REDDIT_CLIENT_SECRET:
+        return []
+    try:
+        import praw
+    except ImportError:
+        logger.warning("praw not installed. Install with: pip install praw")
+        return []
+    try:
+        reddit = praw.Reddit(
+            client_id=settings.REDDIT_CLIENT_ID,
+            client_secret=settings.REDDIT_CLIENT_SECRET,
+            user_agent=settings.REDDIT_USER_AGENT,
+        )
+        submissions = reddit.subreddit("all").search(
+            f"{symbol} crypto",
+            sort="relevance",
+            time_filter="week",
+            limit=settings.NEWS_MAX_ARTICLES_PER_SYMBOL,
+        )
+        articles = []
+        for sub in submissions:
+            articles.append({
+                "title": sub.title,
+                "source": f"Reddit r/{sub.subreddit.display_name}",
+                "url": f"https://reddit.com{sub.permalink}",
+                "published_at": str(sub.created_utc),
+                "summary": sub.selftext[:300] if sub.selftext else sub.title,
+            })
+        return articles
+    except Exception as e:
+        logger.warning(f"Reddit fetch failed for {symbol}: {e}")
+        return []
