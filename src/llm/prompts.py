@@ -114,6 +114,20 @@ def compute_bollinger_bands(
     lower = middle - std_dev * std
     return upper, middle, lower
 
+
+def _format_news_for_prompt(articles: list) -> str:
+    """Format a list of news articles into a compact string for the LLM prompt."""
+    if not articles:
+        return "No recent news available."
+    lines = []
+    for i, art in enumerate(articles, 1):
+        lines.append(
+            f"{i}. [{art.get('source', 'Unknown')}] {art.get('title', '')} "
+            f"({art.get('published_at', '')}) - {art.get('summary', '')[:200]}"
+        )
+    return "\n".join(lines)
+
+
 SYSTEM_PROMPT = """You are a professional cryptocurrency trading bot assistant. Your primary goal is to generate consistent short-term profit while preserving capital. You must avoid large drawdowns and only trade when there is a clear edge.
 
 Key principles:
@@ -386,6 +400,15 @@ Maximum coins to trade: {max_coins}
     if recent_trades:
         prompt += f"\nRecent closed trades (last {len(recent_trades)}):\n{json.dumps(recent_trades)}\n"
         prompt += "Use these outcomes to adapt your strategy. If recent trades are losing, become more conservative.\n"
+
+    # --- News section ---
+    news_section = ""
+    if settings.NEWS_ENABLED and fetch_news_for_symbol is not None:
+        articles = fetch_news_for_symbol(symbol)
+        if articles:
+            news_section = "Recent news for this coin:\n" + _format_news_for_prompt(articles)
+    if news_section:
+        prompt += f"\n{news_section}\n"
 
     prompt += f"""
 **Your primary objective is short-term profit.** Use the ATR to set stop-loss and take-profit distances that respect the coin's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on a risk:reward ratio of at least 1:2. **Crucially, your stop distance must be at least 1× ATR, and preferably 1.5–2.5× ATR, to avoid being stopped out by normal market noise.**
