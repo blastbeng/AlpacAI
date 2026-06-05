@@ -143,7 +143,7 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
         return []
 
     start_time = time.time()
-    logger.debug(f"Fetching news for {symbol}...")
+    logger.info(f"Fetching news for {symbol}...")
 
     redis_client = get_redis_client()
     cache_key = f"news:{symbol}:{_source_fingerprint()}"
@@ -151,7 +151,7 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
     if cached:
         try:
             articles = json.loads(cached)
-            logger.debug(f"News for {symbol} served from cache ({len(articles)} articles)")
+            logger.info(f"News for {symbol} served from cache ({len(articles)} articles)")
             return articles
         except Exception:
             pass
@@ -159,7 +159,7 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
     articles: List[Dict[str, str]] = []
 
     enabled = _get_enabled_sources()
-    logger.debug(f"Enabled news sources for {symbol}: {enabled}")
+    logger.info(f"Enabled news sources for {symbol}: {enabled}")
     for source in enabled:
         source_start = time.time()
         if source == "newsapi":
@@ -213,7 +213,7 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
         logger.warning(f"Failed to cache news for {symbol}: {e}")
 
     total_time = time.time() - start_time
-    logger.debug(f"News for {symbol}: {len(unique)} articles from {len(enabled)} sources in {total_time:.2f}s")
+    logger.info(f"News for {symbol}: {len(unique)} articles from {len(enabled)} sources in {total_time:.2f}s")
     if total_time > 5.0:
         logger.warning(f"News fetch for {symbol} took {total_time:.2f}s – consider reducing sources or increasing cache TTL")
 
@@ -319,6 +319,7 @@ def _fetch_newsapi(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("newsapi")
+        logger.info(f"Fetching NewsAPI for {symbol}...")
         url = "https://newsapi.org/v2/everything"
         params = {
             "q": f"{symbol} crypto",
@@ -346,6 +347,7 @@ def _fetch_newsapi(symbol: str) -> List[Dict[str, str]]:
                 "summary": description[:300],
                 "sentiment": sentiment,
             })
+        logger.info(f"NewsAPI returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"NewsAPI fetch failed for {symbol}: {e}")
@@ -366,6 +368,7 @@ def _fetch_twitter(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("twitter")
+        logger.info(f"Fetching Twitter for {symbol}...")
         client = tweepy.Client(bearer_token=settings.TWITTER_BEARER_TOKEN, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         query = f"${symbol} crypto -is:retweet lang:en"
         tweets = client.search_recent_tweets(
@@ -387,6 +390,7 @@ def _fetch_twitter(symbol: str) -> List[Dict[str, str]]:
                     "summary": tweet.text,
                     "sentiment": sentiment,
                 })
+        logger.info(f"Twitter returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"Twitter fetch failed for {symbol}: {e}")
@@ -407,6 +411,7 @@ def _fetch_reddit(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("reddit")
+        logger.info(f"Fetching Reddit for {symbol}...")
         reddit = praw.Reddit(
             client_id=settings.REDDIT_CLIENT_ID,
             client_secret=settings.REDDIT_CLIENT_SECRET,
@@ -434,6 +439,7 @@ def _fetch_reddit(symbol: str) -> List[Dict[str, str]]:
                 "summary": reddit_summary,
                 "sentiment": sentiment,
             })
+        logger.info(f"Reddit returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"Reddit fetch failed for {symbol}: {e}")
@@ -449,6 +455,7 @@ def _fetch_facebook(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("facebook")
+        logger.info(f"Fetching Facebook for {symbol}...")
         url = f"https://graph.facebook.com/v19.0/{settings.FACEBOOK_PAGE_ID}/posts"
         params = {
             "fields": "message,created_time,permalink_url",
@@ -475,6 +482,7 @@ def _fetch_facebook(symbol: str) -> List[Dict[str, str]]:
                 "summary": message[:300],
                 "sentiment": sentiment,
             })
+        logger.info(f"Facebook returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"Facebook fetch failed for {symbol}: {e}")
@@ -490,6 +498,7 @@ def _fetch_youtube(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("youtube")
+        logger.info(f"Fetching YouTube for {symbol}...")
         url = "https://www.googleapis.com/youtube/v3/search"
         params = {
             "part": "snippet",
@@ -520,6 +529,7 @@ def _fetch_youtube(symbol: str) -> List[Dict[str, str]]:
                 "summary": description[:300],
                 "sentiment": sentiment,
             })
+        logger.info(f"YouTube returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"YouTube fetch failed for {symbol}: {e}")
@@ -535,6 +545,7 @@ def _fetch_cryptopanic(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("cryptopanic")
+        logger.info(f"Fetching CryptoPanic for {symbol}...")
         url = "https://cryptopanic.com/api/v1/posts/"
         params = {
             "auth_token": settings.CRYPTOPANIC_API_KEY,
@@ -561,6 +572,7 @@ def _fetch_cryptopanic(symbol: str) -> List[Dict[str, str]]:
                 "summary": summary[:300],
                 "sentiment": sentiment,
             })
+        logger.info(f"CryptoPanic returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"CryptoPanic fetch failed for {symbol}: {e}")
@@ -577,6 +589,7 @@ def _fetch_cryptocompare(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("cryptocompare")
+        logger.info(f"Fetching CryptoCompare for {symbol}...")
         url = "https://min-api.cryptocompare.com/data/v2/news/"
         params = {
             "lang": "EN",
@@ -601,6 +614,7 @@ def _fetch_cryptocompare(symbol: str) -> List[Dict[str, str]]:
                 "summary": body[:300],
                 "sentiment": sentiment,
             })
+        logger.info(f"CryptoCompare returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"CryptoCompare fetch failed for {symbol}: {e}")
@@ -616,6 +630,7 @@ def _fetch_lunarcrush(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("lunarcrush")
+        logger.info(f"Fetching LunarCrush for {symbol}...")
         # Extract base currency (e.g., BTC from BTC/USDT)
         base = symbol.split("/")[0]
         url = "https://lunarcrush.com/api/v2"
@@ -647,6 +662,7 @@ def _fetch_lunarcrush(symbol: str) -> List[Dict[str, str]]:
                     "summary": summary[:300],
                     "sentiment": sentiment,
                 })
+        logger.info(f"LunarCrush returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"LunarCrush fetch failed for {symbol}: {e}")
@@ -662,6 +678,7 @@ def _fetch_santiment(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("santiment")
+        logger.info(f"Fetching Santiment for {symbol}...")
         # Santiment uses asset slugs (e.g., "bitcoin", "ethereum"). We'll map common symbols.
         # For simplicity, we'll use the lowercase base currency as slug.
         base = symbol.split("/")[0].lower()
@@ -690,6 +707,7 @@ def _fetch_santiment(symbol: str) -> List[Dict[str, str]]:
                 "summary": summary[:300],
                 "sentiment": sentiment,
             })
+        logger.info(f"Santiment returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"Santiment fetch failed for {symbol}: {e}")
@@ -705,6 +723,7 @@ def _fetch_messari(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("messari")
+        logger.info(f"Fetching Messari for {symbol}...")
         base = symbol.split("/")[0].lower()
         url = f"https://data.messari.io/api/v1/news/{base}"
         headers = {"x-messari-api-key": settings.MESSARI_API_KEY}
@@ -727,6 +746,7 @@ def _fetch_messari(symbol: str) -> List[Dict[str, str]]:
                 "summary": summary[:300],
                 "sentiment": sentiment,
             })
+        logger.info(f"Messari returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"Messari fetch failed for {symbol}: {e}")
@@ -742,6 +762,7 @@ def _fetch_coinmarketcap(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("coinmarketcap")
+        logger.info(f"Fetching CoinMarketCap for {symbol}...")
         base = symbol.split("/")[0]
         url = "https://pro-api.coinmarketcap.com/v1/content/latest"
         params = {
@@ -768,6 +789,7 @@ def _fetch_coinmarketcap(symbol: str) -> List[Dict[str, str]]:
                 "summary": summary[:300],
                 "sentiment": sentiment,
             })
+        logger.info(f"CoinMarketCap returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"CoinMarketCap fetch failed for {symbol}: {e}")
@@ -782,6 +804,7 @@ def _fetch_googlenews(symbol: str) -> List[Dict[str, str]]:
     """Fetch news from Google News RSS feed."""
     try:
         _get_rate_limiter().wait("googlenews")
+        logger.info(f"Fetching Google News for {symbol}...")
         base = symbol.split("/")[0]
         url = f"https://news.google.com/rss/search?q={base}+crypto&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(url)
@@ -801,6 +824,7 @@ def _fetch_googlenews(symbol: str) -> List[Dict[str, str]]:
                 "summary": summary[:300],
                 "sentiment": sentiment,
             })
+        logger.info(f"Google News returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"Google News fetch failed for {symbol}: {e}")
@@ -816,6 +840,7 @@ def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("stocktwits")
+        logger.info(f"Fetching StockTwits for {symbol}...")
         base = symbol.split("/")[0]
         # StockTwits uses tickers like BTC.X for crypto
         ticker = f"{base}.X"
@@ -851,6 +876,7 @@ def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
                 "summary": body[:300],
                 "sentiment": {"label": label, "compound": compound},
             })
+        logger.info(f"StockTwits returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"StockTwits fetch failed for {symbol}: {e}")
@@ -878,6 +904,7 @@ def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
 
             if feed_content is None:
                 _get_rate_limiter().wait(feed_url)
+                logger.info(f"Fetching RSS feed: {feed_url}")
                 headers = {
                     "User-Agent": "Mozilla/5.0 (compatible; BengoBot/1.0; +https://github.com/your-repo)"
                 }
@@ -935,4 +962,24 @@ def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
                 logger.warning(f"RSS fetch failed for {feed_url}: {e}")
         except Exception as e:
             logger.warning(f"RSS fetch failed for {feed_url}: {e}")
+    logger.info(f"RSS total articles for {symbol}: {len(articles)}")
     return articles
+
+
+def test_rss_feeds():
+    """Check each configured RSS feed and log whether it is reachable."""
+    logger.info(f"Testing {len(settings.RSS_FEEDS)} RSS feeds...")
+    for url in settings.RSS_FEEDS:
+        try:
+            resp = httpx.get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; BengoBot/1.0; +https://github.com/your-repo)"},
+                timeout=10,
+                follow_redirects=True,
+            )
+            if resp.status_code == 200:
+                logger.info(f"RSS OK: {url}")
+            else:
+                logger.warning(f"RSS {url} returned {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"RSS {url} failed: {e}")

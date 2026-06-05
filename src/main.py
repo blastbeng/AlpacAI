@@ -6,6 +6,7 @@ from src.config.settings import settings
 from src.database import init_db, get_telegram_chat_id, set_telegram_chat_id
 from src.utils.redis_client import get_redis_client
 from src.trading.engine import TradingEngine
+from src.news.fetcher import test_rss_feeds
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
@@ -43,6 +44,7 @@ async def main():
     init_db()
     _seed_telegram_chat_id()
     _cleanup_redis_state()
+    test_rss_feeds()
     engine = TradingEngine()
     logging.info("Trading engine initialized.")
     from src.web.app import set_engine
