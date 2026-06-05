@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+import logging
 import time
 from typing import Dict, List, Any, Optional
 from src.config.settings import settings
@@ -349,3 +350,15 @@ def get_aggregate_sentiment_from_db(symbol: str, max_age_seconds: int = 900) -> 
         "neutral": neu,
         "total_articles": len(articles),
     }
+
+
+def cleanup_old_news(retention_seconds: int):
+    """Delete news articles older than retention_seconds."""
+    conn = get_connection()
+    cutoff = time.time() - retention_seconds
+    deleted = conn.execute("DELETE FROM news_articles WHERE fetched_at < ?", (cutoff,)).rowcount
+    conn.commit()
+    conn.close()
+    if deleted:
+        logger = logging.getLogger(__name__)
+        logger.info(f"Cleaned up {deleted} old news articles.")

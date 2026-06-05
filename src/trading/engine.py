@@ -138,6 +138,13 @@ class TradingEngine:
             except Exception as e:
                 logger.error(f"Background news refresh error: {e}")
 
+            # Clean up old news articles
+            try:
+                from src.database import cleanup_old_news
+                await asyncio.to_thread(cleanup_old_news, settings.NEWS_RETENTION_SECONDS)
+            except Exception as e:
+                logger.warning(f"News cleanup failed: {e}")
+
             await asyncio.sleep(settings.NEWS_UPDATE_INTERVAL_MINUTES * 60)
 
     def _restore_paper_state(self):

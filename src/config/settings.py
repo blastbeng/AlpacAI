@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     NEWS_MAX_ARTICLES_PER_SYMBOL: int = 5
     NEWS_CACHE_TTL_SECONDS: int = 900        # 15 minutes
     NEWS_HTTP_TIMEOUT_SECONDS: float = 30.0   # timeout for each news source HTTP request
+    NEWS_RETENTION_SECONDS: int = 86400   # delete articles older than 24 hours
 
     # Facebook (Graph API)
     FACEBOOK_PAGE_ACCESS_TOKEN: Optional[str] = None
