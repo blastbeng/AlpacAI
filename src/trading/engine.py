@@ -22,15 +22,14 @@ from src.llm.prompts import (
     compute_ema,
 )
 try:
-    from src.news.fetcher import get_aggregate_sentiment, discover_trending_coins
+    from src.news.fetcher import discover_trending_coins
 except ImportError:
-    get_aggregate_sentiment = None
     discover_trending_coins = None
 from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm
 from src.strategies.validator import validate_signal
 from src.utils.redis_client import get_redis_client
-from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade, get_performance, store_news_articles
+from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade, get_performance, store_news_articles, get_aggregate_sentiment_from_db
 
 logger = logging.getLogger(__name__)
 
@@ -1036,9 +1035,9 @@ class TradingEngine:
                             logger.debug(f"Trailing stop updated for {symbol}: new stop {new_stop:.4f}")
 
                 # --- News sentiment risk adjustment for open positions ---
-                if settings.NEWS_ENABLED and get_aggregate_sentiment is not None:
+                if settings.NEWS_ENABLED:
                     try:
-                        agg_sent = get_aggregate_sentiment(symbol)
+                        agg_sent = get_aggregate_sentiment_from_db(symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
                         if agg_sent:
                             compound = agg_sent["avg_compound"]
                             # Force close if sentiment is extremely negative
@@ -1145,9 +1144,9 @@ class TradingEngine:
             position_fraction = max(0.1, min(1.0, position_fraction))
 
             # --- News sentiment risk adjustment ---
-            if settings.NEWS_ENABLED and settings.NEWS_SENTIMENT_RISK_ADJUSTMENT and get_aggregate_sentiment is not None:
+            if settings.NEWS_ENABLED and settings.NEWS_SENTIMENT_RISK_ADJUSTMENT:
                 try:
-                    agg_sent = get_aggregate_sentiment(symbol)
+                    agg_sent = get_aggregate_sentiment_from_db(symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
                     if agg_sent:
                         compound = agg_sent["avg_compound"]
                         # Skip BUY if sentiment is extremely negative
