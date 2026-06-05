@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+import time
 from typing import Dict, List, Any, Optional
 from src.config.settings import settings
 
@@ -78,6 +79,22 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_trade_history_symbol ON trade_history(symbol);
         CREATE INDEX IF NOT EXISTS idx_trade_history_timestamp ON trade_history(timestamp);
         CREATE INDEX IF NOT EXISTS idx_trade_history_symbol_timeframe ON trade_history(symbol, timeframe);
+
+        CREATE TABLE IF NOT EXISTS news_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            title TEXT,
+            source TEXT,
+            url TEXT,
+            published_at TEXT,
+            summary TEXT,
+            sentiment_label TEXT,
+            sentiment_compound REAL,
+            fetched_at REAL NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_news_symbol ON news_articles(symbol);
+        CREATE INDEX IF NOT EXISTS idx_news_fetched_at ON news_articles(fetched_at);
     """)
     conn.commit()
     conn.close()
@@ -248,3 +265,87 @@ def set_telegram_chat_id(chat_id: int):
     )
     conn.commit()
     conn.close()
+
+
+def store_news_articles(symbol: str, articles: List[Dict[str, Any]]):
+    """Replace all stored articles for a symbol with a fresh batch."""
+    conn = get_connection()
+    now = time.time()
+    # Delete old articles for this symbol
+    conn.execute("DELETE FROM news_articles WHERE symbol = ?", (symbol,))
+    # Insert new articles
+    for art in articles:
+        sentiment = art.get("sentiment", {})
+        conn.execute(
+            """
+            INSERT INTO news_articles (
+                symbol, title, source, url, published_at, summary,
+                sentiment_label, sentiment_compound, fetched_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                symbol,
+                art.get("title", ""),
+                art.get("source", ""),
+                art.get("url", ""),
+                art.get("published_at", ""),
+                art.get("summary", ""),
+                sentiment.get("label", ""),
+                sentiment.get("compound", 0.0),
+                now,
+            ),
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_news_for_symbol(symbol: str, max_age_seconds: int = 900) -> List[Dict[str, Any]]:
+    """Retrieve recent news articles for a symbol from the database."""
+    conn = get_connection()
+    cutoff = time.time() - max_age_seconds
+    rows = conn.execute(
+        """
+        SELECT title, source, url, published_at, summary, sentiment_label, sentiment_compound
+        FROM news_articles
+        WHERE symbol = ? AND fetched_at >= ?
+        ORDER BY fetched_at DESC
+        """,
+        (symbol, cutoff),
+    ).fetchall()
+    conn.close()
+    articles = []
+    for row in rows:
+        articles.append({
+            "title": row["title"],
+            "source": row["source"],
+            "url": row["url"],
+            "published_at": row["published_at"],
+            "summary": row["summary"],
+            "sentiment": {
+                "label": row["sentiment_label"],
+                "compound": row["sentiment_compound"],
+            },
+        })
+    return articles
+
+
+def get_aggregate_sentiment_from_db(symbol: str, max_age_seconds: int = 900) -> Optional[Dict[str, Any]]:
+    """Return aggregate sentiment for a symbol from the database."""
+    articles = get_news_for_symbol(symbol, max_age_seconds)
+    if not articles:
+        return None
+    compounds = [a["sentiment"]["compound"] for a in articles if "sentiment" in a]
+    if not compounds:
+        return None
+    avg_compound = sum(compounds) / len(compounds)
+    labels = [a["sentiment"]["label"] for a in articles if "sentiment" in a]
+    pos = labels.count("positive")
+    neg = labels.count("negative")
+    neu = labels.count("neutral")
+    return {
+        "avg_compound": round(avg_compound, 4),
+        "positive": pos,
+        "negative": neg,
+        "neutral": neu,
+        "total_articles": len(articles),
+    }
