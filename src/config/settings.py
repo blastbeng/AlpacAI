@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     # Database
     DATABASE_PATH: str = "data/bot.db"
 
+    # News
+    NEWS_ENABLED: bool = False
+    NEWS_UPDATE_INTERVAL_MINUTES: int = 15
+
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None

@@ -68,6 +68,46 @@ class TradingEngine:
         """Attach a notification service (e.g., TelegramBot)."""
         self.notifier = notifier
 
+    async def _refresh_news_cache(self):
+        """Periodically fetch news for tracked coins and top-volume coins to keep cache warm."""
+        if not settings.NEWS_ENABLED:
+            return
+        try:
+            from src.news.fetcher import fetch_news_for_symbol
+        except ImportError:
+            logger.warning("News module not available; skipping background news refresh.")
+            return
+
+        while True:
+            try:
+                # Determine symbols to refresh: current coins + top 10 by volume
+                symbols_to_refresh = set(entry["symbol"] for entry in self.current_coins)
+                try:
+                    available_pairs = await asyncio.to_thread(
+                        get_available_pairs, self.exchange, self.base_currency
+                    )
+                    tickers = await asyncio.to_thread(get_tickers, self.exchange, available_pairs[:50])
+                    sorted_by_vol = sorted(
+                        available_pairs[:50],
+                        key=lambda s: tickers.get(s, {}).get("quoteVolume", 0) or 0,
+                        reverse=True,
+                    )[:10]
+                    symbols_to_refresh.update(sorted_by_vol)
+                except Exception as e:
+                    logger.warning(f"Could not determine top-volume coins for news refresh: {e}")
+
+                for sym in symbols_to_refresh:
+                    try:
+                        await asyncio.to_thread(fetch_news_for_symbol, sym)
+                    except Exception as e:
+                        logger.debug(f"News refresh failed for {sym}: {e}")
+
+                logger.debug(f"News cache refreshed for {len(symbols_to_refresh)} symbols.")
+            except Exception as e:
+                logger.error(f"Background news refresh error: {e}")
+
+            await asyncio.sleep(settings.NEWS_UPDATE_INTERVAL_MINUTES * 60)
+
     def _restore_paper_state(self):
         """Replay trade history to restore paper simulator balances and positions with cost basis."""
         old_positions = self.positions.copy()  # preserve LLM-set risk params
@@ -400,6 +440,8 @@ class TradingEngine:
     async def run(self):
         """Main loop that runs forever."""
         logger.info("Trading engine started.")
+        # Start background news refresh task
+        asyncio.create_task(self._refresh_news_cache())
         while True:
             try:
                 await self._reconcile_positions()
