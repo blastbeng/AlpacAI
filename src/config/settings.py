@@ -151,6 +151,16 @@ class Settings(BaseSettings):
         "https://cryptoslate.com/feed/",
         "https://ambcrypto.com/feed/",
         "https://bitcoinmagazine.com/.rss/full/",
+        "https://bitcoinist.com/feed/",
+        "https://www.newsbtc.com/feed/",
+        "https://cryptopotato.com/feed/",
+        "https://coinjournal.net/feed/",
+        "https://cryptobriefing.com/feed/",
+        "https://beincrypto.com/feed/",
+        "https://coingape.com/feed/",
+        "https://dailyhodl.com/feed/",
+        "https://www.cryptonewsz.com/feed/",
+        "https://www.cryptopolitan.com/feed/",
     ]
 
     # YouTube Data API v3
