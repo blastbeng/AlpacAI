@@ -21,7 +21,7 @@ class TelegramBot:
             [
                 [KeyboardButton("📊 Status"), KeyboardButton("📈 Trades")],
                 [KeyboardButton("💰 Profit"), KeyboardButton("🚀 Performance")],
-                [KeyboardButton("📰 News (all)")],
+                [KeyboardButton("📰 News")],
                 [KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
             ],
             resize_keyboard=True,
@@ -66,7 +66,7 @@ class TelegramBot:
             await self.cmd_pause(update, context)
         elif text == "▶️ Resume":
             await self.cmd_resume(update, context)
-        elif text == "📰 News (all)":
+        elif text == "📰 News":
             await self.cmd_news(update, context)
 
     async def cmd_pause(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -303,7 +303,7 @@ class TelegramBot:
                 [
                     [KeyboardButton("📊 Status"), KeyboardButton("📈 Trades")],
                     [KeyboardButton("💰 Profit"), KeyboardButton("🚀 Performance")],
-                    [KeyboardButton("📰 News (all)")],
+                    [KeyboardButton("📰 News")],
                     [KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
                 ],
                 resize_keyboard=True,
