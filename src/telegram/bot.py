@@ -20,7 +20,7 @@ class TelegramBot:
         self.keyboard = ReplyKeyboardMarkup(
             [
                 [KeyboardButton("📊 Status"), KeyboardButton("📈 Trades")],
-                [KeyboardButton("💰 Profit"), KeyboardButton("📊 Performance")],
+                [KeyboardButton("💰 Profit"), KeyboardButton("🚀 Performance")],
                 [KeyboardButton("📰 News")],
                 [KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
             ],
@@ -60,7 +60,7 @@ class TelegramBot:
             await self.cmd_trades(update, context)
         elif text == "💰 Profit":
             await self.cmd_profit(update, context)
-        elif text == "📊 Performance":
+        elif text == "🚀 Performance":
             await self.cmd_performance(update, context)
         elif text == "⏸️ Pause":
             await self.cmd_pause(update, context)
@@ -161,7 +161,7 @@ class TelegramBot:
                 )
                 return
 
-            msg = "<b>📊 Performance by Coin</b>\n\n"
+            msg = "<b>🚀 Performance by Coin</b>\n\n"
             for r in rows:
                 symbol = r["symbol"]
                 tf = r.get("timeframe") or "—"
@@ -273,7 +273,7 @@ class TelegramBot:
             self.keyboard = ReplyKeyboardMarkup(
                 [
                     [KeyboardButton("📊 Status"), KeyboardButton("📈 Trades")],
-                    [KeyboardButton("💰 Profit"), KeyboardButton("📊 Performance")],
+                    [KeyboardButton("💰 Profit"), KeyboardButton("🚀 Performance")],
                     [KeyboardButton("📰 News")],
                     [KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
                 ],
