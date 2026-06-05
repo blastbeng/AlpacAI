@@ -118,6 +118,18 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
     if "coinmarketcap" in settings.NEWS_SOURCES:
         articles.extend(_fetch_coinmarketcap(symbol))
 
+    if "googlenews" in settings.NEWS_SOURCES:
+        articles.extend(_fetch_googlenews(symbol))
+
+    if "stocktwits" in settings.NEWS_SOURCES:
+        articles.extend(_fetch_stocktwits(symbol))
+
+    if "coinpaprika" in settings.NEWS_SOURCES:
+        articles.extend(_fetch_coinpaprika(symbol))
+
+    if "coincodex" in settings.NEWS_SOURCES:
+        articles.extend(_fetch_coincodex(symbol))
+
     # Deduplicate by URL
     seen = set()
     unique = []
@@ -655,6 +667,168 @@ def _fetch_coinmarketcap(symbol: str) -> List[Dict[str, str]]:
         return articles
     except Exception as e:
         logger.warning(f"CoinMarketCap fetch failed for {symbol}: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Google News RSS
+# ---------------------------------------------------------------------------
+
+def _fetch_googlenews(symbol: str) -> List[Dict[str, str]]:
+    """Fetch news from Google News RSS feed."""
+    try:
+        base = symbol.split("/")[0]
+        url = f"https://news.google.com/rss/search?q={base}+crypto&hl=en-US&gl=US&ceid=US:en"
+        feed = feedparser.parse(url)
+        articles = []
+        for entry in feed.entries[:settings.GOOGLE_NEWS_MAX_ARTICLES]:
+            title = entry.get("title", "")
+            summary = entry.get("summary", "") or entry.get("description", "")
+            text = f"{title} {summary}"
+            sentiment = _analyze_sentiment(text)
+            if not _is_relevant(symbol, title, summary[:300]):
+                continue
+            articles.append({
+                "title": title,
+                "source": entry.get("source", {}).get("title", "Google News"),
+                "url": entry.get("link", ""),
+                "published_at": entry.get("published", ""),
+                "summary": summary[:300],
+                "sentiment": sentiment,
+            })
+        return articles
+    except Exception as e:
+        logger.warning(f"Google News fetch failed for {symbol}: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# StockTwits API
+# ---------------------------------------------------------------------------
+
+def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
+    if not settings.STOCKTWITS_API_KEY:
+        return []
+    try:
+        base = symbol.split("/")[0]
+        # StockTwits uses tickers like BTC.X for crypto
+        ticker = f"{base}.X"
+        url = f"https://api.stocktwits.com/api/2/streams/symbol/{ticker}.json"
+        params = {"access_token": settings.STOCKTWITS_API_KEY, "limit": settings.STOCKTWITS_MAX_POSTS}
+        response = httpx.get(url, params=params, timeout=10.0)
+        response.raise_for_status()
+        data = response.json()
+        articles = []
+        for msg in data.get("messages", []):
+            body = msg.get("body", "")
+            title = body[:100]
+            sentiment_label = msg.get("entities", {}).get("sentiment", {}).get("basic", "")
+            # Map StockTwits sentiment to our labels
+            if sentiment_label == "Bullish":
+                label = "positive"
+                compound = 0.5
+            elif sentiment_label == "Bearish":
+                label = "negative"
+                compound = -0.5
+            else:
+                # Fallback to VADER
+                sentiment = _analyze_sentiment(body)
+                label = sentiment["label"]
+                compound = sentiment["compound"]
+            if not _is_relevant(symbol, title, body[:300]):
+                continue
+            articles.append({
+                "title": title,
+                "source": "StockTwits",
+                "url": f"https://stocktwits.com/{msg.get('user', {}).get('username', '')}/message/{msg.get('id', '')}",
+                "published_at": msg.get("created_at", ""),
+                "summary": body[:300],
+                "sentiment": {"label": label, "compound": compound},
+            })
+        return articles
+    except Exception as e:
+        logger.warning(f"StockTwits fetch failed for {symbol}: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# CoinPaprika News (free, no key)
+# ---------------------------------------------------------------------------
+
+def _fetch_coinpaprika(symbol: str) -> List[Dict[str, str]]:
+    """Fetch news from CoinPaprika's public news endpoint."""
+    try:
+        url = "https://api.coinpaprika.com/v1/news"
+        response = httpx.get(url, timeout=10.0)
+        response.raise_for_status()
+        data = response.json()
+        articles = []
+        for item in data[:settings.COINPAPRIKA_MAX_ARTICLES]:
+            title = item.get("title", "")
+            summary = item.get("content", "") or item.get("description", "")
+            text = f"{title} {summary}"
+            sentiment = _analyze_sentiment(text)
+            if not _is_relevant(symbol, title, summary[:300]):
+                continue
+            articles.append({
+                "title": title,
+                "source": item.get("source", {}).get("name", "CoinPaprika"),
+                "url": item.get("url", ""),
+                "published_at": item.get("published_at", ""),
+                "summary": summary[:300],
+                "sentiment": sentiment,
+            })
+        return articles
+    except Exception as e:
+        logger.warning(f"CoinPaprika fetch failed for {symbol}: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# CoinCodex News (free, no key)
+# ---------------------------------------------------------------------------
+
+def _fetch_coincodex(symbol: str) -> List[Dict[str, str]]:
+    """Fetch news from CoinCodex by first resolving the coin ID."""
+    try:
+        base = symbol.split("/")[0].lower()
+        # Step 1: search for the coin to get its ID
+        search_url = f"https://coincodex.com/api/coincodex/search?query={base}"
+        search_resp = httpx.get(search_url, timeout=10.0)
+        search_resp.raise_for_status()
+        search_data = search_resp.json()
+        # The response is a list of coins; find the one matching the symbol
+        coin_id = None
+        for coin in search_data:
+            if coin.get("symbol", "").lower() == base:
+                coin_id = coin.get("id")
+                break
+        if not coin_id:
+            return []
+        # Step 2: fetch news for that coin
+        news_url = f"https://coincodex.com/api/coincodex/get_news_by_coin_id/{coin_id}"
+        news_resp = httpx.get(news_url, timeout=10.0)
+        news_resp.raise_for_status()
+        news_data = news_resp.json()
+        articles = []
+        for item in news_data[:settings.COINCODEX_MAX_ARTICLES]:
+            title = item.get("title", "")
+            summary = item.get("content", "") or item.get("description", "")
+            text = f"{title} {summary}"
+            sentiment = _analyze_sentiment(text)
+            if not _is_relevant(symbol, title, summary[:300]):
+                continue
+            articles.append({
+                "title": title,
+                "source": item.get("source", {}).get("name", "CoinCodex"),
+                "url": item.get("url", ""),
+                "published_at": item.get("published_at", ""),
+                "summary": summary[:300],
+                "sentiment": sentiment,
+            })
+        return articles
+    except Exception as e:
+        logger.warning(f"CoinCodex fetch failed for {symbol}: {e}")
         return []
 
 

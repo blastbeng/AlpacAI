@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     @field_validator("NEWS_SOURCES")
     @classmethod
     def validate_news_sources(cls, v: list[str]) -> list[str]:
-        allowed = {"newsapi", "twitter", "reddit", "facebook", "youtube", "cryptopanic", "coingecko", "cryptocompare", "lunarcrush", "santiment", "messari", "coinmarketcap"}
+        allowed = {"newsapi", "twitter", "reddit", "facebook", "youtube", "cryptopanic", "coingecko", "cryptocompare", "lunarcrush", "santiment", "messari", "coinmarketcap", "googlenews", "stocktwits", "coinpaprika", "coincodex"}
         for source in v:
             if source not in allowed:
                 raise ValueError(f"Invalid news source: {source}. Allowed: {allowed}")
@@ -98,6 +98,8 @@ class Settings(BaseSettings):
                 raise ValueError("MESSARI_API_KEY is required when messari source is selected")
             if "coinmarketcap" in self.NEWS_SOURCES and not self.COINMARKETCAP_API_KEY:
                 raise ValueError("COINMARKETCAP_API_KEY is required when coinmarketcap source is selected")
+            if "stocktwits" in self.NEWS_SOURCES and not self.STOCKTWITS_API_KEY:
+                raise ValueError("STOCKTWITS_API_KEY is required when stocktwits source is selected")
         return self
 
     # Ollama
@@ -181,6 +183,19 @@ class Settings(BaseSettings):
     # CoinMarketCap API
     COINMARKETCAP_API_KEY: Optional[str] = None
     COINMARKETCAP_MAX_ARTICLES: int = 5
+
+    # Google News RSS (free, no API key)
+    GOOGLE_NEWS_MAX_ARTICLES: int = 5
+
+    # StockTwits API
+    STOCKTWITS_API_KEY: Optional[str] = None
+    STOCKTWITS_MAX_POSTS: int = 5
+
+    # CoinPaprika (free, no API key)
+    COINPAPRIKA_MAX_ARTICLES: int = 5
+
+    # CoinCodex (free, no API key)
+    COINCODEX_MAX_ARTICLES: int = 5
 
     # News sentiment risk adjustment
     NEWS_SENTIMENT_RISK_ADJUSTMENT: bool = False
