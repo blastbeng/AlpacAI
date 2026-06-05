@@ -222,6 +222,12 @@ class Settings(BaseSettings):
     NEWS_SENTIMENT_TIGHTEN_STOP_THRESHOLD: float = -0.3   # sentiment below this triggers stop tightening
     NEWS_SENTIMENT_TIGHTEN_STOP_MULTIPLIER: float = 0.5   # multiply stop distance by this factor (0.5 = halve distance)
 
+    # News-driven coin discovery
+    NEWS_COIN_DISCOVERY_ENABLED: bool = False
+    NEWS_COIN_DISCOVERY_MAX_COINS: int = 5          # max new coins to add from news
+    NEWS_COIN_DISCOVERY_MIN_SENTIMENT: float = 0.3  # minimum avg compound to consider
+    NEWS_COIN_DISCOVERY_MIN_ARTICLES: int = 3       # minimum articles to be considered
+
     # Telegram
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None

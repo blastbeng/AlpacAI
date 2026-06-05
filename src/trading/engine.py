@@ -22,9 +22,10 @@ from src.llm.prompts import (
     compute_ema,
 )
 try:
-    from src.news.fetcher import get_aggregate_sentiment
+    from src.news.fetcher import get_aggregate_sentiment, discover_trending_coins
 except ImportError:
     get_aggregate_sentiment = None
+    discover_trending_coins = None
 from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm
 from src.strategies.validator import validate_signal
@@ -477,6 +478,26 @@ class TradingEngine:
         if not available_pairs:
             logger.warning("No available pairs found.")
             return
+
+        # --- News-driven coin discovery: add trending coins not in the top 50 ---
+        if settings.NEWS_ENABLED and settings.NEWS_COIN_DISCOVERY_ENABLED and discover_trending_coins is not None:
+            try:
+                discovered = await asyncio.to_thread(
+                    discover_trending_coins,
+                    self.base_currency,
+                    available_pairs,
+                    max_coins=settings.NEWS_COIN_DISCOVERY_MAX_COINS,
+                    min_sentiment=settings.NEWS_COIN_DISCOVERY_MIN_SENTIMENT,
+                    min_articles=settings.NEWS_COIN_DISCOVERY_MIN_ARTICLES,
+                )
+                # Add discovered coins to the front of the list so they are included in the sample
+                for pair in discovered:
+                    if pair not in available_pairs:
+                        available_pairs.insert(0, pair)
+                if discovered:
+                    logger.info(f"Added {len(discovered)} news-discovered coins to candidate pool.")
+            except Exception as e:
+                logger.warning(f"News coin discovery failed: {e}")
 
         # Fetch balance and compute per-coin budget
         balance = await asyncio.to_thread(self.trader.fetch_balance)

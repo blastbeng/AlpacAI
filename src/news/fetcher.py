@@ -177,6 +177,64 @@ def get_aggregate_sentiment(symbol: str) -> Optional[Dict[str, Any]]:
     }
 
 
+def discover_trending_coins(
+    base_currency: str,
+    existing_pairs: List[str],
+    max_coins: int = 5,
+    min_sentiment: float = 0.3,
+    min_articles: int = 3,
+) -> List[str]:
+    """
+    Scan recent news for coins not in existing_pairs that have strong positive sentiment.
+    Returns a list of trading pair strings (e.g., ["DOGE/USDT", "SHIB/USDT"]).
+    """
+    if not settings.NEWS_ENABLED:
+        return []
+
+    # Fetch top 100 coins by market cap from CoinGecko (free, no key)
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/markets"
+        params = {
+            "vs_currency": "usd",
+            "order": "market_cap_desc",
+            "per_page": 100,
+            "page": 1,
+            "sparkline": "false",
+        }
+        response = httpx.get(url, params=params, timeout=15.0)
+        response.raise_for_status()
+        coins_data = response.json()
+    except Exception as e:
+        logger.warning(f"Failed to fetch coin list for discovery: {e}")
+        return []
+
+    # Build a set of symbols already in the candidate pool (without the quote currency)
+    existing_symbols = {pair.split("/")[0].lower() for pair in existing_pairs}
+
+    candidates = []
+    for coin in coins_data:
+        symbol = coin.get("symbol", "").upper()
+        if not symbol:
+            continue
+        pair = f"{symbol}/{base_currency}"
+        if pair in existing_pairs:
+            continue
+        if symbol.lower() in existing_symbols:
+            continue
+
+        # Check news sentiment for this coin
+        agg = get_aggregate_sentiment(pair)
+        if agg and agg["total_articles"] >= min_articles and agg["avg_compound"] >= min_sentiment:
+            candidates.append((pair, agg["avg_compound"]))
+
+    # Sort by sentiment descending and take top N
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    discovered = [pair for pair, _ in candidates[:max_coins]]
+    if discovered:
+        logger.info(f"News-driven coin discovery found: {discovered}")
+    return discovered
+
+
 def _source_fingerprint() -> str:
     """Create a short fingerprint of the current source configuration for cache key."""
     raw = f"{settings.NEWS_SOURCES}:{settings.NEWS_MAX_ARTICLES_PER_SYMBOL}"
