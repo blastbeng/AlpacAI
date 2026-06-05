@@ -226,15 +226,27 @@ class TelegramBot:
 
     async def cmd_risk(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         metrics = self.engine.get_risk_metrics()
+        pf = metrics['profit_factor']
+        pf_str = f"{pf:.2f}" if pf != float('inf') else "∞"
         msg = (
-            f"⚠️ Risk Metrics\n"
+            f"<b>⚠️ Risk Metrics</b>\n\n"
+            f"<b>Portfolio</b>\n"
             f"Balance: {metrics['current_balance']:.2f} {metrics['base_currency']}\n"
             f"Initial: {metrics['initial_balance']:.2f} {metrics['base_currency']}\n"
             f"P&L: {metrics['total_pnl']:.2f} ({metrics['total_pnl_pct']:.2f}%)\n"
-            f"Open Positions: {metrics['open_positions_count']}\n"
-            f"Exposure: {metrics['total_exposure']:.2f} {metrics['base_currency']}"
+            f"Max Drawdown: {metrics['max_drawdown_pct']:.2f}%\n\n"
+            f"<b>Positions</b>\n"
+            f"Open: {metrics['open_positions_count']}\n"
+            f"Exposure: {metrics['total_exposure']:.2f} {metrics['base_currency']}\n"
+            f"Largest Position: {metrics['largest_position_exposure_pct']:.1f}% of portfolio\n"
+            f"Total Stop Risk: {metrics['total_stop_loss_risk']:.2f} {metrics['base_currency']}\n\n"
+            f"<b>Trade Stats</b>\n"
+            f"Total Trades: {metrics['total_trades']}\n"
+            f"Win Rate: {metrics['win_rate']:.1f}%\n"
+            f"Profit Factor: {pf_str}\n"
+            f"Avg Win: {metrics['avg_win']:.2f}  Avg Loss: {metrics['avg_loss']:.2f}"
         )
-        await update.message.reply_text(msg)
+        await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
 
     async def cmd_news(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show recent news for all currently tracked coins."""

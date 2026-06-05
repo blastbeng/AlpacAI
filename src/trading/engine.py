@@ -1069,14 +1069,52 @@ class TradingEngine:
         pnl = total_balance - self.initial_balance
         pnl_pct = (pnl / self.initial_balance * 100) if self.initial_balance else 0.0
 
+        # Open positions exposure and stop‑loss risk
         exposure = 0.0
+        position_exposures = []
+        total_stop_risk = 0.0
         for pos in self.positions.values():
             try:
                 ticker = self.exchange.fetch_ticker(pos['symbol'])
                 price = ticker['last'] if ticker and ticker.get('last') else 0.0
-                exposure += pos['amount'] * price
+                pos_value = pos['amount'] * price
+                exposure += pos_value
+                position_exposures.append(pos_value)
+                stop_loss = pos.get('stop_loss')
+                if stop_loss is not None and price > 0:
+                    loss_if_stop = pos_value * (price - stop_loss) / price
+                    total_stop_risk += loss_if_stop
             except Exception:
                 pass
+
+        total_portfolio_value = total_balance + exposure
+        largest_position_exposure_pct = (
+            (max(position_exposures) / total_portfolio_value * 100)
+            if position_exposures and total_portfolio_value > 0
+            else 0.0
+        )
+
+        # Drawdown from performance metrics
+        perf = self._compute_performance_metrics()
+        max_drawdown_pct = perf.get('equity_curve', {}).get('drawdown_pct', 0.0)
+
+        # Trade statistics
+        wins = []
+        losses = []
+        for t in self.trade_history:
+            if t.get('side') == 'sell' and 'realized_pnl' in t:
+                pnl_val = t['realized_pnl']
+                if pnl_val > 0:
+                    wins.append(pnl_val)
+                elif pnl_val < 0:
+                    losses.append(abs(pnl_val))
+        total_trades = len(wins) + len(losses)
+        win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0.0
+        gross_profit = sum(wins)
+        gross_loss = sum(losses)
+        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else float('inf') if gross_profit > 0 else 0.0
+        avg_win = (gross_profit / len(wins)) if wins else 0.0
+        avg_loss = (gross_loss / len(losses)) if losses else 0.0
 
         return {
             'current_balance': total_balance,
@@ -1086,6 +1124,14 @@ class TradingEngine:
             'open_positions_count': len(self.positions),
             'total_exposure': exposure,
             'base_currency': self.base_currency,
+            'max_drawdown_pct': max_drawdown_pct,
+            'largest_position_exposure_pct': largest_position_exposure_pct,
+            'total_stop_loss_risk': total_stop_risk,
+            'win_rate': win_rate,
+            'profit_factor': profit_factor,
+            'avg_win': avg_win,
+            'avg_loss': avg_loss,
+            'total_trades': total_trades,
         }
 
     async def _check_risk_management(self):
