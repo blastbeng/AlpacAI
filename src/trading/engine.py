@@ -135,7 +135,7 @@ class TradingEngine:
                         available_pairs[:50],
                         key=lambda s: tickers.get(s, {}).get("quoteVolume", 0) or 0,
                         reverse=True,
-                    )[:10]
+                    )[:50]
                     symbols_to_refresh.update(sorted_by_vol)
                 except Exception as e:
                     logger.warning(f"Could not determine top-volume coins for news refresh: {e}")
@@ -556,6 +556,17 @@ class TradingEngine:
         sample_pairs = available_pairs[:50]
         tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_pairs)
 
+        # Fetch news sentiment for all candidate coins
+        news_sentiment = {}
+        if settings.NEWS_ENABLED:
+            for sym in sample_pairs:
+                try:
+                    agg = await asyncio.to_thread(get_aggregate_sentiment_from_db, sym, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+                    if agg:
+                        news_sentiment[sym] = agg
+                except Exception as e:
+                    logger.debug(f"Could not fetch news sentiment for {sym}: {e}")
+
         # Overall market trend (use BTC/USDT as benchmark)
         market_trend = None
         btc_symbol = "BTC/USDT"
@@ -653,6 +664,7 @@ class TradingEngine:
             performance=perf,
             ohlcv_data=ohlcv_data,
             market_trend=market_trend,
+            news_sentiment=news_sentiment,
         )
         response = await asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 300)
         logger.info(f"LLM coin selection raw response: {response}")

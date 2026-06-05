@@ -210,6 +210,7 @@ def build_coin_selection_prompt(
     performance: Optional[Dict[str, Any]] = None,
     ohlcv_data: Optional[Dict[str, Dict[str, List]]] = None,
     market_trend: Optional[Dict[str, Any]] = None,
+    news_sentiment: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -287,6 +288,18 @@ Return a JSON array of objects, each with "symbol" and "timeframe" fields. The t
         prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
     if market_trend:
         prompt += f"\nOverall market trend ({market_trend['symbol']}): 24h change {market_trend.get('change_24h')}%, last price {market_trend.get('last')}\n"
+    if news_sentiment:
+        prompt += "\n## News Sentiment\n"
+        prompt += "Aggregate sentiment from recent news articles (compound score -1 to +1, higher = more positive):\n"
+        for sym in available_pairs:
+            if sym in news_sentiment:
+                ns = news_sentiment[sym]
+                prompt += (
+                    f"- {sym}: compound={ns['avg_compound']}, "
+                    f"positive={ns['positive']}, negative={ns['negative']}, "
+                    f"neutral={ns['neutral']}, total_articles={ns['total_articles']}\n"
+                )
+        prompt += "\n"
     if news_section:
         prompt += f"\n{news_section}\n"
     if performance:
