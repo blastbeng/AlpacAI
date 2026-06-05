@@ -28,6 +28,32 @@ def _analyze_sentiment(text: str) -> Dict[str, Any]:
     return {"label": label, "compound": round(compound, 4)}
 
 
+def _is_relevant(symbol: str, title: str, summary: str) -> bool:
+    """Return True if the article is likely relevant to the trading symbol."""
+    text = f"{title} {summary}".lower()
+    sym_lower = symbol.lower()
+    # Must mention the symbol at least once
+    if sym_lower not in text:
+        return False
+    # Crypto‑specific keywords that indicate relevance
+    crypto_keywords = [
+        "crypto", "bitcoin", "ethereum", "blockchain", "defi", "nft",
+        "altcoin", "token", "exchange", "trading", "bullish", "bearish",
+        "price", "market", "volume", "breakout", "support", "resistance",
+        "whale", "accumulation", "dump", "pump", "regulation", "sec",
+        "binance", "coinbase", "bybit", "kraken", "ftx",
+    ]
+    # Score: +2 for symbol in title, +1 for each crypto keyword found
+    score = 0
+    if sym_lower in title.lower():
+        score += 2
+    for kw in crypto_keywords:
+        if kw in text:
+            score += 1
+    # Require at least 3 points (symbol in title + one keyword, or three keywords)
+    return score >= 3
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -120,6 +146,8 @@ def _fetch_newsapi(symbol: str) -> List[Dict[str, str]]:
         for art in response.get("articles", []):
             text = f"{art.get('title', '')} {art.get('description', '')}"
             sentiment = _analyze_sentiment(text)
+            if not _is_relevant(symbol, art.get("title", ""), art.get("description", "") or ""):
+                continue
             articles.append({
                 "title": art.get("title", ""),
                 "source": art.get("source", {}).get("name", "NewsAPI"),
@@ -158,6 +186,8 @@ def _fetch_twitter(symbol: str) -> List[Dict[str, str]]:
         if tweets.data:
             for tweet in tweets.data:
                 sentiment = _analyze_sentiment(tweet.text)
+                if not _is_relevant(symbol, tweet.text[:100], tweet.text):
+                    continue
                 articles.append({
                     "title": tweet.text[:100],
                     "source": "Twitter",
@@ -200,12 +230,15 @@ def _fetch_reddit(symbol: str) -> List[Dict[str, str]]:
         for sub in submissions:
             text = f"{sub.title} {sub.selftext[:300] if sub.selftext else ''}"
             sentiment = _analyze_sentiment(text)
+            reddit_summary = sub.selftext[:300] if sub.selftext else sub.title
+            if not _is_relevant(symbol, sub.title, reddit_summary):
+                continue
             articles.append({
                 "title": sub.title,
                 "source": f"Reddit r/{sub.subreddit.display_name}",
                 "url": f"https://reddit.com{sub.permalink}",
                 "published_at": str(sub.created_utc),
-                "summary": sub.selftext[:300] if sub.selftext else sub.title,
+                "summary": reddit_summary,
                 "sentiment": sentiment,
             })
         return articles
@@ -272,6 +305,8 @@ def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
                     continue
                 text = f"{title} {summary}"
                 sentiment = _analyze_sentiment(text)
+                if not _is_relevant(symbol, title, summary[:300]):
+                    continue
                 articles.append({
                     "title": title,
                     "source": feed.feed.get("title", "RSS"),
