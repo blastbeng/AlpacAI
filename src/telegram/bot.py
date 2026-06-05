@@ -20,8 +20,8 @@ class TelegramBot:
         self.keyboard = ReplyKeyboardMarkup(
             [
                 [KeyboardButton("📊 Status"), KeyboardButton("📈 Trades")],
-                [KeyboardButton("💰 Profit"), KeyboardButton("🚀 Performance")],
-                [KeyboardButton("📰 News")],
+                [KeyboardButton("💰 Profit"), KeyboardButton("📊 Performance")],
+                [KeyboardButton("📰 News"), KeyboardButton("⚠️ Risk")],
                 [KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
             ],
             resize_keyboard=True,
@@ -38,6 +38,7 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("performance", self.cmd_performance))
         self.app.add_handler(CommandHandler("news", self.cmd_news_search))
         self.app.add_handler(CommandHandler("news_status", self.cmd_news_status))
+        self.app.add_handler(CommandHandler("risk", self.cmd_risk))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_button))
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -68,6 +69,8 @@ class TelegramBot:
             await self.cmd_resume(update, context)
         elif text == "📰 News":
             await self.cmd_news(update, context)
+        elif text == "⚠️ Risk":
+            await self.cmd_risk(update, context)
 
     async def cmd_pause(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.to_thread(self.redis.set, "trading:paused", "1")
@@ -221,6 +224,18 @@ class TelegramBot:
         else:
             await update.message.reply_text(msg, parse_mode="Markdown")
 
+    async def cmd_risk(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        metrics = self.engine.get_risk_metrics()
+        msg = (
+            f"⚠️ Risk Metrics\n"
+            f"Balance: {metrics['current_balance']:.2f} {metrics['base_currency']}\n"
+            f"Initial: {metrics['initial_balance']:.2f} {metrics['base_currency']}\n"
+            f"P&L: {metrics['total_pnl']:.2f} ({metrics['total_pnl_pct']:.2f}%)\n"
+            f"Open Positions: {metrics['open_positions_count']}\n"
+            f"Exposure: {metrics['total_exposure']:.2f} {metrics['base_currency']}"
+        )
+        await update.message.reply_text(msg)
+
     async def cmd_news(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show recent news for all currently tracked coins."""
         coins = self.engine.current_coins
@@ -302,8 +317,8 @@ class TelegramBot:
             self.keyboard = ReplyKeyboardMarkup(
                 [
                     [KeyboardButton("📊 Status"), KeyboardButton("📈 Trades")],
-                    [KeyboardButton("💰 Profit"), KeyboardButton("🚀 Performance")],
-                    [KeyboardButton("📰 News")],
+                    [KeyboardButton("💰 Profit"), KeyboardButton("📊 Performance")],
+                    [KeyboardButton("📰 News"), KeyboardButton("⚠️ Risk")],
                     [KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
                 ],
                 resize_keyboard=True,

@@ -1061,6 +1061,33 @@ class TradingEngine:
         """Return performance summary grouped by coin and timeframe from trade_history table."""
         return get_performance()
 
+    def get_risk_metrics(self) -> Dict[str, Any]:
+        """Return current risk/exposure metrics."""
+        balance = self.trader.fetch_balance()
+        total_balance = balance.get(self.base_currency, 0.0)
+
+        pnl = total_balance - self.initial_balance
+        pnl_pct = (pnl / self.initial_balance * 100) if self.initial_balance else 0.0
+
+        exposure = 0.0
+        for pos in self.positions.values():
+            try:
+                ticker = self.exchange.fetch_ticker(pos['symbol'])
+                price = ticker['last'] if ticker and ticker.get('last') else 0.0
+                exposure += pos['amount'] * price
+            except Exception:
+                pass
+
+        return {
+            'current_balance': total_balance,
+            'initial_balance': self.initial_balance,
+            'total_pnl': pnl,
+            'total_pnl_pct': pnl_pct,
+            'open_positions_count': len(self.positions),
+            'total_exposure': exposure,
+            'base_currency': self.base_currency,
+        }
+
     async def _check_risk_management(self):
         """Check open positions and close if stop-loss, take-profit, or trailing stop is hit."""
         for symbol, pos in list(self.positions.items()):

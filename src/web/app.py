@@ -64,6 +64,11 @@ def performance():
     engine = get_engine()
     return engine.get_performance_summary()
 
+@app.get("/api/risk")
+def risk():
+    engine = get_engine()
+    return engine.get_risk_metrics()
+
 @app.get("/api/config")
 def config():
     return {
