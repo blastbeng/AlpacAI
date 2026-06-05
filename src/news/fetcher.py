@@ -1,4 +1,5 @@
 import logging
+import threading
 from typing import List, Dict, Any, Optional
 import hashlib
 import httpx
@@ -15,6 +16,10 @@ from src.utils.redis_client import get_redis_client
 logger = logging.getLogger(__name__)
 
 _sentiment_analyzer = SentimentIntensityAnalyzer()
+
+# Cache for RSS feed content: {url: (timestamp, feed_content)}
+_rss_cache = {}
+_rss_cache_lock = threading.Lock()
 
 
 def _get_enabled_sources() -> List[str]:
@@ -818,10 +823,45 @@ def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
     articles = []
     for feed_url in settings.RSS_FEEDS:
         try:
-            # Fetch feed content with timeout
-            resp = httpx.get(feed_url, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS, follow_redirects=True)
-            resp.raise_for_status()
-            feed = feedparser.parse(resp.text)
+            # Check cache first
+            with _rss_cache_lock:
+                cached = _rss_cache.get(feed_url)
+                if cached and (time.time() - cached[0]) < 300:  # 5-minute TTL
+                    feed_content = cached[1]
+                else:
+                    feed_content = None
+
+            if feed_content is None:
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (compatible; BengoBot/1.0; +https://github.com/your-repo)"
+                }
+                # Retry on 429 with exponential backoff
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        resp = httpx.get(
+                            feed_url,
+                            headers=headers,
+                            timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS,
+                            follow_redirects=True,
+                        )
+                        resp.raise_for_status()
+                        feed_content = resp.text
+                        break
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code == 429 and attempt < max_retries - 1:
+                            wait = 2 ** attempt
+                            logger.warning(
+                                f"RSS feed {feed_url} rate limited, retrying in {wait}s..."
+                            )
+                            time.sleep(wait)
+                        else:
+                            raise
+                # Cache the successful response
+                with _rss_cache_lock:
+                    _rss_cache[feed_url] = (time.time(), feed_content)
+
+            feed = feedparser.parse(feed_content)
             for entry in feed.entries:
                 title = entry.get("title", "")
                 summary = entry.get("summary", "") or entry.get("description", "")
@@ -840,6 +880,13 @@ def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
                     "summary": summary[:300],
                     "sentiment": sentiment,
                 })
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.warning(f"RSS feed not found (404): {feed_url}")
+            elif e.response.status_code == 403:
+                logger.warning(f"RSS feed access forbidden (403): {feed_url}")
+            else:
+                logger.warning(f"RSS fetch failed for {feed_url}: {e}")
         except Exception as e:
             logger.warning(f"RSS fetch failed for {feed_url}: {e}")
     return articles
