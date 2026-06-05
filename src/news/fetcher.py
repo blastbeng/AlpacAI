@@ -100,6 +100,12 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
     if "cryptopanic" in settings.NEWS_SOURCES:
         articles.extend(_fetch_cryptopanic(symbol))
 
+    if "coingecko" in settings.NEWS_SOURCES:
+        articles.extend(_fetch_coingecko(symbol))
+
+    if "cryptocompare" in settings.NEWS_SOURCES:
+        articles.extend(_fetch_cryptocompare(symbol))
+
     # Deduplicate by URL
     seen = set()
     unique = []
@@ -403,6 +409,77 @@ def _fetch_cryptopanic(symbol: str) -> List[Dict[str, str]]:
         return articles
     except Exception as e:
         logger.warning(f"CryptoPanic fetch failed for {symbol}: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# CoinGecko News API (free, no key required)
+# ---------------------------------------------------------------------------
+
+def _fetch_coingecko(symbol: str) -> List[Dict[str, str]]:
+    """Fetch news from CoinGecko's public news endpoint."""
+    try:
+        url = "https://api.coingecko.com/api/v3/news"
+        response = httpx.get(url, timeout=10.0)
+        response.raise_for_status()
+        data = response.json()
+        articles = []
+        for item in data.get("data", [])[:settings.COINGECKO_MAX_ARTICLES]:
+            title = item.get("title", "")
+            description = item.get("description", "")
+            text = f"{title} {description}"
+            sentiment = _analyze_sentiment(text)
+            if not _is_relevant(symbol, title, description[:300]):
+                continue
+            articles.append({
+                "title": title,
+                "source": item.get("source", "CoinGecko"),
+                "url": item.get("url", ""),
+                "published_at": item.get("updated_at", ""),
+                "summary": description[:300],
+                "sentiment": sentiment,
+            })
+        return articles
+    except Exception as e:
+        logger.warning(f"CoinGecko fetch failed for {symbol}: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# CryptoCompare News API
+# ---------------------------------------------------------------------------
+
+def _fetch_cryptocompare(symbol: str) -> List[Dict[str, str]]:
+    if not settings.CRYPTOCOMPARE_API_KEY:
+        return []
+    try:
+        url = "https://min-api.cryptocompare.com/data/v2/news/"
+        params = {
+            "lang": "EN",
+            "api_key": settings.CRYPTOCOMPARE_API_KEY,
+        }
+        response = httpx.get(url, params=params, timeout=10.0)
+        response.raise_for_status()
+        data = response.json()
+        articles = []
+        for item in data.get("Data", [])[:settings.CRYPTOCOMPARE_MAX_ARTICLES]:
+            title = item.get("title", "")
+            body = item.get("body", "")
+            text = f"{title} {body}"
+            sentiment = _analyze_sentiment(text)
+            if not _is_relevant(symbol, title, body[:300]):
+                continue
+            articles.append({
+                "title": title,
+                "source": item.get("source", "CryptoCompare"),
+                "url": item.get("url", ""),
+                "published_at": item.get("published_on", ""),
+                "summary": body[:300],
+                "sentiment": sentiment,
+            })
+        return articles
+    except Exception as e:
+        logger.warning(f"CryptoCompare fetch failed for {symbol}: {e}")
         return []
 
 
