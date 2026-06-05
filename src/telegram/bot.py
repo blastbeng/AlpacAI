@@ -6,8 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from src.config.settings import settings
 from src.trading.engine import TradingEngine
 from src.utils.redis_client import get_redis_client
-from src.database import set_telegram_chat_id, get_telegram_chat_id
-from src.news.fetcher import fetch_news_for_symbol
+from src.database import set_telegram_chat_id, get_telegram_chat_id, get_news_for_symbol
 from src.llm.prompts import _format_news_for_prompt
 
 logger = logging.getLogger(__name__)
@@ -205,7 +204,7 @@ class TelegramBot:
         messages = []
         for entry in coins:
             symbol = entry["symbol"]
-            articles = fetch_news_for_symbol(symbol)
+            articles = get_news_for_symbol(symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
             if articles:
                 formatted = _format_news_for_prompt(articles)
                 messages.append(f"*{symbol}*\n{formatted}")

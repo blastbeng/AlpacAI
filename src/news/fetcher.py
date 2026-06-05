@@ -9,6 +9,7 @@ import feedparser
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 from src.config.settings import settings
+from src.database import get_aggregate_sentiment_from_db
 from src.utils.redis_client import get_redis_client
 
 logger = logging.getLogger(__name__)
@@ -254,7 +255,7 @@ def discover_trending_coins(
             continue
 
         # Check news sentiment for this coin
-        agg = get_aggregate_sentiment(pair)
+        agg = get_aggregate_sentiment_from_db(pair, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
         if agg and agg["total_articles"] >= min_articles and agg["avg_compound"] >= min_sentiment:
             candidates.append((pair, agg["avg_compound"]))
 
