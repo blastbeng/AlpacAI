@@ -30,7 +30,7 @@ from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm
 from src.strategies.validator import validate_signal
 from src.utils.redis_client import get_redis_client
-from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade, get_performance
+from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade, get_performance, store_news_articles
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,9 @@ class TradingEngine:
 
                 for sym in symbols_to_refresh:
                     try:
-                        await asyncio.to_thread(fetch_news_for_symbol, sym)
+                        articles = await asyncio.to_thread(fetch_news_for_symbol, sym)
+                        if articles:
+                            await asyncio.to_thread(store_news_articles, sym, articles)
                     except Exception as e:
                         logger.debug(f"News refresh failed for {sym}: {e}")
 
