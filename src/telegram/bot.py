@@ -372,6 +372,9 @@ class TelegramBot:
         await self.app.updater.start_polling()
         await self.app.start()
         logger.info("Telegram bot started and polling.")
+        # Notify the user about the trading mode
+        mode = settings.TRADING_MODE.upper()
+        await self.send_notification(f"🤖 Bot started in {mode} mode.")
 
     async def stop(self):
         """Stop the bot gracefully."""
