@@ -1035,10 +1035,27 @@ class TradingEngine:
             logger.info(f"Decision for {symbol}: {validated.action} (confidence: {validated.confidence:.2f})")
             if self.notifier:
                 emoji = {"BUY": "🟢", "SELL": "🔴", "HOLD": "⏸️"}.get(validated.action, "❓")
-                await self.notifier.send_notification(
-                    f"{emoji} {symbol}: {validated.action} "
-                    f"(confidence: {validated.confidence:.2f}) – {validated.reasoning}"
-                )
+                # Build a short indicator summary
+                ind_parts = []
+                if rsi is not None:
+                    ind_parts.append(f"RSI={rsi:.1f}")
+                if macd is not None and macd_signal is not None:
+                    ind_parts.append(f"MACD={macd:.4f}/{macd_signal:.4f}")
+                if bb_upper is not None:
+                    ind_parts.append(f"BB={bb_lower:.2f}-{bb_upper:.2f}")
+                if ema_9 is not None and ema_21 is not None:
+                    ind_parts.append(f"EMA9/21={ema_9:.2f}/{ema_21:.2f}")
+                if stochastic_k is not None:
+                    ind_parts.append(f"StochK={stochastic_k:.1f}")
+                if adx is not None:
+                    ind_parts.append(f"ADX={adx:.1f}")
+                if atr is not None:
+                    ind_parts.append(f"ATR={atr:.4f}")
+                indicator_str = " | ".join(ind_parts) if ind_parts else ""
+                msg = f"{emoji} {symbol}: {validated.action} (confidence: {validated.confidence:.2f}) – {validated.reasoning}"
+                if indicator_str:
+                    msg += f"\n📊 {indicator_str}"
+                await self.notifier.send_notification(msg)
 
             # Prevent SELL without an open position (no shorting)
             if validated.action == "SELL" and symbol not in self.positions:
