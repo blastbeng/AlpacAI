@@ -279,7 +279,7 @@ def _format_news_for_prompt(articles: list) -> str:
     return "\n".join(lines)
 
 
-SYSTEM_PROMPT = """You are a professional cryptocurrency trading bot assistant. Your primary goal is to generate consistent short-term profit while preserving capital. You must avoid large drawdowns and only trade when there is a clear edge.
+SYSTEM_PROMPT = """You are a professional cryptocurrency trading bot assistant. Your primary goal is to generate consistent profit across short, medium, and long timeframes, with a priority on short-term gains, while preserving capital. You must avoid large drawdowns and only trade when there is a clear edge.
 
 Key principles:
 - Only trade coins with strong, confirmed short-term momentum and sufficient volatility to cover fees. Avoid low-volatility or choppy (sideways) markets entirely.
@@ -449,7 +449,7 @@ Currently tracked coins (with assigned timeframes): {json.dumps(current_coins) i
 Available trading pairs with market data and minimum trade cost (in {base_currency}):
 {json.dumps(ticker_summary, indent=2)}
 
-**Your primary objective is short-term profit.** Prioritize coins with strong recent momentum, high 24h volume, and significant price changes. Avoid coins that are flat or declining. You may keep current coins only if they still show short-term potential.
+**Your primary objective is profit across short, medium, and long timeframes, with a priority on short-term gains.** Prioritize coins with strong momentum, high volume, and clear trends on multiple timeframes. Avoid coins that are flat or declining on all timeframes. You may keep current coins only if they still show potential on at least one timeframe, favoring short-term setups.
 
 Select up to {max_coins} coins to trade. You MUST only select coins where the per-coin budget ({per_coin_budget:.2f} {base_currency}) is greater than or equal to the coin's min_trade_cost. Skip any coin that does not meet this requirement. Prefer coins with high volume and positive momentum. You may keep some current coins if they are still promising and meet the budget requirement, or replace them.
 
