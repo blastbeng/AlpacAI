@@ -132,7 +132,7 @@ def config():
         "web_port": settings.WEB_PORT,
     }
 
-@app.get("/api/ohlcv/{symbol}")
+@app.get("/api/ohlcv/{symbol:path}")
 async def ohlcv(symbol: str, timeframe: str = "1h", limit: int = 24):
     engine = get_engine()
     exchange = engine.exchange
@@ -154,7 +154,7 @@ async def ohlcv(symbol: str, timeframe: str = "1h", limit: int = 24):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/ticker/{symbol}")
+@app.get("/api/ticker/{symbol:path}")
 async def ticker(symbol: str):
     engine = get_engine()
     exchange = engine.exchange
