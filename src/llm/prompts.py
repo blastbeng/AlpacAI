@@ -431,7 +431,8 @@ def build_coin_selection_prompt(
         news_lines = []
         pairs_to_check = available_pairs[:20]
         for pair in pairs_to_check:
-            articles = get_news_for_symbol(pair, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+            base = pair.split("/")[0] if "/" in pair else pair
+            articles = get_news_for_symbol(base, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
             if articles:
                 formatted = _format_news_for_prompt(articles)
                 news_lines.append(f"**{pair}**\n{formatted}")
