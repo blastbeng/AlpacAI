@@ -325,6 +325,8 @@ You may optionally include an "indicator_config" object in your strategy JSON to
 - cci_period (int, default 20)
 - willr_period (int, default 14)
 
+You may optionally include a "backtest_summary" field (string) when historical OHLCV data is provided. This should be a concise summary of your backtest analysis, e.g., "Simulated 5 trades over 30 days: 3 wins, 2 losses, net +2.3%". Include it only if you performed a backtest.
+
 When asked to select coins, return a JSON array of trading pair symbols (e.g., ["BTC/USDT", "ETH/USDT"]). Choose coins that are likely to deliver short-term profit based on recent price action, volume, and volatility. Prefer coins with high liquidity and clear short-term trends.
 
 When asked to generate a strategy for a specific coin, return a JSON object with the following structure:
@@ -649,6 +651,7 @@ Maximum coins to trade: {max_coins}
             "Use this data to perform a backtest analysis: simulate potential trades based on your strategy, evaluate profitability, "
             "and use the insights to inform your current decision. You may choose a subset of this period for your backtest "
             "(default is the full period). Explain in your reasoning how the backtest results influenced your decision.\n"
+            "Include a 'backtest_summary' field in your JSON output with a short summary of the backtest results.\n"
         )
     if drawdown_pct is not None:
         prompt += f"Current account drawdown: {drawdown_pct}%\n"

@@ -29,6 +29,10 @@ def parse_llm_response(response_text: str) -> Signal:
         if not isinstance(indicator_config, dict):
             indicator_config = None
 
+        backtest_summary = data.get("backtest_summary")
+        if not isinstance(backtest_summary, str):
+            backtest_summary = None
+
         return Signal(
             action=action,
             confidence=confidence,
@@ -37,6 +41,7 @@ def parse_llm_response(response_text: str) -> Signal:
             strategy_params=strategy_params,
             risk_level=risk_level,
             indicator_config=indicator_config,
+            backtest_summary=backtest_summary,
         )
     except (json.JSONDecodeError, ValueError, TypeError):
         return Signal(action="HOLD", confidence=0.0, reasoning="Failed to parse LLM response")

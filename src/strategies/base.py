@@ -11,6 +11,7 @@ class Signal:
     strategy_params: Optional[Dict[str, Any]] = None   # LLM-defined parameters
     risk_level: Optional[str] = None   # "low", "medium", "high"
     indicator_config: Optional[Dict[str, Any]] = None   # LLM-defined indicator parameters
+    backtest_summary: Optional[str] = None   # LLM-provided backtest summary
 
 
 class Strategy:

@@ -1138,6 +1138,8 @@ class TradingEngine:
                 indicator_str = " | ".join(ind_parts) if ind_parts else ""
                 sentiment_str = self._get_sentiment_str(symbol)
                 msg = f"{emoji} {symbol}: {validated.action} (confidence: {validated.confidence:.2f}) – {validated.reasoning}"
+                if getattr(validated, 'backtest_summary', None):
+                    msg += f"\n📈 Backtest: {validated.backtest_summary}"
                 if indicator_str:
                     msg += f"\n📊 {indicator_str}"
                 if sentiment_str:
