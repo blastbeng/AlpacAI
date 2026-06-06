@@ -563,13 +563,31 @@ def build_strategy_prompt(
     historical_ohlcv: Optional[List[List]] = None,
     min_order_amount: Optional[float] = None,
     min_order_cost: Optional[float] = None,
+    all_coins: Optional[List[Dict[str, str]]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
 Current ticker: {json.dumps(ticker)}
 Order book (top 5 levels): {json.dumps(order_book)}
 Current balances: {json.dumps(balance)}
-Open positions: {json.dumps(open_positions)}
+"""
+    # --- Portfolio context: total base balance and all tracked coins ---
+    base_currency = symbol.split('/')[1]
+    base_balance = balance.get(base_currency, 0.0)
+    prompt += f"\nTotal {base_currency} balance available: {base_balance:.2f}\n"
+    if all_coins:
+        other_coins = [c for c in all_coins if c["symbol"] != symbol]
+        if other_coins:
+            coin_list_str = ", ".join(f"{c['symbol']}({c['timeframe']})" for c in other_coins)
+            prompt += f"Other coins being traded (you must leave budget for them): {coin_list_str}\n"
+        else:
+            prompt += "This is the only coin being traded; you may use the full budget.\n"
+    prompt += (
+        "When setting position_size_fraction, consider that the total budget must be shared across all coins. "
+        "Do not allocate more than your fair share unless you have high confidence and other coins have lower priority. "
+        "The per-coin budget shown below is a guideline, but you may adjust it based on relative opportunity.\n"
+    )
+    prompt += f"""Open positions: {json.dumps(open_positions)}
 Per-coin budget (balance / max_coins): {per_coin_budget:.2f} {symbol.split('/')[1]}
 Maximum coins to trade: {max_coins}
 """

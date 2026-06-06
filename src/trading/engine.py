@@ -1116,6 +1116,7 @@ class TradingEngine:
                 historical_ohlcv=historical_ohlcv,
                 min_order_amount=min_order_amount,
                 min_order_cost=min_order_cost,
+                all_coins=self.current_coins,
             )
             response = await asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 60)
             strategy = create_strategy_from_llm(response)
