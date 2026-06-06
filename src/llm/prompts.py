@@ -74,6 +74,155 @@ def compute_ema(data: List[float], period: int) -> List[float]:
     return ema_values
 
 
+def compute_stochastic(
+    highs: List[float], lows: List[float], closes: List[float],
+    period: int = 14, smooth_k: int = 3
+) -> Tuple[Optional[float], Optional[float]]:
+    """Compute Stochastic Oscillator %K and %D."""
+    if len(closes) < period:
+        return None, None
+    recent_high = max(highs[-period:])
+    recent_low = min(lows[-period:])
+    if recent_high == recent_low:
+        return 50.0, 50.0
+    fast_k = ((closes[-1] - recent_low) / (recent_high - recent_low)) * 100
+    k_values = []
+    for i in range(-period, 0):
+        h = max(highs[i:i+period])
+        l = min(lows[i:i+period])
+        if h == l:
+            k_values.append(50.0)
+        else:
+            k_values.append(((closes[i] - l) / (h - l)) * 100)
+    if len(k_values) < smooth_k:
+        return fast_k, None
+    slow_d = sum(k_values[-smooth_k:]) / smooth_k
+    return fast_k, slow_d
+
+
+def compute_adx(
+    highs: List[float], lows: List[float], closes: List[float], period: int = 14
+) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    """Compute ADX, +DI, -DI using Wilder's smoothing."""
+    if len(closes) < period + 1:
+        return None, None, None
+    tr = []
+    plus_dm = []
+    minus_dm = []
+    for i in range(1, len(closes)):
+        high = highs[i]
+        low = lows[i]
+        prev_high = highs[i-1]
+        prev_low = lows[i-1]
+        prev_close = closes[i-1]
+        tr.append(max(high - low, abs(high - prev_close), abs(low - prev_close)))
+        up_move = high - prev_high
+        down_move = prev_low - low
+        if up_move > down_move and up_move > 0:
+            plus_dm.append(up_move)
+        else:
+            plus_dm.append(0.0)
+        if down_move > up_move and down_move > 0:
+            minus_dm.append(down_move)
+        else:
+            minus_dm.append(0.0)
+    if len(tr) < period:
+        return None, None, None
+    atr = sum(tr[:period]) / period
+    smoothed_plus_dm = sum(plus_dm[:period]) / period
+    smoothed_minus_dm = sum(minus_dm[:period]) / period
+    dx_values = []
+    for i in range(period, len(tr)):
+        atr = (atr * (period - 1) + tr[i]) / period
+        smoothed_plus_dm = (smoothed_plus_dm * (period - 1) + plus_dm[i]) / period
+        smoothed_minus_dm = (smoothed_minus_dm * (period - 1) + minus_dm[i]) / period
+        if atr == 0:
+            dx = 0.0
+        else:
+            plus_di = (smoothed_plus_dm / atr) * 100
+            minus_di = (smoothed_minus_dm / atr) * 100
+            dx = abs(plus_di - minus_di) / (plus_di + minus_di) * 100 if (plus_di + minus_di) > 0 else 0.0
+        dx_values.append(dx)
+    if not dx_values:
+        return None, None, None
+    adx = sum(dx_values[:period]) / period if len(dx_values) >= period else dx_values[-1]
+    for i in range(period, len(dx_values)):
+        adx = (adx * (period - 1) + dx_values[i]) / period
+    if atr == 0:
+        plus_di = 0.0
+        minus_di = 0.0
+    else:
+        plus_di = (smoothed_plus_dm / atr) * 100
+        minus_di = (smoothed_minus_dm / atr) * 100
+    return adx, plus_di, minus_di
+
+
+def compute_obv(closes: List[float], volumes: List[float]) -> Optional[float]:
+    """Compute On-Balance Volume (latest value)."""
+    if len(closes) < 2 or len(volumes) < 2:
+        return None
+    obv = 0.0
+    for i in range(1, len(closes)):
+        if closes[i] > closes[i-1]:
+            obv += volumes[i]
+        elif closes[i] < closes[i-1]:
+            obv -= volumes[i]
+    return obv
+
+
+def compute_mfi(
+    highs: List[float], lows: List[float], closes: List[float],
+    volumes: List[float], period: int = 14
+) -> Optional[float]:
+    """Compute Money Flow Index."""
+    if len(closes) < period + 1:
+        return None
+    typical_prices = [(h + l + c) / 3 for h, l, c in zip(highs, lows, closes)]
+    raw_money_flow = [tp * vol for tp, vol in zip(typical_prices, volumes)]
+    recent_tp = typical_prices[-period-1:]
+    recent_rmf = raw_money_flow[-period-1:]
+    pos = 0.0
+    neg = 0.0
+    for i in range(1, len(recent_tp)):
+        if recent_tp[i] > recent_tp[i-1]:
+            pos += recent_rmf[i]
+        else:
+            neg += recent_rmf[i]
+    if neg == 0:
+        return 100.0
+    return 100 - (100 / (1 + pos / neg))
+
+
+def compute_cci(
+    highs: List[float], lows: List[float], closes: List[float], period: int = 20
+) -> Optional[float]:
+    """Compute Commodity Channel Index."""
+    if len(closes) < period:
+        return None
+    typical_prices = [(h + l + c) / 3 for h, l, c in zip(highs, lows, closes)]
+    recent_tp = typical_prices[-period:]
+    sma = sum(recent_tp) / period
+    mean_deviation = sum(abs(tp - sma) for tp in recent_tp) / period
+    if mean_deviation == 0:
+        return 0.0
+    cci = (recent_tp[-1] - sma) / (0.015 * mean_deviation)
+    return cci
+
+
+def compute_williams_r(
+    highs: List[float], lows: List[float], closes: List[float], period: int = 14
+) -> Optional[float]:
+    """Compute Williams %R."""
+    if len(closes) < period:
+        return None
+    highest_high = max(highs[-period:])
+    lowest_low = min(lows[-period:])
+    if highest_high == lowest_low:
+        return -50.0
+    wr = ((highest_high - closes[-1]) / (highest_high - lowest_low)) * -100
+    return wr
+
+
 def compute_macd(
     closes: List[float], fast: int = 12, slow: int = 26, signal: int = 9
 ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
