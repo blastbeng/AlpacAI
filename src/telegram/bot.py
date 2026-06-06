@@ -23,6 +23,7 @@ class TelegramBot:
                 [KeyboardButton("💰 Profit"), KeyboardButton("🚀 Performance")],
                 [KeyboardButton("📰 News"), KeyboardButton("⚠️ Risk")],
                 [KeyboardButton("⏸️ Pause"), KeyboardButton("▶️ Resume")],
+                [KeyboardButton("🔄 Reload"), KeyboardButton("💸 Sell All")],
             ],
             resize_keyboard=True,
         )
@@ -73,6 +74,10 @@ class TelegramBot:
             await self.cmd_news(update, context)
         elif text == "⚠️ Risk":
             await self.cmd_risk(update, context)
+        elif text == "🔄 Reload":
+            await self.cmd_reload(update, context)
+        elif text == "💸 Sell All":
+            await self.cmd_sell(update, context)
         else:
             # Any other text (e.g., first message "hi") shows the keyboard
             await update.message.reply_text(
