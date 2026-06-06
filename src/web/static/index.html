@@ -307,6 +307,25 @@
         </div>
     </div>
 
+    <!-- Chart Modal -->
+    <div id="chart-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000; justify-content:center; align-items:center;">
+        <div style="background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius); padding:24px; width:90%; max-width:900px; max-height:90vh; overflow-y:auto; position:relative;">
+            <button id="close-modal" style="position:absolute; top:12px; right:16px; background:none; border:none; color:var(--text); font-size:1.5rem; cursor:pointer;">&times;</button>
+            <h2 id="chart-title" style="margin-bottom:16px; color:var(--accent);"></h2>
+            <div style="margin-bottom:12px;">
+                <label for="timeframe-select" style="margin-right:8px;">Timeframe:</label>
+                <select id="timeframe-select" style="background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:4px 8px;">
+                    <option value="5m">5m</option>
+                    <option value="15m">15m</option>
+                    <option value="1h" selected>1h</option>
+                    <option value="4h">4h</option>
+                    <option value="1d">1d</option>
+                </select>
+            </div>
+            <canvas id="ohlcv-chart" width="800" height="400"></canvas>
+        </div>
+    </div>
+
     <script>
         const wsUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
         let ws;
@@ -581,23 +600,5 @@
                 if (badge) badge.textContent = '?';
             });
     </script>
-    <!-- Chart Modal -->
-    <div id="chart-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000; justify-content:center; align-items:center;">
-        <div style="background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius); padding:24px; width:90%; max-width:900px; max-height:90vh; overflow-y:auto; position:relative;">
-            <button id="close-modal" style="position:absolute; top:12px; right:16px; background:none; border:none; color:var(--text); font-size:1.5rem; cursor:pointer;">&times;</button>
-            <h2 id="chart-title" style="margin-bottom:16px; color:var(--accent);"></h2>
-            <div style="margin-bottom:12px;">
-                <label for="timeframe-select" style="margin-right:8px;">Timeframe:</label>
-                <select id="timeframe-select" style="background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:4px 8px;">
-                    <option value="5m">5m</option>
-                    <option value="15m">15m</option>
-                    <option value="1h" selected>1h</option>
-                    <option value="4h">4h</option>
-                    <option value="1d">1d</option>
-                </select>
-            </div>
-            <canvas id="ohlcv-chart" width="800" height="400"></canvas>
-        </div>
-    </div>
 </body>
 </html>
