@@ -558,6 +558,7 @@ def build_strategy_prompt(
     drawdown_pct: Optional[float] = None,
     raw_candles: Optional[List[List]] = None,
     recent_trades: Optional[List[Dict[str, Any]]] = None,
+    historical_ohlcv: Optional[List[List]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -638,6 +639,16 @@ Maximum coins to trade: {max_coins}
             "The technical indicators (RSI, MACD, Bollinger Bands, EMA) have already been computed for you from this data. "
             "Use them together with the raw candles to time entries and exits. "
             "Explain in your reasoning how the indicators support your decision.\n"
+        )
+    if historical_ohlcv:
+        # Limit to last 500 candles to keep prompt size manageable
+        limited_hist = historical_ohlcv[-500:] if len(historical_ohlcv) > 500 else historical_ohlcv
+        prompt += f"\nHistorical OHLCV data for the last {len(limited_hist)} candles ({assigned_timeframe} timeframe):\n{json.dumps(limited_hist)}\n"
+        prompt += (
+            "You have been provided with historical OHLCV data covering up to the last 30 days (or the available period). "
+            "Use this data to perform a backtest analysis: simulate potential trades based on your strategy, evaluate profitability, "
+            "and use the insights to inform your current decision. You may choose a subset of this period for your backtest "
+            "(default is the full period). Explain in your reasoning how the backtest results influenced your decision.\n"
         )
     if drawdown_pct is not None:
         prompt += f"Current account drawdown: {drawdown_pct}%\n"
