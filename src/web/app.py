@@ -74,6 +74,51 @@ def risk():
     engine = get_engine()
     return engine.get_risk_metrics()
 
+@app.get("/api/news")
+def news():
+    engine = get_engine()
+    coins = engine.current_coins
+    result = {}
+    for entry in coins:
+        symbol = entry["symbol"]
+        base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+        articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+        result[symbol] = articles
+    return result
+
+@app.get("/api/history")
+def history(limit: int = 50):
+    engine = get_engine()
+    trades = engine.trade_history[-limit:]
+    return trades
+
+@app.post("/api/pause")
+def pause():
+    engine = get_engine()
+    engine.redis.set("trading:paused", "1")
+    return {"status": "paused"}
+
+@app.post("/api/resume")
+def resume():
+    engine = get_engine()
+    engine.redis.delete("trading:paused")
+    return {"status": "resumed"}
+
+@app.post("/api/sell")
+def sell(symbol: str = None):
+    engine = get_engine()
+    if symbol:
+        asyncio.create_task(engine.sell_position(symbol))
+        return {"status": f"selling {symbol}"}
+    else:
+        asyncio.create_task(engine.sell_all_positions())
+        return {"status": "selling all"}
+
+@app.post("/api/reload")
+def reload():
+    settings.reload()
+    return {"status": "reloaded"}
+
 @app.get("/api/config")
 def config():
     return {
