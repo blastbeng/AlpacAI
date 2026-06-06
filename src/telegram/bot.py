@@ -87,12 +87,17 @@ class TelegramBot:
         await update.message.reply_text("Trading resumed.", reply_markup=self.keyboard)
 
     async def cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        def get_status():
-            coins = self.engine.current_coins
-            positions = self.engine.positions
-            balance = self.engine.trader.fetch_balance()
-            return coins, positions, balance
-        coins, positions, balance = await asyncio.to_thread(get_status)
+        try:
+            def get_status():
+                coins = self.engine.current_coins
+                positions = self.engine.positions
+                balance = self.engine.trader.fetch_balance()
+                return coins, positions, balance
+            coins, positions, balance = await asyncio.to_thread(get_status)
+        except Exception as e:
+            logger.error(f"Failed to get status: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Could not retrieve status.", reply_markup=self.keyboard)
+            return
 
         msg = "<b>📊 Current Status</b>\n\n"
         coin_list = []
@@ -125,7 +130,13 @@ class TelegramBot:
         await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
 
     async def cmd_trades(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        open_trades = await asyncio.to_thread(self.engine.get_open_trades)
+        try:
+            open_trades = await asyncio.to_thread(self.engine.get_open_trades)
+        except Exception as e:
+            logger.error(f"Failed to get open trades: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Could not retrieve open trades.", reply_markup=self.keyboard)
+            return
+
         if not open_trades:
             await update.message.reply_text("No open trades.", reply_markup=self.keyboard)
             return
@@ -159,6 +170,14 @@ class TelegramBot:
 
     async def cmd_performance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show performance summary grouped by coin and timeframe."""
+        # Check if there are any closed sell trades at all
+        closed_sells = [t for t in self.engine.trade_history if t.get("side") == "sell"]
+        if not closed_sells:
+            await update.message.reply_text(
+                "📊 No closed sell trades yet.", reply_markup=self.keyboard
+            )
+            return
+
         try:
             perf = await asyncio.to_thread(self.engine.get_performance_summary)
             rows = perf.get("rows", [])
@@ -231,7 +250,13 @@ class TelegramBot:
             await update.message.reply_text(msg, parse_mode="Markdown")
 
     async def cmd_risk(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        metrics = self.engine.get_risk_metrics()
+        try:
+            metrics = self.engine.get_risk_metrics()
+        except Exception as e:
+            logger.error(f"Failed to get risk metrics: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Could not retrieve risk metrics.", reply_markup=self.keyboard)
+            return
+
         pf = metrics['profit_factor']
         pf_str = f"{pf:.2f}" if pf != float('inf') else "∞"
         msg = (
@@ -256,45 +281,53 @@ class TelegramBot:
 
     async def cmd_news(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show recent news for all currently tracked coins."""
-        coins = self.engine.current_coins
-        if not coins:
-            await update.message.reply_text("No coins currently tracked.")
-            return
+        try:
+            coins = self.engine.current_coins
+            if not coins:
+                await update.message.reply_text("No coins currently tracked.")
+                return
 
-        await update.message.reply_text("Fetching latest news...")
-        messages = []
-        for entry in coins:
-            symbol = entry["symbol"]
-            base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-            articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
-            if articles:
-                formatted = _format_news_for_prompt(articles)
-                messages.append(f"*{base_coin}*\n{formatted}")
+            await update.message.reply_text("Fetching latest news...")
+            messages = []
+            for entry in coins:
+                symbol = entry["symbol"]
+                base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+                articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+                if articles:
+                    formatted = _format_news_for_prompt(articles)
+                    messages.append(f"*{base_coin}*\n{formatted}")
+                else:
+                    messages.append(f"*{base_coin}*\nNo recent news.")
+
+            full_text = "\n\n".join(messages)
+            # Telegram messages have a 4096 character limit; split if needed
+            if len(full_text) > 4000:
+                for i in range(0, len(full_text), 4000):
+                    await update.message.reply_text(full_text[i:i+4000], parse_mode="Markdown")
             else:
-                messages.append(f"*{base_coin}*\nNo recent news.")
-
-        full_text = "\n\n".join(messages)
-        # Telegram messages have a 4096 character limit; split if needed
-        if len(full_text) > 4000:
-            for i in range(0, len(full_text), 4000):
-                await update.message.reply_text(full_text[i:i+4000], parse_mode="Markdown")
-        else:
-            await update.message.reply_text(full_text, parse_mode="Markdown")
+                await update.message.reply_text(full_text, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Failed to fetch news: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Could not retrieve news.", reply_markup=self.keyboard)
 
     async def cmd_news_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show news article counts for tracked coins."""
-        coins = self.engine.current_coins
-        if not coins:
-            await update.message.reply_text("No coins currently tracked.")
-            return
+        try:
+            coins = self.engine.current_coins
+            if not coins:
+                await update.message.reply_text("No coins currently tracked.")
+                return
 
-        msg = "<b>📰 News Article Counts</b>\n\n"
-        for entry in coins:
-            symbol = entry["symbol"]
-            base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-            articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
-            msg += f"<b>{symbol}</b>: {len(articles)} articles\n"
-        await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
+            msg = "<b>📰 News Article Counts</b>\n\n"
+            for entry in coins:
+                symbol = entry["symbol"]
+                base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+                articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+                msg += f"<b>{symbol}</b>: {len(articles)} articles\n"
+            await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
+        except Exception as e:
+            logger.error(f"Failed to get news status: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Could not retrieve news status.", reply_markup=self.keyboard)
 
     async def cmd_profit(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
