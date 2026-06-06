@@ -338,6 +338,15 @@ def build_strategy_prompt(
     bb_lower: Optional[float] = None,
     ema_9: Optional[float] = None,
     ema_21: Optional[float] = None,
+    stochastic_k: Optional[float] = None,
+    stochastic_d: Optional[float] = None,
+    adx: Optional[float] = None,
+    plus_di: Optional[float] = None,
+    minus_di: Optional[float] = None,
+    obv: Optional[float] = None,
+    mfi: Optional[float] = None,
+    cci: Optional[float] = None,
+    williams_r: Optional[float] = None,
     order_book_imbalance: Optional[float] = None,
     unrealized_pnl: Optional[float] = None,
     position_info: Optional[Dict[str, Any]] = None,
@@ -390,6 +399,18 @@ Maximum coins to trade: {max_coins}
         prompt += f"EMA (9): {ema_9}\n"
     if ema_21 is not None:
         prompt += f"EMA (21): {ema_21}\n"
+    if stochastic_k is not None:
+        prompt += f"Stochastic Oscillator: %K={stochastic_k:.2f}, %D={stochastic_d:.2f}\n"
+    if adx is not None:
+        prompt += f"ADX(14): {adx:.2f}, +DI={plus_di:.2f}, -DI={minus_di:.2f}\n"
+    if obv is not None:
+        prompt += f"On-Balance Volume (OBV): {obv:.2f}\n"
+    if mfi is not None:
+        prompt += f"Money Flow Index (MFI 14): {mfi:.2f}\n"
+    if cci is not None:
+        prompt += f"Commodity Channel Index (CCI 20): {cci:.2f}\n"
+    if williams_r is not None:
+        prompt += f"Williams %R (14): {williams_r:.2f}\n"
     if order_book_imbalance is not None:
         prompt += f"Order book imbalance (bid_vol / ask_vol): {order_book_imbalance:.2f} ( >1 = buying pressure)\n"
     if spread_pct is not None:
@@ -458,6 +479,14 @@ If the position is already in profit, consider trailing the stop.
 - Price near the lower Bollinger Band may indicate a buying opportunity; near the upper band a selling opportunity.
 - EMA(9) crossing above EMA(21) is a bullish signal (golden cross); crossing below is bearish (death cross).
 - Use these in combination with order book data to time entries.
+
+**Additional technical indicators:**
+- Stochastic Oscillator (%K, %D): values above 80 indicate overbought, below 20 oversold. Look for bullish cross (%K crossing above %D) near oversold for BUY signals, bearish cross near overbought for SELL.
+- ADX: measures trend strength. ADX > 25 indicates a strong trend; ADX < 20 suggests a ranging market. Use +DI and -DI crossovers to determine trend direction (+DI > -DI = uptrend, -DI > +DI = downtrend).
+- OBV: confirms price trends. Rising OBV with rising price confirms uptrend; divergence (price up, OBV down) warns of weakness.
+- MFI: volume-weighted RSI. Overbought > 80, oversold < 20. Divergences can signal reversals.
+- CCI: measures deviation from average. Values above +100 suggest overbought, below -100 oversold. Use for timing entries/exits.
+- Williams %R: similar to Stochastic, ranges -100 to 0. Values above -20 overbought, below -80 oversold.
 
 You MUST include the following risk parameters in the "parameters" object:
 - stop_loss_pct (required unless using stop_loss_method="atr_multiple"), take_profit_pct, trailing_stop, trailing_stop_distance_pct, position_size_fraction, max_hold_time_seconds.

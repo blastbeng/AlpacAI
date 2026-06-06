@@ -20,6 +20,12 @@ from src.llm.prompts import (
     compute_macd,
     compute_bollinger_bands,
     compute_ema,
+    compute_stochastic,
+    compute_adx,
+    compute_obv,
+    compute_mfi,
+    compute_cci,
+    compute_williams_r,
 )
 try:
     from src.news.fetcher import discover_trending_coins
@@ -783,12 +789,24 @@ class TradingEngine:
             bb_lower = None
             ema_9 = None
             ema_21 = None
+            stochastic_k = None
+            stochastic_d = None
+            adx = None
+            plus_di = None
+            minus_di = None
+            obv = None
+            mfi = None
+            cci = None
+            williams_r = None
             if ohlcv_data and assigned_tf in ohlcv_data:
                 candles = ohlcv_data[assigned_tf]
                 if candles:
                     atr = compute_atr(candles)
                     if len(candles) >= 26:
                         closes = [c[4] for c in candles]
+                        highs = [c[2] for c in candles]
+                        lows = [c[3] for c in candles]
+                        volumes = [c[5] for c in candles]
                         rsi = compute_rsi(closes)
                         macd, macd_signal, macd_hist = compute_macd(closes)
                         bb_upper, bb_middle, bb_lower = compute_bollinger_bands(closes)
@@ -799,6 +817,13 @@ class TradingEngine:
                             ema_9 = ema_9_list[-1]
                         if ema_21_list:
                             ema_21 = ema_21_list[-1]
+                        # New indicators
+                        stochastic_k, stochastic_d = compute_stochastic(highs, lows, closes)
+                        adx, plus_di, minus_di = compute_adx(highs, lows, closes)
+                        obv = compute_obv(closes, volumes)
+                        mfi = compute_mfi(highs, lows, closes, volumes)
+                        cci = compute_cci(highs, lows, closes)
+                        williams_r = compute_williams_r(highs, lows, closes)
 
             # Extract raw candles for the assigned timeframe
             raw_candles = None
@@ -912,6 +937,15 @@ class TradingEngine:
                 bb_lower=bb_lower,
                 ema_9=ema_9,
                 ema_21=ema_21,
+                stochastic_k=stochastic_k,
+                stochastic_d=stochastic_d,
+                adx=adx,
+                plus_di=plus_di,
+                minus_di=minus_di,
+                obv=obv,
+                mfi=mfi,
+                cci=cci,
+                williams_r=williams_r,
                 order_book_imbalance=order_book_imbalance,
                 unrealized_pnl=unrealized_pnl,
                 position_info=position_info,
