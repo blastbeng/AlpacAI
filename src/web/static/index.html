@@ -353,10 +353,10 @@
             if (data.current_coins && data.current_coins.length > 0) {
                 data.current_coins.forEach(coin => {
                     const span = document.createElement('span');
-                    span.textContent = coin;
+                    span.textContent = `${coin.symbol} (${coin.timeframe})`;
                     span.className = 'clickable-coin';
                     span.style.marginRight = '8px';
-                    span.onclick = () => openChart(coin);
+                    span.onclick = () => openChart(coin.symbol);
                     coinsDiv.appendChild(span);
                 });
             } else {

@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from src.config.settings import settings
 from src.utils.redis_client import get_redis_client, check_redis_connection
+from src.database import get_news_for_symbol
 
 app = FastAPI(title="Crypto Trading Bot")
 
