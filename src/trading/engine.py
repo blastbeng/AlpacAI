@@ -203,7 +203,7 @@ class TradingEngine:
                                     get_latest_ohlcv_timestamp, symbol, tf
                                 )
                                 if latest_ts:
-                                    since_ms = latest_ts
+                                    since_ms = latest_ts + 1   # start just after the last stored candle
                                 else:
                                     # No data yet; fetch last 30 days
                                     since_ms = int(time.time() * 1000) - 30 * 24 * 60 * 60 * 1000
