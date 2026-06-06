@@ -388,15 +388,15 @@ class TradingEngine:
         total_recent_pnl = sum(recent_pnl)
         trend = "up" if total_recent_pnl > 0 else "down" if total_recent_pnl < 0 else "flat"
 
-        # Compute drawdown
+        # Compute drawdown based on total equity (initial balance + cumulative realized P&L)
         equity_series = []
-        running_equity = 0.0
+        running_equity = self.initial_balance
         for trade in self.trade_history:
             if trade.get("side") == "sell":
                 running_equity += trade.get("realized_pnl", 0.0)
             equity_series.append(running_equity)
-        peak = max(equity_series) if equity_series else 0.0
-        current_equity = equity_series[-1] if equity_series else 0.0
+        peak = max(equity_series) if equity_series else self.initial_balance
+        current_equity = equity_series[-1] if equity_series else self.initial_balance
         drawdown_pct = ((peak - current_equity) / peak * 100) if peak > 0 else 0.0
 
         return {
