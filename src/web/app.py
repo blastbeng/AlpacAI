@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +9,8 @@ from src.config.settings import settings
 from src.utils.redis_client import get_redis_client, check_redis_connection
 
 app = FastAPI(title="Crypto Trading Bot")
+
+logger = logging.getLogger(__name__)
 
 # Serve static files (dashboard)
 app.mount("/static", StaticFiles(directory="src/web/static"), name="static")
@@ -18,6 +21,7 @@ _engine = None
 def set_engine(engine):
     global _engine
     _engine = engine
+    logger.info("Trading engine attached to web server")
 
 def get_engine():
     if _engine is None:
@@ -107,6 +111,7 @@ async def ohlcv(symbol: str, timeframe: str = "1h", limit: int = 24):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    logger.info("WebSocket client connected")
     try:
         while True:
             try:
@@ -125,6 +130,9 @@ async def websocket_endpoint(websocket: WebSocket):
             except HTTPException:
                 # Engine not ready yet, send empty
                 await websocket.send_text(json.dumps({"status": "initializing"}))
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}", exc_info=True)
+                break
             await asyncio.sleep(2)
     except WebSocketDisconnect:
-        pass
+        logger.info("WebSocket client disconnected")
