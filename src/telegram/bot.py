@@ -71,6 +71,12 @@ class TelegramBot:
             await self.cmd_news(update, context)
         elif text == "⚠️ Risk":
             await self.cmd_risk(update, context)
+        else:
+            # Any other text (e.g., first message "hi") shows the keyboard
+            await update.message.reply_text(
+                "Use the buttons below to interact with the bot.",
+                reply_markup=self.keyboard,
+            )
 
     async def cmd_pause(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.to_thread(self.redis.set, "trading:paused", "1")
