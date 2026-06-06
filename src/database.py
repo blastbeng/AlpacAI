@@ -6,6 +6,8 @@ import time
 from typing import Dict, List, Any, Optional
 from src.config.settings import settings
 
+logger = logging.getLogger(__name__)
+
 DB_PATH = settings.DATABASE_PATH
 
 
@@ -404,6 +406,7 @@ def insert_ohlcv_batch(symbol: str, timeframe: str, candles: List[List]):
             ],
         )
         conn.commit()
+        logger.debug(f"Inserted {len(candles)} OHLCV candles for {symbol} {timeframe}")
     finally:
         conn.close()
 

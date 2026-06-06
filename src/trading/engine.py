@@ -194,6 +194,8 @@ class TradingEngine:
                 if not self.current_coins:
                     logger.debug("No coins tracked; skipping market data download.")
                 else:
+                    logger.debug("Starting market data download cycle...")
+                    total_candles = 0
                     for coin_entry in self.current_coins:
                         symbol = coin_entry["symbol"]
                         for tf in settings.OHLCV_TIMEFRAMES:
@@ -208,20 +210,23 @@ class TradingEngine:
                                     # No data yet; fetch last 30 days
                                     since_ms = int(time.time() * 1000) - 30 * 24 * 60 * 60 * 1000
 
+                                logger.debug(f"Fetching OHLCV for {symbol} {tf} since {since_ms}")
                                 raw_candles = await asyncio.to_thread(
                                     self.exchange.fetch_ohlcv, symbol, tf, since=since_ms, limit=500
                                 )
                                 if raw_candles:
+                                    logger.debug(f"Received {len(raw_candles)} candles for {symbol} {tf}")
                                     await asyncio.to_thread(
                                         insert_ohlcv_batch, symbol, tf, raw_candles
                                     )
-                                    logger.debug(
-                                        f"Stored {len(raw_candles)} candles for {symbol} {tf}"
-                                    )
+                                    total_candles += len(raw_candles)
+                                else:
+                                    logger.debug(f"No new candles for {symbol} {tf}")
                             except Exception as e:
                                 logger.warning(f"Market data download failed for {symbol} {tf}: {e}")
                         # Small delay between coins to avoid rate limits
                         await asyncio.sleep(0.5)
+                    logger.debug(f"Market data download cycle complete. Total candles stored: {total_candles}")
             except Exception as e:
                 logger.error(f"Market data download loop error: {e}", exc_info=True)
 
