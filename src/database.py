@@ -9,6 +9,11 @@ from src.config.settings import settings
 DB_PATH = settings.DATABASE_PATH
 
 
+def _normalize_symbol(symbol: str) -> str:
+    """Extract the base coin from a trading pair (e.g., 'NIM/USDT' -> 'NIM')."""
+    return symbol.split("/")[0] if "/" in symbol else symbol
+
+
 def get_connection() -> sqlite3.Connection:
     """Return a new connection to the SQLite database."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -270,6 +275,7 @@ def set_telegram_chat_id(chat_id: int):
 
 def store_news_articles(symbol: str, articles: List[Dict[str, Any]]):
     """Replace all stored articles for a symbol with a fresh batch."""
+    symbol = _normalize_symbol(symbol)
     conn = get_connection()
     now = time.time()
     # Delete old articles for this symbol
@@ -302,6 +308,7 @@ def store_news_articles(symbol: str, articles: List[Dict[str, Any]]):
 
 def get_news_for_symbol(symbol: str, max_age_seconds: int = 900) -> List[Dict[str, Any]]:
     """Retrieve recent news articles for a symbol from the database."""
+    symbol = _normalize_symbol(symbol)
     conn = get_connection()
     cutoff = time.time() - max_age_seconds
     rows = conn.execute(
@@ -332,6 +339,7 @@ def get_news_for_symbol(symbol: str, max_age_seconds: int = 900) -> List[Dict[st
 
 def get_aggregate_sentiment_from_db(symbol: str, max_age_seconds: int = 900) -> Optional[Dict[str, Any]]:
     """Return aggregate sentiment for a symbol from the database."""
+    symbol = _normalize_symbol(symbol)
     articles = get_news_for_symbol(symbol, max_age_seconds)
     if not articles:
         return None
