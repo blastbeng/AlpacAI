@@ -174,7 +174,7 @@ class TelegramBot:
         closed_sells = [t for t in self.engine.trade_history if t.get("side") == "sell"]
         if not closed_sells:
             await update.message.reply_text(
-                "📊 No closed sell trades yet.", reply_markup=self.keyboard
+                "🚀 No closed sell trades yet.", reply_markup=self.keyboard
             )
             return
 
@@ -185,7 +185,7 @@ class TelegramBot:
 
             if not rows:
                 await update.message.reply_text(
-                    "📊 No closed sell trades yet.", reply_markup=self.keyboard
+                    "🚀 No closed sell trades yet.", reply_markup=self.keyboard
                 )
                 return
 
