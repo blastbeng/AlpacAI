@@ -101,6 +101,21 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_news_symbol ON news_articles(symbol);
         CREATE INDEX IF NOT EXISTS idx_news_fetched_at ON news_articles(fetched_at);
+
+        CREATE TABLE IF NOT EXISTS market_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            timeframe TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            open REAL NOT NULL,
+            high REAL NOT NULL,
+            low REAL NOT NULL,
+            close REAL NOT NULL,
+            volume REAL NOT NULL
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_market_data_symbol_tf_ts ON market_data(symbol, timeframe, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_market_data_timestamp ON market_data(timestamp);
     """)
     conn.commit()
     conn.close()
@@ -370,3 +385,63 @@ def cleanup_old_news(retention_seconds: int):
     if deleted:
         logger = logging.getLogger(__name__)
         logger.info(f"Cleaned up {deleted} old news articles.")
+
+
+def insert_ohlcv_batch(symbol: str, timeframe: str, candles: List[List]):
+    """Insert OHLCV candles into the market_data table, ignoring duplicates."""
+    if not candles:
+        return
+    conn = get_connection()
+    try:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO market_data (symbol, timeframe, timestamp, open, high, low, close, volume)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (symbol, timeframe, c[0], c[1], c[2], c[3], c[4], c[5])
+                for c in candles
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_ohlcv(symbol: str, timeframe: str, since_ms: int = None, limit: int = 500) -> List[Dict[str, Any]]:
+    """Retrieve OHLCV candles from the market_data table."""
+    conn = get_connection()
+    query = "SELECT timestamp, open, high, low, close, volume FROM market_data WHERE symbol = ? AND timeframe = ?"
+    params: list = [symbol, timeframe]
+    if since_ms is not None:
+        query += " AND timestamp >= ?"
+        params.append(since_ms)
+    query += " ORDER BY timestamp ASC"
+    if limit:
+        query += f" LIMIT {int(limit)}"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [
+        {
+            "timestamp": row["timestamp"],
+            "open": row["open"],
+            "high": row["high"],
+            "low": row["low"],
+            "close": row["close"],
+            "volume": row["volume"],
+        }
+        for row in rows
+    ]
+
+
+def get_latest_ohlcv_timestamp(symbol: str, timeframe: str) -> Optional[int]:
+    """Return the latest timestamp for a symbol/timeframe, or None if no data exists."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT MAX(timestamp) AS ts FROM market_data WHERE symbol = ? AND timeframe = ?",
+        (symbol, timeframe),
+    ).fetchone()
+    conn.close()
+    if row and row["ts"] is not None:
+        return row["ts"]
+    return None

@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # OHLCV timeframes for multi-timeframe analysis
     OHLCV_TIMEFRAMES: list[str] = ["5m", "15m", "1h", "4h"]
 
+    # Market data download interval (seconds)
+    MARKET_DATA_REFRESH_SECONDS: int = 300
+
     @field_validator("OHLCV_TIMEFRAMES")
     @classmethod
     def validate_ohlcv_timeframes(cls, v: list[str]) -> list[str]:

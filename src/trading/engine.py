@@ -35,7 +35,7 @@ from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm
 from src.strategies.validator import validate_signal
 from src.utils.redis_client import get_redis_client
-from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade, get_performance, store_news_articles, get_aggregate_sentiment_from_db, get_ohlcv
+from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade, get_performance, store_news_articles, get_aggregate_sentiment_from_db, get_ohlcv, get_latest_ohlcv_timestamp, insert_ohlcv_batch
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +184,48 @@ class TradingEngine:
                 logger.warning(f"News cleanup failed: {e}")
 
             await asyncio.sleep(settings.NEWS_UPDATE_INTERVAL_MINUTES * 60)
+
+    async def _download_market_data_loop(self):
+        """Periodically download and store OHLCV data for tracked coins."""
+        # Initial delay to let the engine settle
+        await asyncio.sleep(30)
+        while True:
+            try:
+                if not self.current_coins:
+                    logger.debug("No coins tracked; skipping market data download.")
+                else:
+                    for coin_entry in self.current_coins:
+                        symbol = coin_entry["symbol"]
+                        for tf in settings.OHLCV_TIMEFRAMES:
+                            try:
+                                # Get the latest timestamp we already have
+                                latest_ts = await asyncio.to_thread(
+                                    get_latest_ohlcv_timestamp, symbol, tf
+                                )
+                                if latest_ts:
+                                    since_ms = latest_ts
+                                else:
+                                    # No data yet; fetch last 30 days
+                                    since_ms = int(time.time() * 1000) - 30 * 24 * 60 * 60 * 1000
+
+                                raw_candles = await asyncio.to_thread(
+                                    self.exchange.fetch_ohlcv, symbol, tf, since=since_ms, limit=500
+                                )
+                                if raw_candles:
+                                    await asyncio.to_thread(
+                                        insert_ohlcv_batch, symbol, tf, raw_candles
+                                    )
+                                    logger.debug(
+                                        f"Stored {len(raw_candles)} candles for {symbol} {tf}"
+                                    )
+                            except Exception as e:
+                                logger.warning(f"Market data download failed for {symbol} {tf}: {e}")
+                        # Small delay between coins to avoid rate limits
+                        await asyncio.sleep(0.5)
+            except Exception as e:
+                logger.error(f"Market data download loop error: {e}", exc_info=True)
+
+            await asyncio.sleep(settings.MARKET_DATA_REFRESH_SECONDS)
 
     def _restore_paper_state(self):
         """Replay trade history to restore paper simulator balances and positions with cost basis."""
@@ -519,6 +561,8 @@ class TradingEngine:
         logger.info("Trading engine started.")
         # Start background news refresh task
         asyncio.create_task(self._refresh_news_cache())
+        # Start background market data download task
+        asyncio.create_task(self._download_market_data_loop())
         while True:
             try:
                 await self._reconcile_positions()
