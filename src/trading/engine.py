@@ -312,6 +312,7 @@ class TradingEngine:
             if "stop_loss" not in pos or "take_profit" not in pos:
                 pos["_force_close"] = True
         self.positions = positions
+        logger.info("Restored paper trading state from %d historical trades", len(self.trade_history))
 
     def _ensure_cost_basis(self):
         """If positions lack cost_basis, compute it from amount and price (backward compat)."""
@@ -553,6 +554,13 @@ class TradingEngine:
                 self.initial_balance = balance.get(self.base_currency, 0.0)
             save_trading_state("initial_balance", self.initial_balance)
 
+        logger.info(
+            "Loaded trading state: %d coins, %d positions, %d trades",
+            len(self.current_coins),
+            len(self.positions),
+            len(self.trade_history),
+        )
+
     async def _save_state(self):
         """Persist current coins, positions, and trade history to SQLite."""
         await asyncio.to_thread(save_trading_state, "current_coins", self.current_coins)
@@ -560,6 +568,8 @@ class TradingEngine:
         # Keep only the last 1000 trades to avoid unbounded growth
         self.trade_history = self.trade_history[-1000:]
         await asyncio.to_thread(save_trading_state, "trade_history", self.trade_history)
+        logger.debug("Saved trading state: %d coins, %d positions, %d trades",
+                     len(self.current_coins), len(self.positions), len(self.trade_history))
 
     async def run(self):
         """Main loop that runs forever."""

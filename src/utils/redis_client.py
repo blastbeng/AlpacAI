@@ -1,5 +1,8 @@
 import redis
+import logging
 from src.config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 def get_redis_client() -> redis.Redis:
     """Return a Redis client configured from settings."""
@@ -16,5 +19,6 @@ def check_redis_connection() -> bool:
         r = get_redis_client()
         r.ping()
         return True
-    except redis.ConnectionError:
+    except redis.ConnectionError as e:
+        logger.warning("Redis connection failed: %s", e)
         return False

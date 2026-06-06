@@ -1,5 +1,8 @@
 import ccxt
+import logging
 from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 def get_available_pairs(exchange: ccxt.Exchange, base_currency: str) -> List[str]:
     """Return list of trading pairs that have the given base currency (e.g., 'USDT')."""
@@ -36,7 +39,7 @@ def get_multi_timeframe_ohlcv(
         try:
             ohlcv = exchange.fetch_ohlcv(symbol, tf, limit=limit)
             result[tf] = ohlcv
-        except Exception:
-            # Skip on failure
+        except Exception as e:
+            logger.warning("Failed to fetch OHLCV for %s %s: %s", symbol, tf, e)
             result[tf] = []
     return result

@@ -1,7 +1,10 @@
 import uuid
 import time
+import logging
 from typing import Dict, List, Optional, Any
 import ccxt
+
+logger = logging.getLogger(__name__)
 
 from src.exchanges.fees import get_fee_rate
 

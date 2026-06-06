@@ -1,5 +1,8 @@
 import ccxt
+import logging
 from typing import Dict, List, Optional, Any
+
+logger = logging.getLogger(__name__)
 
 
 class LiveTrader:
@@ -19,6 +22,7 @@ class LiveTrader:
         free_balances = {}
         for currency, data in balance.get('total', {}).items():
             free_balances[currency] = data
+        logger.debug("Fetched live balances: %s", free_balances)
         return free_balances
 
     def create_market_buy_order(self, symbol: str, quote_amount: float) -> Dict[str, Any]:
@@ -30,11 +34,15 @@ class LiveTrader:
         ticker = self.exchange.fetch_ticker(symbol)
         price = ticker['last']
         base_amount = quote_amount / price
-        return self.exchange.create_market_buy_order(symbol, base_amount)
+        order = self.exchange.create_market_buy_order(symbol, base_amount)
+        logger.info("Live BUY %s: amount=%s cost=%s @ %s", symbol, order.get('amount'), order.get('cost'), order.get('price'))
+        return order
 
     def create_market_sell_order(self, symbol: str, base_amount: float) -> Dict[str, Any]:
         """Place a market sell order."""
-        return self.exchange.create_market_sell_order(symbol, base_amount)
+        order = self.exchange.create_market_sell_order(symbol, base_amount)
+        logger.info("Live SELL %s: amount=%s cost=%s @ %s", symbol, order.get('amount'), order.get('cost'), order.get('price'))
+        return order
 
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """Fetch open orders, optionally filtered by symbol."""

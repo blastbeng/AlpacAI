@@ -1,7 +1,10 @@
 import hashlib
 import json
+import logging
 from src.llm.llm_client import get_llm_response
 from src.utils.redis_client import get_redis_client
+
+logger = logging.getLogger(__name__)
 
 def get_cached_llm_response(prompt: str, system_prompt: str = "", ttl: int = 300) -> str:
     """
@@ -17,6 +20,7 @@ def get_cached_llm_response(prompt: str, system_prompt: str = "", ttl: int = 300
     # Try to get from cache
     cached = redis_client.get(cache_key)
     if cached:
+        logger.debug("LLM cache hit for key %s", cache_key[:16])
         return cached
 
     # Not cached, call LLM
@@ -24,4 +28,5 @@ def get_cached_llm_response(prompt: str, system_prompt: str = "", ttl: int = 300
 
     # Store in cache with TTL
     redis_client.setex(cache_key, ttl, response)
+    logger.debug("LLM cache miss – stored response for key %s", cache_key[:16])
     return response
