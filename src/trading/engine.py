@@ -78,6 +78,21 @@ class TradingEngine:
         """Attach a notification service (e.g., TelegramBot)."""
         self.notifier = notifier
 
+    def _get_sentiment_str(self, symbol: str) -> str:
+        """Get a short news sentiment string for notifications."""
+        if not settings.NEWS_ENABLED:
+            return ""
+        try:
+            base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+            agg_sent = get_aggregate_sentiment_from_db(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+            if agg_sent:
+                compound = agg_sent["avg_compound"]
+                sentiment_label = "positive" if compound > 0.05 else "negative" if compound < -0.05 else "neutral"
+                return f"📰 {sentiment_label} ({compound:+.2f}, {agg_sent['total_articles']} articles)"
+        except Exception:
+            pass
+        return ""
+
     async def _refresh_news_cache(self):
         """Periodically fetch news for tracked coins and top-volume coins to keep cache warm."""
         if not settings.NEWS_ENABLED:
@@ -1060,9 +1075,12 @@ class TradingEngine:
                 if williams_r is not None:
                     ind_parts.append(f"WR={williams_r:.2f}")
                 indicator_str = " | ".join(ind_parts) if ind_parts else ""
+                sentiment_str = self._get_sentiment_str(symbol)
                 msg = f"{emoji} {symbol}: {validated.action} (confidence: {validated.confidence:.2f}) – {validated.reasoning}"
                 if indicator_str:
                     msg += f"\n📊 {indicator_str}"
+                if sentiment_str:
+                    msg += f"\n{sentiment_str}"
                 await self.notifier.send_notification(msg)
 
             # Prevent SELL without an open position (no shorting)
@@ -1531,9 +1549,11 @@ class TradingEngine:
                 await asyncio.to_thread(insert_trade, order)
                 await self._save_state()
                 if self.notifier:
-                    await self.notifier.send_notification(
-                        f"🟢 BUY {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
-                    )
+                    sentiment_str = self._get_sentiment_str(symbol)
+                    buy_msg = f"🟢 BUY {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
+                    if sentiment_str:
+                        buy_msg += f" | {sentiment_str}"
+                    await self.notifier.send_notification(buy_msg)
             except Exception as e:
                 logger.error(f"Buy order failed for {symbol}: {e}")
                 if self.notifier:
@@ -1603,9 +1623,11 @@ class TradingEngine:
                 await asyncio.to_thread(insert_trade, order)
                 await self._save_state()
                 if self.notifier:
-                    await self.notifier.send_notification(
-                        f"🔴 SELL {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
-                    )
+                    sentiment_str = self._get_sentiment_str(symbol)
+                    sell_msg = f"🔴 SELL {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
+                    if sentiment_str:
+                        sell_msg += f" | {sentiment_str}"
+                    await self.notifier.send_notification(sell_msg)
             except Exception as e:
                 logger.error(f"Sell order failed for {symbol}: {e}")
                 if self.notifier:
