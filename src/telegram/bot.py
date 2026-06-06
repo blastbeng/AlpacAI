@@ -340,7 +340,7 @@ class TelegramBot:
             msg += f"📊 Open Positions:   {summary['open_value']:,.2f}\n"
             total_wallet = summary['current_balance'] + summary['open_value']
             msg += f"💼 Total Wallet:     {total_wallet:,.2f}\n"
-            msg += f"🧾 Fees Paid:        {summary['total_fees']:,.2f}\n"
+            msg += f"🧾 Fees Paid:        {summary['total_fees']:,.6f}\n"
             msg += f"{pnl_emoji} Total P&L:         {pnl_sign}{pnl:,.2f}  ({pnl_sign}{pnl_pct:.2f}%)\n"
             wins = summary.get('wins', 0)
             losses = summary.get('losses', 0)

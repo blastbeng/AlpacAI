@@ -58,4 +58,5 @@ def get_fee_rate(
         except Exception as e:
             logger.warning(f"Redis setex failed for fee rate: {e}")
 
+    logger.debug(f"Fee rate for {symbol}: {rate} (exchange={exchange_id}, cached={cached is not None if redis_client else False})")
     return rate
