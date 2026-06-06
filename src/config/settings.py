@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Max coins to trade
     MAX_COINS: int = 10
 
+    # Manual sell cooldown: number of strategy cycles to skip a coin after a manual sell
+    MANUAL_SELL_COOLDOWN_CYCLES: int = 3
+
     @field_validator("TRADING_MODE")
     @classmethod
     def validate_trading_mode(cls, v: str) -> str:

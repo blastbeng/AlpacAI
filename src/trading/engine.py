@@ -71,6 +71,8 @@ class TradingEngine:
         if settings.TRADING_MODE == "paper":
             self._restore_paper_state()
         self._ensure_cost_basis()
+        # Cooldown tracking: symbol -> remaining cycles to skip
+        self._manual_sell_cooldowns: Dict[str, int] = {}
         # Ensure trading is not paused on startup
         self.redis.delete("trading:paused")
 
@@ -591,6 +593,11 @@ class TradingEngine:
                 for coin_entry in self.current_coins:
                     await self._process_coin(coin_entry)
                 await self._check_risk_management()
+                # Decrement manual sell cooldowns
+                for sym in list(self._manual_sell_cooldowns.keys()):
+                    self._manual_sell_cooldowns[sym] -= 1
+                    if self._manual_sell_cooldowns[sym] <= 0:
+                        del self._manual_sell_cooldowns[sym]
                 await self._save_state()
             except Exception as e:
                 logger.error(f"Engine loop error: {e}", exc_info=True)
@@ -864,6 +871,14 @@ class TradingEngine:
     async def _process_coin(self, coin_entry: Dict[str, str]):
         """Fetch market data, get LLM strategy, validate, and execute."""
         symbol = coin_entry["symbol"]
+        # Skip if this coin was manually sold and is still in cooldown
+        if symbol in self._manual_sell_cooldowns:
+            remaining = self._manual_sell_cooldowns[symbol]
+            if remaining > 0:
+                logger.debug(f"Skipping {symbol}: manual sell cooldown ({remaining} cycles left)")
+                return
+            else:
+                del self._manual_sell_cooldowns[symbol]
         assigned_tf = coin_entry["timeframe"]
         try:
             ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
@@ -1364,6 +1379,8 @@ class TradingEngine:
                 Signal(action="SELL", confidence=1.0, reasoning="Manual sell all"),
                 exit_reason="manual_sell_all"
             )
+            # Set cooldown for each sold symbol
+            self._manual_sell_cooldowns[symbol] = settings.MANUAL_SELL_COOLDOWN_CYCLES
 
     async def sell_position(self, symbol: str):
         """Sell a specific open position at market price."""
@@ -1373,6 +1390,7 @@ class TradingEngine:
                 Signal(action="SELL", confidence=1.0, reasoning="Manual sell"),
                 exit_reason="manual_sell"
             )
+            self._manual_sell_cooldowns[symbol] = settings.MANUAL_SELL_COOLDOWN_CYCLES
         else:
             logger.warning(f"No open position for {symbol}")
 
