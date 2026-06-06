@@ -243,11 +243,8 @@ class TelegramBot:
 
         formatted = _format_news_for_prompt(articles)
         msg = f"*{coin}*\n{formatted}"
-        if len(msg) > 4000:
-            for i in range(0, len(msg), 4000):
-                await update.message.reply_text(msg[i:i+4000], parse_mode="Markdown")
-        else:
-            await update.message.reply_text(msg, parse_mode="Markdown")
+        # Send as plain text to avoid Markdown parsing errors
+        await update.message.reply_text(msg, parse_mode=None, reply_markup=self.keyboard)
 
     async def cmd_risk(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
@@ -300,12 +297,12 @@ class TelegramBot:
                     messages.append(f"*{base_coin}*\nNo recent news.")
 
             full_text = "\n\n".join(messages)
-            # Telegram messages have a 4096 character limit; split if needed
+            # Send as plain text; split only if needed (no parse_mode to avoid entity errors)
             if len(full_text) > 4000:
                 for i in range(0, len(full_text), 4000):
-                    await update.message.reply_text(full_text[i:i+4000], parse_mode="Markdown")
+                    await update.message.reply_text(full_text[i:i+4000], parse_mode=None)
             else:
-                await update.message.reply_text(full_text, parse_mode="Markdown")
+                await update.message.reply_text(full_text, parse_mode=None)
         except Exception as e:
             logger.error(f"Failed to fetch news: {e}", exc_info=True)
             await update.message.reply_text("⚠️ Could not retrieve news.", reply_markup=self.keyboard)
