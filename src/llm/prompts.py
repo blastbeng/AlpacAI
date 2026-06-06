@@ -658,7 +658,7 @@ Maximum coins to trade: {max_coins}
         prompt += "If sentiment is very negative, reduce max hold time to limit exposure.\n"
 
     prompt += f"""
-**Your primary objective is short-term profit.** Use the ATR to set stop-loss and take-profit distances that respect the coin's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on a risk:reward ratio of at least 1:2. **Crucially, your stop distance must be at least 1× ATR, and preferably 1.5–2.5× ATR, to avoid being stopped out by normal market noise.**
+**Your primary objective is profit across short, medium, and long timeframes, with a priority on short-term gains.** Use the ATR to set stop-loss and take-profit distances that respect the coin's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on a risk:reward ratio of at least 1:2. **Crucially, your stop distance must be at least 1× ATR, and preferably 1.5–2.5× ATR, to avoid being stopped out by normal market noise.**
 
 Interpret the order book metrics:
 - A high spread (>0.5%) suggests low liquidity – be cautious with large orders.
