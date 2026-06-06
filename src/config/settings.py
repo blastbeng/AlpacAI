@@ -201,6 +201,12 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
 
+    def reload(self):
+        """Reload settings from .env file and environment variables."""
+        new_settings = self.__class__()
+        for field in self.__fields__:
+            setattr(self, field, getattr(new_settings, field))
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

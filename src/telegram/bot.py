@@ -39,6 +39,8 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("news", self.cmd_news_search))
         self.app.add_handler(CommandHandler("news_status", self.cmd_news_status))
         self.app.add_handler(CommandHandler("risk", self.cmd_risk))
+        self.app.add_handler(CommandHandler("reload", self.cmd_reload))
+        self.app.add_handler(CommandHandler("sell", self.cmd_sell))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_button))
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,7 +144,7 @@ class TelegramBot:
             return
 
         msg = "<b>📈 Open Trades</b>\n\n"
-        for t in open_trades:
+        for idx, t in enumerate(open_trades, start=1):
             sym = t['symbol']
             amt = t['amount']
             price = t['price']
@@ -161,7 +163,7 @@ class TelegramBot:
             except Exception as e:
                 logger.warning(f"Could not fetch current price for {sym}: {e}")
 
-            line = f"🟢 <b>BUY</b> <code>{sym}</code>\n"
+            line = f"<b>#{idx}</b> 🟢 <b>BUY</b> <code>{sym}</code>\n"
             line += f"   🕒 {ts}\n"
             line += f"   Amount: {amt:.6f}  Entry: {price:.4f}"
             if current_price is not None:
@@ -336,6 +338,51 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"Failed to get news status: {e}", exc_info=True)
             await update.message.reply_text("⚠️ Could not retrieve news status.", reply_markup=self.keyboard)
+
+    async def cmd_reload(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Hot-reload the .env file."""
+        try:
+            settings.reload()
+            await update.message.reply_text("✅ Settings reloaded from .env file.", reply_markup=self.keyboard)
+        except Exception as e:
+            logger.error(f"Failed to reload settings: {e}", exc_info=True)
+            await update.message.reply_text(f"⚠️ Failed to reload settings: {e}", reply_markup=self.keyboard)
+
+    async def cmd_sell(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Sell all open positions, or a specific one by trade ID (e.g., /sell 2)."""
+        try:
+            open_trades = await asyncio.to_thread(self.engine.get_open_trades)
+        except Exception as e:
+            logger.error(f"Failed to get open trades: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Could not retrieve open trades.", reply_markup=self.keyboard)
+            return
+
+        if not open_trades:
+            await update.message.reply_text("📈 No open trades to sell.", reply_markup=self.keyboard)
+            return
+
+        if context.args:
+            # Sell a specific trade by its displayed ID
+            try:
+                trade_id = int(context.args[0])
+            except ValueError:
+                await update.message.reply_text("Usage: /sell <id>  (e.g., /sell 1)", reply_markup=self.keyboard)
+                return
+
+            if trade_id < 1 or trade_id > len(open_trades):
+                await update.message.reply_text(f"Invalid trade ID. Use a number between 1 and {len(open_trades)}.", reply_markup=self.keyboard)
+                return
+
+            symbol = open_trades[trade_id - 1]['symbol']
+            await update.message.reply_text(f"Selling {symbol}...", reply_markup=self.keyboard)
+            await self.engine.sell_position(symbol)
+            await update.message.reply_text(f"✅ Sell order placed for {symbol}.", reply_markup=self.keyboard)
+        else:
+            # Sell all open positions
+            count = len(open_trades)
+            await update.message.reply_text(f"Selling all {count} open positions...", reply_markup=self.keyboard)
+            await self.engine.sell_all_positions()
+            await update.message.reply_text(f"✅ Sell orders placed for all {count} positions.", reply_markup=self.keyboard)
 
     async def cmd_profit(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:

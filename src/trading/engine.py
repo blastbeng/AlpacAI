@@ -1356,6 +1356,26 @@ class TradingEngine:
             'total_trades': total_trades,
         }
 
+    async def sell_all_positions(self):
+        """Sell all open positions at market price."""
+        for symbol in list(self.positions.keys()):
+            await self._execute_signal(
+                symbol,
+                Signal(action="SELL", confidence=1.0, reasoning="Manual sell all"),
+                exit_reason="manual_sell_all"
+            )
+
+    async def sell_position(self, symbol: str):
+        """Sell a specific open position at market price."""
+        if symbol in self.positions:
+            await self._execute_signal(
+                symbol,
+                Signal(action="SELL", confidence=1.0, reasoning="Manual sell"),
+                exit_reason="manual_sell"
+            )
+        else:
+            logger.warning(f"No open position for {symbol}")
+
     async def _check_risk_management(self):
         """Check open positions and close if stop-loss, take-profit, or trailing stop is hit."""
         for symbol, pos in list(self.positions.items()):
