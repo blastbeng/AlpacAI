@@ -81,6 +81,7 @@ class PaperSimulator:
         }
         self.orders.append(order)
         self.trades.append(order)
+        logger.info("Paper %s %s: %s %s @ %s", order['side'].upper(), order['symbol'], order['amount'], order['cost'], order['price'])
         return order
 
     def create_market_sell_order(self, symbol: str, base_amount: float) -> Dict[str, Any]:
@@ -112,6 +113,7 @@ class PaperSimulator:
         }
         self.orders.append(order)
         self.trades.append(order)
+        logger.info("Paper %s %s: %s %s @ %s", order['side'].upper(), order['symbol'], order['amount'], order['cost'], order['price'])
         return order
 
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
