@@ -273,14 +273,14 @@
                 <h2>Positions</h2>
                 <div class="table-wrapper">
                     <table id="positions-table">
-                        <thead><tr><th>Symbol</th><th>Amount</th><th>Entry Price</th><th>Stop Loss</th><th>Take Profit</th><th>Trailing</th></tr></thead>
+                        <thead><tr><th>Symbol</th><th>Amount</th><th>Entry Price</th><th>Current Price</th><th>Unrealized P&L</th><th>Stop Loss</th><th>Take Profit</th><th>Trailing</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
             </div>
 
             <div class="card card-full">
-                <h2>Recent Trades</h2>
+                <h2>Open Positions</h2>
                 <div class="table-wrapper">
                     <table id="trades-table">
                         <thead><tr><th>Time</th><th>Side</th><th>Symbol</th><th>Amount</th><th>Price</th><th>Fee</th><th>P&L</th><th>Profit %</th></tr></thead>
@@ -292,6 +292,36 @@
             <div class="card">
                 <h2>Profit Summary</h2>
                 <div id="profit">-</div>
+            </div>
+
+            <div class="card">
+                <h2>Risk Metrics</h2>
+                <div id="risk">-</div>
+            </div>
+
+            <div class="card card-full">
+                <h2>News</h2>
+                <div id="news">-</div>
+            </div>
+
+            <div class="card card-full">
+                <h2>Closed Trades</h2>
+                <div class="table-wrapper">
+                    <table id="history-table">
+                        <thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Amount</th><th>Price</th><th>Fee</th><th>Realized P&L</th><th>Exit Reason</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Controls</h2>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button id="btn-pause" style="padding:8px 16px; background:var(--accent); color:#fff; border:none; border-radius:6px; cursor:pointer;">⏸️ Pause</button>
+                    <button id="btn-resume" style="padding:8px 16px; background:var(--green); color:#fff; border:none; border-radius:6px; cursor:pointer;">▶️ Resume</button>
+                    <button id="btn-sell-all" style="padding:8px 16px; background:var(--red); color:#fff; border:none; border-radius:6px; cursor:pointer;">💸 Sell All</button>
+                    <button id="btn-reload" style="padding:8px 16px; background:#6e7681; color:#fff; border:none; border-radius:6px; cursor:pointer;">🔄 Reload Settings</button>
+                </div>
             </div>
 
             <div class="card card-full">
@@ -375,6 +405,30 @@
                     symCell.onclick = () => openChart(sym);
                     row.insertCell().textContent = pos.amount?.toFixed(6) || '';
                     row.insertCell().textContent = pos.price?.toFixed(4) || '';
+                    const curPriceCell = row.insertCell();
+                    const unrealPnlCell = row.insertCell();
+                    curPriceCell.textContent = '...';
+                    unrealPnlCell.textContent = '...';
+                    fetch(`/api/ohlcv/${encodeURIComponent(sym)}?timeframe=1h&limit=1`)
+                        .then(res => res.json())
+                        .then(json => {
+                            if (json.data && json.data.length > 0) {
+                                const curPrice = json.data[json.data.length-1].close;
+                                curPriceCell.textContent = curPrice.toFixed(4);
+                                const entry = pos.price;
+                                const amount = pos.amount;
+                                const unrealPnl = (curPrice - entry) * amount;
+                                unrealPnlCell.textContent = unrealPnl.toFixed(4);
+                                unrealPnlCell.className = unrealPnl >= 0 ? 'green' : 'red';
+                            } else {
+                                curPriceCell.textContent = 'N/A';
+                                unrealPnlCell.textContent = 'N/A';
+                            }
+                        })
+                        .catch(() => {
+                            curPriceCell.textContent = 'N/A';
+                            unrealPnlCell.textContent = 'N/A';
+                        });
                     row.insertCell().textContent = pos.stop_loss?.toFixed(4) || '';
                     row.insertCell().textContent = pos.take_profit?.toFixed(4) || '';
                     row.insertCell().textContent = pos.trailing_stop ? 'Yes' : 'No';
@@ -483,6 +537,88 @@
                     footRow.style.borderTop = '2px solid var(--border)';
                 }
             }
+
+            // Risk Metrics
+            fetch('/api/risk')
+                .then(res => res.json())
+                .then(risk => {
+                    const riskDiv = document.getElementById('risk');
+                    if (risk && risk.current_balance !== undefined) {
+                        riskDiv.innerHTML = `
+                            Balance: ${risk.current_balance?.toFixed(2)} ${risk.base_currency}<br>
+                            P&L: <span class="${risk.total_pnl >= 0 ? 'green' : 'red'}">${risk.total_pnl?.toFixed(2)} (${risk.total_pnl_pct?.toFixed(2)}%)</span><br>
+                            Max Drawdown: ${risk.max_drawdown_pct?.toFixed(2)}%<br>
+                            Open Positions: ${risk.open_positions_count}<br>
+                            Exposure: ${risk.total_exposure?.toFixed(2)} ${risk.base_currency}<br>
+                            Largest Position: ${risk.largest_position_exposure_pct?.toFixed(1)}%<br>
+                            Total Stop Risk: ${risk.total_stop_loss_risk?.toFixed(2)} ${risk.base_currency}<br>
+                            Win Rate: ${risk.win_rate?.toFixed(1)}%<br>
+                            Profit Factor: ${risk.profit_factor === Infinity ? '∞' : risk.profit_factor?.toFixed(2)}<br>
+                            Avg Win: ${risk.avg_win?.toFixed(2)} | Avg Loss: ${risk.avg_loss?.toFixed(2)}
+                        `;
+                    }
+                });
+
+            // News
+            fetch('/api/news')
+                .then(res => res.json())
+                .then(news => {
+                    const newsDiv = document.getElementById('news');
+                    if (news && Object.keys(news).length > 0) {
+                        let html = '';
+                        for (const [symbol, articles] of Object.entries(news)) {
+                            html += `<strong>${symbol}</strong><br>`;
+                            if (articles.length === 0) {
+                                html += 'No recent news.<br>';
+                            } else {
+                                articles.forEach(a => {
+                                    const sent = a.sentiment ? ` (${a.sentiment.label} ${a.sentiment.compound?.toFixed(2)})` : '';
+                                    html += `- ${a.title} [${a.source}]${sent}<br>`;
+                                });
+                            }
+                            html += '<br>';
+                        }
+                        newsDiv.innerHTML = html;
+                    } else {
+                        newsDiv.textContent = 'No news available.';
+                    }
+                });
+
+            // Closed Trades
+            fetch('/api/history?limit=50')
+                .then(res => res.json())
+                .then(history => {
+                    const histBody = document.querySelector('#history-table tbody');
+                    histBody.innerHTML = '';
+                    if (history && history.length > 0) {
+                        history.forEach(t => {
+                            const row = histBody.insertRow();
+                            row.insertCell().textContent = new Date(t.timestamp).toLocaleString();
+                            row.insertCell().textContent = t.symbol;
+                            row.insertCell().textContent = t.side?.toUpperCase();
+                            row.insertCell().textContent = t.amount?.toFixed(6);
+                            row.insertCell().textContent = t.price?.toFixed(4);
+                            const fee = t.fee;
+                            const feeStr = fee && fee.cost ? `${fee.cost?.toFixed(6)} ${fee.currency}` : '-';
+                            row.insertCell().textContent = feeStr;
+                            const pnlCell = row.insertCell();
+                            if (t.realized_pnl !== undefined) {
+                                pnlCell.textContent = t.realized_pnl?.toFixed(4);
+                                pnlCell.className = t.realized_pnl >= 0 ? 'green' : 'red';
+                            } else {
+                                pnlCell.textContent = '-';
+                            }
+                            row.insertCell().textContent = t.exit_reason || '';
+                        });
+                    } else {
+                        const row = histBody.insertRow();
+                        const cell = row.insertCell();
+                        cell.colSpan = 8;
+                        cell.textContent = 'No closed trades yet';
+                        cell.style.textAlign = 'center';
+                        cell.style.color = 'var(--text-secondary)';
+                    }
+                });
         }
 
         // Theme toggle
@@ -577,6 +713,21 @@
                 alert('Could not load chart data.');
             }
         }
+
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            fetch('/api/pause', { method: 'POST' }).then(() => alert('Trading paused.'));
+        });
+        document.getElementById('btn-resume').addEventListener('click', () => {
+            fetch('/api/resume', { method: 'POST' }).then(() => alert('Trading resumed.'));
+        });
+        document.getElementById('btn-sell-all').addEventListener('click', () => {
+            if (confirm('Sell all open positions?')) {
+                fetch('/api/sell', { method: 'POST' }).then(() => alert('Sell order placed.'));
+            }
+        });
+        document.getElementById('btn-reload').addEventListener('click', () => {
+            fetch('/api/reload', { method: 'POST' }).then(() => alert('Settings reloaded.'));
+        });
 
         connect();
 
