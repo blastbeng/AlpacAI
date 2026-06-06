@@ -381,15 +381,13 @@ class TelegramBot:
             symbol = open_trades[trade_id - 1]['symbol']
             await update.message.reply_text(f"🔄 Selling {symbol}...", reply_markup=self.keyboard)
             await self.engine.sell_position(symbol)
-            cooldown_msg = f" (cooldown: {settings.MANUAL_SELL_COOLDOWN_CYCLES} cycles)" if settings.MANUAL_SELL_COOLDOWN_CYCLES > 0 else ""
-            await update.message.reply_text(f"✅ Sell order placed for {symbol}.{cooldown_msg}", reply_markup=self.keyboard)
+            await update.message.reply_text(f"✅ Sell order placed for {symbol}.", reply_markup=self.keyboard)
         else:
             # Sell all open positions
             count = len(open_trades)
             await update.message.reply_text(f"🔄 Selling all {count} open positions...", reply_markup=self.keyboard)
             await self.engine.sell_all_positions()
-            cooldown_msg = f" (cooldown: {settings.MANUAL_SELL_COOLDOWN_CYCLES} cycles each)" if settings.MANUAL_SELL_COOLDOWN_CYCLES > 0 else ""
-            await update.message.reply_text(f"✅ Sell orders placed for all {count} positions.{cooldown_msg}", reply_markup=self.keyboard)
+            await update.message.reply_text(f"✅ Sell orders placed for all {count} positions.", reply_markup=self.keyboard)
 
     async def cmd_profit(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
