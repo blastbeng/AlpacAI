@@ -35,7 +35,7 @@ from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm
 from src.strategies.validator import validate_signal
 from src.utils.redis_client import get_redis_client
-from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade, get_performance, store_news_articles, get_aggregate_sentiment_from_db
+from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade, get_performance, store_news_articles, get_aggregate_sentiment_from_db, get_ohlcv
 
 logger = logging.getLogger(__name__)
 
@@ -900,6 +900,22 @@ class TradingEngine:
             if ohlcv_data and assigned_tf in ohlcv_data:
                 raw_candles = ohlcv_data[assigned_tf]
 
+            # Fetch historical OHLCV from DB for backtest analysis (last 30 days)
+            historical_ohlcv = None
+            try:
+                since_ms = int(time.time() * 1000) - 30 * 24 * 60 * 60 * 1000
+                db_candles = await asyncio.to_thread(
+                    get_ohlcv, symbol, assigned_tf, since_ms=since_ms, limit=500
+                )
+                if db_candles:
+                    # Convert list of dicts to list of lists [ts, o, h, l, c, v] as expected by the prompt
+                    historical_ohlcv = [
+                        [c["timestamp"], c["open"], c["high"], c["low"], c["close"], c["volume"]]
+                        for c in db_candles
+                    ]
+            except Exception as e:
+                logger.warning(f"Failed to fetch historical OHLCV for {symbol} {assigned_tf}: {e}")
+
             # Order book imbalance (bid volume / ask volume, top 5 levels)
             bids_vol = sum(bid[1] for bid in order_book.get('bids', [])[:5])
             asks_vol = sum(ask[1] for ask in order_book.get('asks', [])[:5])
@@ -1030,6 +1046,7 @@ class TradingEngine:
                 drawdown_pct=perf.get("equity_curve", {}).get("drawdown_pct"),
                 raw_candles=raw_candles,
                 recent_trades=recent_trades_summary,
+                historical_ohlcv=historical_ohlcv,
             )
             response = await asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 60)
             strategy = create_strategy_from_llm(response)
