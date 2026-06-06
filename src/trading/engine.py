@@ -1768,7 +1768,21 @@ class TradingEngine:
                 await self._save_state()
                 if self.notifier:
                     sentiment_str = self._get_sentiment_str(symbol)
-                    sell_msg = f"🔴 SELL {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
+                    # Human-readable labels for common exit reasons
+                    reason_labels = {
+                        "manual_sell": "🖐️ Manual",
+                        "manual_sell_all": "🖐️ Manual (Sell All)",
+                        "stop_loss": "⛔ Stop-Loss",
+                        "take_profit": "✅ Take-Profit",
+                        "max_hold_time": "⏰ Max Hold Time",
+                        "news_sentiment_exit": "📰 News Sentiment",
+                        "force_close": "🔻 Force Close",
+                        "external_sell": "🔄 External Sell",
+                        "delisted": "🗑️ Delisted",
+                    }
+                    reason_label = reason_labels.get(exit_reason, exit_reason) if exit_reason else None
+                    reason_str = f" [{reason_label}]" if reason_label else ""
+                    sell_msg = f"🔴 SELL{reason_str} {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
                     if sentiment_str:
                         sell_msg += f" | {sentiment_str}"
                     await self.notifier.send_notification(sell_msg)
