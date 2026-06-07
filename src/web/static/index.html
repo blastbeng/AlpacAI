@@ -522,17 +522,8 @@
                     const newsDiv = document.getElementById('news');
                     if (news && Object.keys(news).length > 0) {
                         let html = '';
-                        for (const [symbol, articles] of Object.entries(news)) {
-                            html += `<strong>${symbol}</strong><br>`;
-                            if (articles.length === 0) {
-                                html += 'No recent news.<br>';
-                            } else {
-                                articles.forEach(a => {
-                                    const sent = a.sentiment ? ` (${a.sentiment.label} ${a.sentiment.compound?.toFixed(2)})` : '';
-                                    html += `- ${a.title} [${a.source}]${sent}<br>`;
-                                });
-                            }
-                            html += '<br>';
+                        for (const [symbol, summary] of Object.entries(news)) {
+                            html += `<strong>${symbol}</strong><br>${summary}<br><br>`;
                         }
                         newsDiv.innerHTML = html;
                     } else {
