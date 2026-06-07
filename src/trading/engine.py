@@ -932,39 +932,47 @@ class TradingEngine:
             news_sentiment=news_sentiment,
             coin_indicators=coin_indicators,
         )
-        response = await asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 300)
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 300),
+                timeout=60.0
+            )
+        except asyncio.TimeoutError:
+            logger.warning("LLM coin selection timed out. Falling back to volume-based selection.")
+            response = None  # will trigger the fallback path below
         logger.info(f"LLM coin selection raw response: {response}")
 
-        try:
-            parsed = json.loads(response)
-            new_coins: List[Dict[str, str]] = []
-            if isinstance(parsed, list):
-                for item in parsed:
-                    if isinstance(item, dict) and "symbol" in item:
-                        sym = item["symbol"]
-                        if sym in available_pairs:
-                            tf = item.get("timeframe")
-                            if tf not in settings.OHLCV_TIMEFRAMES:
-                                tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
-                            new_coins.append({"symbol": sym, "timeframe": tf})
-                    elif isinstance(item, str):
-                        # backward compatibility: plain string
-                        if item in available_pairs:
-                            default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
-                            new_coins.append({"symbol": item, "timeframe": default_tf})
-                # Deduplicate by symbol, keeping first occurrence
-                seen = set()
-                deduped = []
-                for entry in new_coins:
-                    sym = entry["symbol"]
-                    if sym not in seen:
-                        seen.add(sym)
-                        deduped.append(entry)
-                self.current_coins = deduped[: self.effective_max_coins]
-            else:
-                logger.error("LLM coin selection response is not a list.")
-        except json.JSONDecodeError:
-            logger.error("Failed to parse coin selection response.")
+        if response is not None:
+            try:
+                parsed = json.loads(response)
+                new_coins: List[Dict[str, str]] = []
+                if isinstance(parsed, list):
+                    for item in parsed:
+                        if isinstance(item, dict) and "symbol" in item:
+                            sym = item["symbol"]
+                            if sym in available_pairs:
+                                tf = item.get("timeframe")
+                                if tf not in settings.OHLCV_TIMEFRAMES:
+                                    tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
+                                new_coins.append({"symbol": sym, "timeframe": tf})
+                        elif isinstance(item, str):
+                            # backward compatibility: plain string
+                            if item in available_pairs:
+                                default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
+                                new_coins.append({"symbol": item, "timeframe": default_tf})
+                    # Deduplicate by symbol, keeping first occurrence
+                    seen = set()
+                    deduped = []
+                    for entry in new_coins:
+                        sym = entry["symbol"]
+                        if sym not in seen:
+                            seen.add(sym)
+                            deduped.append(entry)
+                    self.current_coins = deduped[: self.effective_max_coins]
+                else:
+                    logger.error("LLM coin selection response is not a list.")
+            except json.JSONDecodeError:
+                logger.error("Failed to parse coin selection response.")
 
         # Fallback: if LLM returned no coins, pick top-volume affordable coins
         if not self.current_coins:
@@ -1269,7 +1277,16 @@ class TradingEngine:
                 all_coins=self.current_coins,
                 past_trades=past_trades,
             )
-            response = await asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 60)
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 60),
+                    timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"LLM strategy call timed out for {symbol}. Skipping this cycle.")
+                if self.notifier:
+                    await self.notifier.send_notification(f"⏱️ LLM timeout for {symbol}, skipping.")
+                return
             strategy = create_strategy_from_llm(response)
             signal = strategy.generate_signal({})
             current_price = ticker['last']
