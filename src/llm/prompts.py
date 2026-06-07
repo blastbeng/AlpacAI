@@ -722,6 +722,12 @@ Maximum coins to trade: {max_coins}
             "(default is the full period). Explain in your reasoning how the backtest results influenced your decision.\n"
             "Include a 'backtest_summary' field in your JSON output with a short summary of the backtest results.\n"
         )
+        prompt += (
+            "Your backtest analysis must directly influence your current decision. "
+            "If the backtest shows poor performance for your intended strategy, adjust your parameters "
+            "(e.g., wider stop, smaller position, different entry timing) or output HOLD. "
+            "Explain in your reasoning how the backtest results affected your choices.\n"
+        )
     if drawdown_pct is not None:
         prompt += f"Current account drawdown: {drawdown_pct}%\n"
     if recent_trades:
@@ -853,5 +859,16 @@ Historical Performance:
 
 Use this data to decide whether to BUY, SELL, or HOLD. If the coin has a poor win rate or the overall equity curve is declining, be more conservative. Prefer strategies that have worked well historically.
 """
+        perf_text += (
+            "Use this performance data to calibrate your parameters:\n"
+            "- If the coin has a low win rate or negative average P&L, reduce position_size_fraction, "
+            "widen the stop (to avoid being stopped out prematurely), and shorten max_hold_time_seconds.\n"
+            "- If the coin has a high win rate and positive average P&L, you may increase position size "
+            "and use tighter stops to lock in profits.\n"
+            "- If stop_loss_hits is high, consider using a wider stop (larger stop_loss_pct or higher ATR multiplier) "
+            "or switching to a longer timeframe.\n"
+            "- Use avg_hold_time_seconds to set a realistic max_hold_time_seconds – do not set it far below "
+            "the average unless you have a specific reason.\n"
+        )
         prompt += perf_text
     return prompt
