@@ -109,6 +109,30 @@ def validate_signal(
             # Partial TP must be less than main TP
             if ptp >= tp:
                 return Signal(action="HOLD", confidence=0.0, reasoning="partial_take_profit_pct must be less than take_profit_pct")
+        # --- Multiple partial take-profit levels ---
+        if "partial_take_profit_levels" in params:
+            levels = params["partial_take_profit_levels"]
+            if not isinstance(levels, list) or len(levels) == 0:
+                return Signal(action="HOLD", confidence=0.0, reasoning="partial_take_profit_levels must be a non-empty array")
+            total_fraction = 0.0
+            prev_pct = 0.0
+            for i, level in enumerate(levels):
+                if not isinstance(level, dict):
+                    return Signal(action="HOLD", confidence=0.0, reasoning=f"Invalid partial_take_profit_levels[{i}]")
+                lvl_pct = level.get("take_profit_pct")
+                lvl_frac = level.get("fraction")
+                if not isinstance(lvl_pct, (int, float)) or not (0 < lvl_pct <= 1.0):
+                    return Signal(action="HOLD", confidence=0.0, reasoning=f"Invalid take_profit_pct in level {i}")
+                if not isinstance(lvl_frac, (int, float)) or not (0 < lvl_frac <= 1.0):
+                    return Signal(action="HOLD", confidence=0.0, reasoning=f"Invalid fraction in level {i}")
+                if lvl_pct <= prev_pct:
+                    return Signal(action="HOLD", confidence=0.0, reasoning=f"Levels must be in increasing take_profit_pct order")
+                if lvl_pct >= tp:
+                    return Signal(action="HOLD", confidence=0.0, reasoning=f"Level {i} take_profit_pct must be less than main take_profit_pct")
+                total_fraction += lvl_frac
+                prev_pct = lvl_pct
+            if total_fraction > 1.0:
+                return Signal(action="HOLD", confidence=0.0, reasoning="Sum of partial take-profit fractions exceeds 1.0")
         if "max_risk_per_trade_pct" in params:
             mrp = params["max_risk_per_trade_pct"]
             if not isinstance(mrp, (int, float)) or not (0 < mrp <= 1.0):
