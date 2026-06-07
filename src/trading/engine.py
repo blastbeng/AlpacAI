@@ -376,6 +376,21 @@ class TradingEngine:
                 pos['cost_basis'] = pos['amount'] * pos['price']
                 pos['net_base'] = pos['amount']
 
+    def _daily_realized_pnl(self) -> float:
+        """Return the sum of realized P&L for trades closed today (UTC)."""
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).date()
+        total = 0.0
+        for trade in self.trade_history:
+            if trade.get("side") != "sell":
+                continue
+            ts = trade.get("timestamp", 0)
+            if ts:
+                trade_date = datetime.fromtimestamp(ts / 1000.0, tz=timezone.utc).date()
+                if trade_date == today:
+                    total += trade.get("realized_pnl", 0.0)
+        return total
+
     def _compute_performance_metrics(self) -> Dict[str, Any]:
         """Analyze trade history to produce per-coin and per-strategy performance summaries."""
         from collections import defaultdict
@@ -635,6 +650,31 @@ class TradingEngine:
         while True:
             try:
                 await self._reconcile_positions()
+
+                # --- Daily loss limit ---
+                daily_pnl = self._daily_realized_pnl()
+                max_loss = -settings.MAX_DAILY_LOSS_PCT * self.initial_balance
+                if daily_pnl <= max_loss:
+                    logger.warning(
+                        f"Daily loss limit reached: {daily_pnl:.2f} <= {max_loss:.2f}. Pausing trading."
+                    )
+                    await asyncio.to_thread(self.redis.set, "trading:paused", "1")
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"🛑 Daily loss limit hit ({daily_pnl:.2f} / {max_loss:.2f}). Trading paused until tomorrow."
+                        )
+
+                # Reset daily pause at midnight UTC
+                from datetime import datetime, timezone
+                now_utc = datetime.now(timezone.utc)
+                if now_utc.hour == 0 and now_utc.minute < 5:  # within first 5 minutes of the day
+                    was_paused = await asyncio.to_thread(self.redis.get, "trading:paused")
+                    if was_paused:
+                        logger.info("New day – resetting daily loss pause.")
+                        await asyncio.to_thread(self.redis.delete, "trading:paused")
+                        if self.notifier:
+                            await self.notifier.send_notification("🌅 New day – trading resumed.")
+
                 paused = await asyncio.to_thread(self.redis.get, "trading:paused")
                 if paused:
                     logger.info("Trading is paused. Skipping cycle.")
