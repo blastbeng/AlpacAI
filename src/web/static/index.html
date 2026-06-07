@@ -155,6 +155,22 @@
             grid-column: 1 / -1;
         }
 
+        .controls-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .controls-grid button {
+            width: 100%;
+            padding: 10px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: #fff;
+            white-space: nowrap;
+        }
+
         /* Table wrapper for horizontal scroll if needed */
         .table-wrapper {
             overflow-x: auto;
@@ -261,11 +277,11 @@
         <div class="dashboard">
             <div class="card">
                 <h2>Controls</h2>
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <button id="btn-pause" style="padding:8px 16px; background:var(--accent); color:#fff; border:none; border-radius:6px; cursor:pointer;">⏸️ Pause</button>
-                    <button id="btn-resume" style="padding:8px 16px; background:var(--green); color:#fff; border:none; border-radius:6px; cursor:pointer;">▶️ Resume</button>
-                    <button id="btn-sell-all" style="padding:8px 16px; background:var(--red); color:#fff; border:none; border-radius:6px; cursor:pointer;">💸 Sell All</button>
-                    <button id="btn-reload" style="padding:8px 16px; background:#6e7681; color:#fff; border:none; border-radius:6px; cursor:pointer;">🔄 Reload Settings</button>
+                <div class="controls-grid">
+                    <button id="btn-pause" style="background:var(--accent);">⏸️ Pause</button>
+                    <button id="btn-resume" style="background:var(--green);">▶️ Resume</button>
+                    <button id="btn-sell-all" style="background:var(--red);">💸 Sell All</button>
+                    <button id="btn-reload" style="background:#6e7681;">🔄 Reload Settings</button>
                 </div>
             </div>
 
