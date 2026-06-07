@@ -297,20 +297,20 @@ Key principles:
 - Only trade coins with strong, confirmed short-term momentum and sufficient volatility to cover fees. Avoid low-volatility or choppy (sideways) markets entirely.
 - You will receive raw OHLCV candle data. Compute your own technical indicators (RSI, MACD, Bollinger Bands, moving averages, etc.) from this data. Use them to time entries and exits. Require confirmation from at least two independent indicators before taking a trade.
 - Prefer buying near support (lower Bollinger Band, oversold RSI) and selling near resistance (upper band, overbought RSI). Never chase a breakout without confirmation.
-- Always set a stop-loss based on recent swing lows or ATR. Prefer ATR‑based stops because they adapt to current volatility. A stop distance of 1.5–2.5× ATR is usually appropriate. Never use a stop tighter than 1× ATR. Place the stop just below a recent swing low or support level, but ensure the distance is at least 1× ATR. If the resulting stop_loss_pct would be too large for a reasonable take-profit (at least 2:1 reward:risk), output HOLD instead.
+- Set a stop-loss based on recent swing lows, support levels, or ATR. Use the ATR to gauge volatility and choose a stop distance that gives the trade enough room to breathe while limiting risk. You decide the appropriate multiplier and reward:risk ratio based on current market conditions, volatility, and your confidence.
 Example: If ATR=50 and current price=5000, a 2× ATR stop distance is 100, so stop_loss_pct = 100/5000 = 0.02 (2%). Place the stop at 4900. If the nearest swing low is at 4920, use that as the stop level (distance 80, which is 1.6× ATR, still acceptable). Never use a stop tighter than 1× ATR (50 points, 1%).
-- Set a take-profit that offers at least a 2:1 reward-to-risk ratio (take_profit_pct >= 2 * stop_loss_pct). If you cannot achieve this, output HOLD.
+- Set a take-profit that you believe is achievable given the current trend, volatility, and order‑book depth. The reward:risk ratio is entirely your decision; you may accept lower ratios if the probability of success is high, or demand higher ratios in uncertain markets.
 - Set a maximum hold time (max_hold_time_seconds) for every trade. If the price does not reach the take-profit or stop-loss within this time, the position will be closed automatically. Choose a time appropriate for the timeframe (e.g., 1-4 hours for 1h candles, 15-60 minutes for 5m candles).
 - Use trailing stops to lock in profits when the price moves favourably.
-- Adjust position size according to confidence: use smaller fractions (<0.5) when confidence is below 0.7, and larger fractions (0.8-1.0) only when confidence is very high (>0.85).
-- If the account is in drawdown (drawdown_pct > 5%), reduce position sizes further and be extremely selective.
+- Adjust position size according to your confidence, risk level, account drawdown, and portfolio exposure. There are no fixed thresholds; you decide the fraction that balances profit potential with capital preservation.
+- If the account is in drawdown, consider reducing position sizes and being more selective. The severity of the reduction is your decision based on the drawdown percentage and recent performance.
 - After a losing trade on a coin, avoid that coin for at least several evaluation cycles. Learn from recent trade outcomes shown in the prompt.
 - Learn from historical performance: avoid coins and strategies with poor win rates or negative average P&L.
 - **Learn from past trade outcomes for each coin.** The prompt will include a list of recent closed trades for the current coin. Use this to avoid repeating mistakes and to reinforce successful patterns. If a coin has a string of losses, be more cautious or avoid it.
 
 You will receive recent news headlines with sentiment scores for each coin. Use this information to gauge market sentiment and potential catalysts.
-- Strong positive sentiment (compound > 0.5) may justify higher confidence, larger position sizes, and longer max hold times.
-- Strong negative sentiment (compound < -0.5) should make you more cautious: reduce position size, tighten stops, shorten max hold time, or avoid the coin entirely.
+- Strong positive sentiment may justify higher confidence, larger position sizes, and longer max hold times.
+- Strong negative sentiment should make you more cautious: reduce position size, tighten stops, shorten max hold time, or avoid the coin entirely.
 - Neutral or mixed sentiment should not override technical signals, but can be used as a tie‑breaker.
 - If news sentiment conflicts with technical indicators, give more weight to the indicators, but explain your reasoning.
 
@@ -527,6 +527,13 @@ Per-strategy performance: {json.dumps(performance.get('strategy_performance', {}
 Use this historical data to select coins that have been profitable in the past, and to avoid coins with poor performance. Prefer strategies that have shown higher win rates and average P&L.
 """
         prompt += perf_text
+    prompt += (
+        "\n**Important:** The engine will use your parameters exactly as you provide them. "
+        "No additional scaling, clamping, or overrides will be applied. You are fully responsible "
+        "for setting stop_loss_pct, take_profit_pct, position_size_fraction, trailing_stop, "
+        "max_hold_time_seconds, and all optional parameters. Make sure they are appropriate for "
+        "the current market conditions, your confidence, and the account's risk profile.\n"
+    )
     return prompt
 
 def build_strategy_prompt(
@@ -628,10 +635,9 @@ Maximum coins to trade: {max_coins}
     if atr is not None:
         prompt += f"ATR (14-period, {assigned_timeframe or 'default'}): {atr:.6f}\n"
         prompt += (
-            "Use the ATR to set your stop-loss distance. A good stop distance is 1.5–2.5× ATR. "
-            "Convert that distance into a percentage of the current price for the stop_loss_pct parameter. "
-            "For example, if ATR=50 and price=5000, 2× ATR = 100, so stop_loss_pct = 100/5000 = 0.02 (2%). "
-            "Never use a stop tighter than 1× ATR.\n"
+            "Use the ATR to set your stop-loss distance. Convert the chosen distance into a percentage "
+            "of the current price for the stop_loss_pct parameter. You decide the appropriate multiplier "
+            "based on current volatility and your risk assessment.\n"
         )
     if atr_multi_tf:
         prompt += f"ATR across timeframes: {json.dumps(atr_multi_tf)}\n"
@@ -759,7 +765,7 @@ Maximum coins to trade: {max_coins}
         prompt += "If sentiment is very negative, reduce max hold time to limit exposure.\n"
 
     prompt += f"""
-**Your primary objective is profit across short, medium, and long timeframes. Prioritize positions where you find the most profit potential, regardless of timeframe.** Use the ATR to set stop-loss and take-profit distances that respect the coin's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on a risk:reward ratio of at least 1:2. **Crucially, your stop distance must be at least 1× ATR, and preferably 1.5–2.5× ATR, to avoid being stopped out by normal market noise.**
+**Your primary objective is profit across short, medium, and long timeframes. Prioritize positions where you find the most profit potential, regardless of timeframe.** Use the ATR to set stop-loss and take-profit distances that respect the coin's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on your own risk:reward assessment. You have full freedom to choose the stop distance and reward:risk ratio that you believe will maximise profitability while managing risk.
 
 Interpret the order book metrics:
 - A high spread (>0.5%) suggests low liquidity – be cautious with large orders.
