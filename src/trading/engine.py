@@ -757,9 +757,10 @@ class TradingEngine:
             results = await asyncio.gather(*tasks)
             ohlcv_data = dict(results)
 
-        # Compute indicators for each coin with OHLCV data
+        # Compute indicators for each coin with OHLCV data, for ALL timeframes
         coin_indicators = {}
         for sym, tf_data in ohlcv_data.items():
+            coin_indicators[sym] = {}
             for tf in settings.OHLCV_TIMEFRAMES:
                 if tf in tf_data and tf_data[tf]:
                     candles = tf_data[tf]
@@ -793,8 +794,7 @@ class TradingEngine:
                         ind['mfi'] = compute_mfi(highs, lows, closes, volumes)
                         ind['cci'] = compute_cci(highs, lows, closes)
                         ind['williams_r'] = compute_williams_r(highs, lows, closes)
-                        coin_indicators[sym] = ind
-                    break
+                        coin_indicators[sym][tf] = ind
 
         # Build market_limits with a concrete min_cost for each symbol
         market_limits = {}

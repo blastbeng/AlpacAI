@@ -480,29 +480,31 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
         prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
     if coin_indicators:
         prompt += "\nTechnical indicators for candidate coins:\n"
-        for sym, ind in coin_indicators.items():
+        for sym, tf_indicators in coin_indicators.items():
             lines = [f"{sym}:"]
-            if ind.get('rsi') is not None:
-                lines.append(f"  RSI(14)={ind['rsi']:.2f}")
-            if ind.get('macd') is not None:
-                lines.append(f"  MACD={ind['macd']:.4f} Signal={ind['macd_signal']:.4f} Hist={ind['macd_hist']:.4f}")
-            if ind.get('bb_upper') is not None:
-                lines.append(f"  BB Upper={ind['bb_upper']:.4f} Middle={ind['bb_middle']:.4f} Lower={ind['bb_lower']:.4f}")
-            if ind.get('ema_9') is not None:
-                lines.append(f"  EMA9={ind['ema_9']:.4f} EMA21={ind['ema_21']:.4f}")
-            if ind.get('stochastic_k') is not None:
-                d_str = f"{ind['stochastic_d']:.2f}" if ind['stochastic_d'] is not None else "N/A"
-                lines.append(f"  Stoch %K={ind['stochastic_k']:.2f} %D={d_str}")
-            if ind.get('adx') is not None:
-                lines.append(f"  ADX(14)={ind['adx']:.2f} +DI={ind['plus_di']:.2f} -DI={ind['minus_di']:.2f}")
-            if ind.get('obv') is not None:
-                lines.append(f"  OBV={ind['obv']:.2f}")
-            if ind.get('mfi') is not None:
-                lines.append(f"  MFI(14)={ind['mfi']:.2f}")
-            if ind.get('cci') is not None:
-                lines.append(f"  CCI(20)={ind['cci']:.2f}")
-            if ind.get('williams_r') is not None:
-                lines.append(f"  Williams %R(14)={ind['williams_r']:.2f}")
+            for tf, ind in tf_indicators.items():
+                lines.append(f"  [{tf}]")
+                if ind.get('rsi') is not None:
+                    lines.append(f"    RSI(14)={ind['rsi']:.2f}")
+                if ind.get('macd') is not None:
+                    lines.append(f"    MACD={ind['macd']:.4f} Signal={ind['macd_signal']:.4f} Hist={ind['macd_hist']:.4f}")
+                if ind.get('bb_upper') is not None:
+                    lines.append(f"    BB Upper={ind['bb_upper']:.4f} Middle={ind['bb_middle']:.4f} Lower={ind['bb_lower']:.4f}")
+                if ind.get('ema_9') is not None:
+                    lines.append(f"    EMA9={ind['ema_9']:.4f} EMA21={ind['ema_21']:.4f}")
+                if ind.get('stochastic_k') is not None:
+                    d_str = f"{ind['stochastic_d']:.2f}" if ind['stochastic_d'] is not None else "N/A"
+                    lines.append(f"    Stoch %K={ind['stochastic_k']:.2f} %D={d_str}")
+                if ind.get('adx') is not None:
+                    lines.append(f"    ADX(14)={ind['adx']:.2f} +DI={ind['plus_di']:.2f} -DI={ind['minus_di']:.2f}")
+                if ind.get('obv') is not None:
+                    lines.append(f"    OBV={ind['obv']:.2f}")
+                if ind.get('mfi') is not None:
+                    lines.append(f"    MFI(14)={ind['mfi']:.2f}")
+                if ind.get('cci') is not None:
+                    lines.append(f"    CCI(20)={ind['cci']:.2f}")
+                if ind.get('williams_r') is not None:
+                    lines.append(f"    Williams %R(14)={ind['williams_r']:.2f}")
             prompt += "\n".join(lines) + "\n"
     if market_trend:
         prompt += f"\nOverall market trend ({market_trend['symbol']}): 24h change {market_trend.get('change_24h')}%, last price {market_trend.get('last')}\n"
