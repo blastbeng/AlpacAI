@@ -129,6 +129,14 @@ def validate_signal(
                         confidence=0.0,
                         reasoning=f"Risk/reward ratio {tp/sl:.2f} is below minimum {mrr:.2f}"
                     )
+        if "max_spread_pct" in params:
+            msp = params["max_spread_pct"]
+            if not isinstance(msp, (int, float)) or msp <= 0:
+                return Signal(action="HOLD", confidence=0.0, reasoning="Invalid max_spread_pct")
+        if "min_confidence" in params:
+            mc = params["min_confidence"]
+            if not isinstance(mc, (int, float)) or not (0.0 <= mc <= 1.0):
+                return Signal(action="HOLD", confidence=0.0, reasoning="Invalid min_confidence")
 
         # Logical consistency checks (no hardcoded values)
         if sl is not None and tp <= sl:
