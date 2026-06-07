@@ -71,6 +71,24 @@ def validate_signal(
                     confidence=0.0,
                     reasoning=f"take_profit_pct ({tp:.4%}) too low to cover fees (min {min_tp_pct:.4%})"
                 )
+        # Enforce minimum stop distance based on ATR (if available)
+        if atr is not None and price is not None and price > 0 and atr > 0:
+            min_stop_pct = 0.5 * (atr / price)   # at least 0.5× ATR
+            if stop_method == "atr_multiple":
+                expected_sl_pct = params["stop_loss_atr_multiple"] * atr / price
+                if expected_sl_pct < min_stop_pct:
+                    return Signal(
+                        action="HOLD",
+                        confidence=0.0,
+                        reasoning=f"ATR-based stop distance ({expected_sl_pct:.4%}) is too tight (min {min_stop_pct:.4%})"
+                    )
+            else:
+                if sl < min_stop_pct:
+                    return Signal(
+                        action="HOLD",
+                        confidence=0.0,
+                        reasoning=f"stop_loss_pct ({sl:.4%}) is too tight relative to ATR (min {min_stop_pct:.4%})"
+                    )
         trailing = params["trailing_stop"]
         if not isinstance(trailing, bool):
             return Signal(action="HOLD", confidence=0.0, reasoning="trailing_stop must be boolean")

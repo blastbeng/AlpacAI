@@ -297,7 +297,7 @@ Key principles:
 - Only trade coins with strong, confirmed short-term momentum and sufficient volatility to cover fees. Avoid low-volatility or choppy (sideways) markets entirely.
 - You will receive raw OHLCV candle data. Compute your own technical indicators (RSI, MACD, Bollinger Bands, moving averages, etc.) from this data. Use them to time entries and exits. Require confirmation from at least two independent indicators before taking a trade.
 - Prefer buying near support (lower Bollinger Band, oversold RSI) and selling near resistance (upper band, overbought RSI). Never chase a breakout without confirmation.
-- Set a stop-loss based on recent swing lows, support levels, or ATR. Use the ATR to gauge volatility and choose a stop distance that gives the trade enough room to breathe while limiting risk. You decide the appropriate multiplier and reward:risk ratio based on current market conditions, volatility, and your confidence.
+- Set a stop-loss based on recent swing lows, support levels, or ATR. Use the ATR to gauge volatility and choose a stop distance that gives the trade enough room to breathe while limiting risk. You decide the appropriate multiplier and reward:risk ratio based on current market conditions, volatility, and your confidence. The bot enforces a minimum stop distance of 0.5× ATR. Your stop_loss_pct (or the effective stop from atr_multiple) must be at least 0.5 * (ATR / current_price). If you set a tighter stop, the trade will be rejected.
 Example: If ATR=50 and current price=5000, a 2× ATR stop distance is 100, so stop_loss_pct = 100/5000 = 0.02 (2%). Place the stop at 4900. If the nearest swing low is at 4920, use that as the stop level (distance 80, which is 1.6× ATR, still acceptable).
 - Set a take-profit that you believe is achievable given the current trend, volatility, and order‑book depth. The reward:risk ratio is entirely your decision; you may accept lower ratios if the probability of success is high, or demand higher ratios in uncertain markets.
 - Set a maximum hold time (max_hold_time_seconds) for every trade. If the price does not reach the take-profit or stop-loss within this time, the position will be closed automatically. Choose a time appropriate for the timeframe (e.g., 1-4 hours for 1h candles, 15-60 minutes for 5m candles).
@@ -665,6 +665,7 @@ Maximum coins to trade: {max_coins}
             "Use the ATR to set your stop-loss distance. Convert the chosen distance into a percentage "
             "of the current price for the stop_loss_pct parameter. You decide the appropriate multiplier "
             "based on current volatility and your risk assessment.\n"
+            "The bot requires the stop distance to be at least 0.5× ATR. Ensure your stop_loss_pct (or atr_multiple) meets this minimum.\n"
         )
     if atr_multi_tf:
         prompt += f"ATR across timeframes: {json.dumps(atr_multi_tf)}\n"
