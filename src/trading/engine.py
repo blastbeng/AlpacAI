@@ -1400,6 +1400,26 @@ class TradingEngine:
                     msg += f"\n📊 {indicator_str}"
                 await self.notifier.send_notification(msg)
 
+            # --- LLM‑controlled trade filters ---
+            params = signal.strategy_params or {}
+            max_spread = params.get("max_spread_pct")
+            if max_spread is not None and spread_pct is not None and spread_pct > max_spread:
+                logger.info(f"Skipping {symbol}: spread {spread_pct:.4f}% exceeds LLM max {max_spread:.4f}%")
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"⚠️ Skipping {symbol}: spread too high ({spread_pct:.4f}%)"
+                    )
+                return
+
+            min_conf = params.get("min_confidence")
+            if min_conf is not None and validated.confidence < min_conf:
+                logger.info(f"Skipping {symbol}: confidence {validated.confidence:.2f} below LLM min {min_conf:.2f}")
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"⚠️ Skipping {symbol}: confidence too low ({validated.confidence:.2f})"
+                    )
+                return
+
             # Respect the LLM's execute flag – skip trade if the LLM decided not to execute
             if not getattr(validated, 'execute', True):
                 logger.info(f"LLM decided not to execute trade for {symbol}. Reason: {validated.reasoning}")
