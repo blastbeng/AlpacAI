@@ -1317,6 +1317,19 @@ class TradingEngine:
                     mid_price_bias = (mid - best_bid) / (best_ask - best_bid) - 0.5  # range -0.5 to +0.5
                     mid_price_bias *= 2  # scale to -1..1
 
+            # --- Order book depth profile for scalping ---
+            depth_profile = {}
+            if bids and asks and mid > 0:
+                for pct in [0.001, 0.002, 0.005, 0.01, 0.02]:
+                    bid_cutoff = mid * (1 - pct)
+                    ask_cutoff = mid * (1 + pct)
+                    bid_vol = sum(b[1] for b in bids if b[0] >= bid_cutoff)
+                    ask_vol = sum(a[1] for a in asks if a[0] <= ask_cutoff)
+                    depth_profile[f"{pct*100:.1f}%"] = {
+                        "bid_volume": round(bid_vol, 4),
+                        "ask_volume": round(ask_vol, 4),
+                    }
+
             # Fee rate for this symbol
             fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
 
@@ -1410,6 +1423,7 @@ class TradingEngine:
                 depth_imbalances=depth_imbalances,
                 order_book_slope=order_book_slope,
                 mid_price_bias=mid_price_bias,
+                depth_profile=depth_profile,
                 fee_rate=fee_rate,
                 drawdown_pct=perf.get("equity_curve", {}).get("drawdown_pct"),
                 raw_candles=raw_candles,

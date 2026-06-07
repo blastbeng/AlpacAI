@@ -629,6 +629,7 @@ def build_strategy_prompt(
     depth_imbalances: Optional[Dict[str, float]] = None,
     order_book_slope: Optional[float] = None,
     mid_price_bias: Optional[float] = None,
+    depth_profile: Optional[Dict[str, Dict[str, float]]] = None,
     fee_rate: Optional[float] = None,
     drawdown_pct: Optional[float] = None,
     raw_candles: Optional[List[List]] = None,
@@ -756,6 +757,15 @@ Maximum coins to trade: {max_coins}
         prompt += f"Order book slope (volume change per 0.5% price move): {order_book_slope:.2f}\n"
     if mid_price_bias is not None:
         prompt += f"Mid-price bias (-1 = near bid, +1 = near ask): {mid_price_bias:.2f}\n"
+    if depth_profile:
+        prompt += "\nOrder book depth profile (cumulative volume at distance from mid):\n"
+        for dist, vols in depth_profile.items():
+            prompt += f"  {dist}: bid={vols['bid_volume']:.4f}, ask={vols['ask_volume']:.4f}\n"
+        prompt += (
+            "Use this depth profile to set take‑profit levels that are likely to be filled. "
+            "If the ask volume at a certain distance is thin, a small take‑profit may be filled quickly. "
+            "If it's thick, you may need a larger move or a smaller position.\n"
+        )
     if fee_rate is not None:
         prompt += f"Taker fee rate for this symbol: {fee_rate*100:.2f}%\n"
         prompt += (
