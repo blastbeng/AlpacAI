@@ -114,6 +114,10 @@ def validate_signal(
             tsa = params["trailing_stop_activation_pct"]
             if not isinstance(tsa, (int, float)) or not (0 <= tsa <= 1.0):
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid trailing_stop_activation_pct")
+        if "breakeven_activation_pct" in params:
+            bap = params["breakeven_activation_pct"]
+            if not isinstance(bap, (int, float)) or not (0 < bap <= 1.0):
+                return Signal(action="HOLD", confidence=0.0, reasoning="Invalid breakeven_activation_pct")
         if "max_risk_per_trade_pct" in params:
             mrp = params["max_risk_per_trade_pct"]
             if not isinstance(mrp, (int, float)) or not (0 < mrp <= 1.0):

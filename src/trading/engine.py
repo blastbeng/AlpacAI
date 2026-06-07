@@ -355,6 +355,8 @@ class TradingEngine:
                     pos["max_hold_time_seconds"] = old["max_hold_time_seconds"]
                 if "trailing_stop_activation_pct" in old:
                     pos["trailing_stop_activation_pct"] = old["trailing_stop_activation_pct"]
+                if "breakeven_activation_pct" in old:
+                    pos["breakeven_activation_pct"] = old["breakeven_activation_pct"]
                 if "cooldown_after_loss_seconds" in old:
                     pos["cooldown_after_loss_seconds"] = old["cooldown_after_loss_seconds"]
                 if "timeframe" in old:
@@ -1608,6 +1610,21 @@ class TradingEngine:
                             pos["stop_loss"] = new_stop
                             logger.debug(f"Trailing stop updated for {symbol}: new stop {new_stop:.4f}")
 
+                # --- Breakeven stop ---
+                breakeven_activation = pos.get("breakeven_activation_pct")
+                if breakeven_activation is not None and breakeven_activation > 0:
+                    entry_price = pos["price"]
+                    if current_price >= entry_price * (1 + breakeven_activation):
+                        # Compute exact break-even price that covers exit fee
+                        fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
+                        if fee_rate < 1.0:
+                            breakeven_price = entry_price / (1.0 - fee_rate)
+                        else:
+                            breakeven_price = entry_price  # fallback
+                        if breakeven_price > pos["stop_loss"]:
+                            pos["stop_loss"] = breakeven_price
+                            logger.debug(f"Breakeven stop activated for {symbol}: new stop {breakeven_price:.4f}")
+
                 # Time‑based exit (LLM‑defined max hold time)
                 max_hold = pos.get("max_hold_time_seconds")
                 if max_hold is not None and max_hold > 0:
@@ -1792,6 +1809,7 @@ class TradingEngine:
                     self.positions[symbol]["trailing_stop_distance_pct"] = trailing_stop_distance_pct
                     self.positions[symbol]["max_hold_time_seconds"] = params.get("max_hold_time_seconds")
                     self.positions[symbol]["trailing_stop_activation_pct"] = params.get("trailing_stop_activation_pct")
+                    self.positions[symbol]["breakeven_activation_pct"] = params.get("breakeven_activation_pct")
                     self.positions[symbol]["cooldown_after_loss_seconds"] = params["cooldown_after_loss_seconds"]
                     self.positions[symbol]["timeframe"] = timeframe
                     self.positions[symbol]["indicator_config"] = signal.indicator_config
@@ -1811,6 +1829,7 @@ class TradingEngine:
                         "trailing_stop_distance_pct": trailing_stop_distance_pct,
                         "max_hold_time_seconds": params.get("max_hold_time_seconds"),
                         "trailing_stop_activation_pct": params.get("trailing_stop_activation_pct"),
+                        "breakeven_activation_pct": params.get("breakeven_activation_pct"),
                         "cooldown_after_loss_seconds": params["cooldown_after_loss_seconds"],
                         "timeframe": timeframe,
                         "indicator_config": signal.indicator_config,
