@@ -729,8 +729,22 @@ class TradingEngine:
                 await self._reconcile_positions()
                 paused = await asyncio.to_thread(self.redis.get, "trading:paused")
                 if paused:
+                    logger.info("Trading is paused. Skipping cycle.")
                     await asyncio.sleep(STRATEGY_INTERVAL)
                     continue
+
+                # Periodic state debug log
+                try:
+                    bal = await asyncio.to_thread(self.trader.fetch_balance)
+                    base_bal = bal.get(self.base_currency, 0.0)
+                    logger.info(
+                        f"Engine state: coins={len(self.current_coins)}, "
+                        f"positions={len(self.positions)}, "
+                        f"{self.base_currency}_balance={base_bal:.2f}, "
+                        f"effective_max_coins={self.effective_max_coins}"
+                    )
+                except Exception:
+                    logger.debug("Could not fetch balance for debug log")
 
                 await self._reevaluate_coins()
                 self._cycle_spent = 0.0
@@ -915,6 +929,11 @@ class TradingEngine:
             logger.warning("Insufficient balance to trade any coin. Clearing coin list.")
             self.current_coins = []
             await asyncio.to_thread(self.redis.set, last_key, now)
+            if self.notifier:
+                await self.notifier.send_notification(
+                    f"⚠️ Insufficient {self.base_currency} balance ({base_balance:.2f}) to trade any coin. "
+                    f"Min cost required: {min_min_cost:.2f}. Depositing funds or resetting paper balance will fix this."
+                )
             return
 
         # Recompute per-coin budget with the effective max
@@ -1002,9 +1021,17 @@ class TradingEngine:
 
         coin_labels = [f"{c['symbol']}({c['timeframe']})" for c in self.current_coins]
         logger.info(f"Selected coins: {coin_labels}")
-        if self.notifier:
+        if not self.current_coins:
+            logger.warning("No coins selected after evaluation. Bot will idle until next cycle.")
+            if self.notifier:
+                await self.notifier.send_notification(
+                    f"⚠️ No coins selected. Bot will idle. "
+                    f"Balance: {base_balance:.2f} {self.base_currency}, "
+                    f"Per-coin budget: {per_coin_budget:.2f}"
+                )
+        elif self.notifier:
             await self.notifier.send_notification(
-                f"🔄 Coins updated: {', '.join(coin_labels) if coin_labels else 'None'}"
+                f"🔄 Coins updated: {', '.join(coin_labels)}"
             )
 
         await asyncio.to_thread(self.redis.set, last_key, now)
@@ -1027,7 +1054,10 @@ class TradingEngine:
             balance = await asyncio.to_thread(self.trader.fetch_balance)
             base_balance = balance.get(self.base_currency, 0.0)
             if base_balance <= 0 or self.effective_max_coins == 0:
-                logger.debug(f"Skipping {symbol}: insufficient balance or effective_max_coins=0")
+                logger.warning(
+                    f"Skipping {symbol}: {self.base_currency} balance={base_balance:.2f}, "
+                    f"effective_max_coins={self.effective_max_coins}"
+                )
                 return
 
             # Fetch OHLCV for the coin's assigned timeframe
