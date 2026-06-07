@@ -1772,7 +1772,7 @@ class TradingEngine:
                     await self.notifier.send_notification(f"⚠️ Insufficient {quote} to buy {symbol}")
                 return
 
-            # Check minimum order size
+            # Check minimum order size and adjust upward if needed
             try:
                 ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
                 price = ticker['last']
@@ -1782,18 +1782,41 @@ class TradingEngine:
                 min_amount_limit = limits.get('amount', {}).get('min')
                 min_cost_limit = limits.get('cost', {}).get('min')
 
-                if min_amount_limit is not None and base_amount < float(min_amount_limit):
-                    logger.info(f"BUY amount {base_amount:.6f} {base} below min amount {min_amount_limit} for {symbol}, skipping")
+                # Determine the required minimum quote amount
+                required_quote = amount
+                if min_amount_limit is not None:
+                    min_base = float(min_amount_limit)
+                    required_quote = max(required_quote, min_base * price)
+                if min_cost_limit is not None:
+                    required_quote = max(required_quote, float(min_cost_limit))
+
+                if required_quote > amount:
+                    # Adjust amount upward to meet the minimum
+                    old_amount = amount
+                    amount = required_quote
+                    # Check if we have enough balance for the adjusted amount
+                    if amount > quote_balance:
+                        logger.info(
+                            f"BUY amount adjusted from {old_amount:.2f} to {amount:.2f} {quote} "
+                            f"to meet minimum, but insufficient balance ({quote_balance:.2f}). Skipping."
+                        )
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                f"⚠️ BUY skipped for {symbol}: amount adjusted to {amount:.2f} but insufficient balance"
+                            )
+                        return
+                    logger.info(
+                        f"BUY amount adjusted from {old_amount:.2f} to {amount:.2f} {quote} "
+                        f"to meet exchange minimum"
+                    )
                     if self.notifier:
-                        await self.notifier.send_notification(f"⚠️ BUY skipped for {symbol}: amount too small")
-                    return
-                if min_cost_limit is not None and amount < float(min_cost_limit):
-                    logger.info(f"BUY cost {amount:.2f} {quote} below min cost {min_cost_limit} for {symbol}, skipping")
-                    if self.notifier:
-                        await self.notifier.send_notification(f"⚠️ BUY skipped for {symbol}: cost too small")
-                    return
+                        await self.notifier.send_notification(
+                            f"ℹ️ {symbol}: buy amount adjusted to {amount:.2f} {quote} to meet minimum"
+                        )
+                    # Recalculate base_amount for the order
+                    base_amount = amount / price
             except Exception as e:
-                logger.warning(f"Could not verify min order size for {symbol}: {e}")
+                logger.warning(f"Could not verify/adjust min order size for {symbol}: {e}")
 
             try:
                 order = await asyncio.to_thread(self.trader.create_market_buy_order, symbol, amount)
