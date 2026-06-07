@@ -1311,10 +1311,11 @@ class TradingEngine:
                 all_coins=self.current_coins,
                 past_trades=past_trades,
             )
+            logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
                 response = await asyncio.wait_for(
                     asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 60),
-                    timeout=30.0
+                    timeout=90.0
                 )
             except asyncio.TimeoutError:
                 logger.warning(f"LLM strategy call timed out for {symbol}. Skipping this cycle.")
