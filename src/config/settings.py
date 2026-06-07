@@ -168,20 +168,6 @@ class Settings(BaseSettings):
     STOCKTWITS_API_KEY: Optional[str] = None
     STOCKTWITS_MAX_POSTS: int = 5
 
-    # News sentiment risk adjustment
-    NEWS_SENTIMENT_RISK_ADJUSTMENT: bool = False
-    NEWS_SENTIMENT_NEGATIVE_THRESHOLD: float = -0.5   # compound score below this is very negative
-    NEWS_SENTIMENT_POSITIVE_THRESHOLD: float = 0.5    # above this is very positive
-    NEWS_SENTIMENT_POSITION_SIZE_MULTIPLIER_NEGATIVE: float = 0.5  # reduce position to 50% if negative
-    NEWS_SENTIMENT_POSITION_SIZE_MULTIPLIER_POSITIVE: float = 1.0  # keep normal if positive
-    NEWS_SENTIMENT_SKIP_BUY_ON_VERY_NEGATIVE: bool = True  # skip BUY entirely if sentiment below negative threshold
-
-    # News sentiment risk management for open positions
-    NEWS_SENTIMENT_EXIT_ON_VERY_NEGATIVE: bool = False   # force close position if sentiment very negative
-    NEWS_SENTIMENT_EXIT_THRESHOLD: float = -0.7           # compound score below this triggers forced exit
-    NEWS_SENTIMENT_TIGHTEN_STOP: bool = False             # tighten stop-loss when sentiment turns negative
-    NEWS_SENTIMENT_TIGHTEN_STOP_THRESHOLD: float = -0.3   # sentiment below this triggers stop tightening
-    NEWS_SENTIMENT_TIGHTEN_STOP_MULTIPLIER: float = 0.5   # multiply stop distance by this factor (0.5 = halve distance)
 
     # News-driven coin discovery
     NEWS_COIN_DISCOVERY_ENABLED: bool = False
