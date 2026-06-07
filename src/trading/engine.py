@@ -65,6 +65,7 @@ class TradingEngine:
         self.positions: Dict[str, Dict[str, Any]] = {}  # symbol -> position info
         self.trade_history: List[Dict[str, Any]] = []
         self.initial_balance: float = 0.0
+        self.last_loss_time: Dict[str, float] = {}  # symbol -> timestamp of last losing trade
         self.notifier = None
         self._load_state()
         # Restore paper simulator state from trade history
@@ -865,6 +866,14 @@ class TradingEngine:
         """Fetch market data, get LLM strategy, validate, and execute."""
         symbol = coin_entry["symbol"]
         assigned_tf = coin_entry["timeframe"]
+
+        # Cooldown after a recent loss on this symbol
+        cooldown = settings.COOLDOWN_AFTER_LOSS_SECONDS
+        last_loss = self.last_loss_time.get(symbol, 0)
+        if cooldown > 0 and time.time() - last_loss < cooldown:
+            logger.info(f"Skipping {symbol}: cooldown after recent loss ({cooldown}s)")
+            return
+
         try:
             ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
             order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
@@ -1123,7 +1132,14 @@ class TradingEngine:
             signal = strategy.generate_signal({})
             # Extract per-trade confidence threshold if present
             entry_conf_threshold = signal.strategy_params.get("entry_confidence_threshold") if signal.strategy_params else None
-            validated = validate_signal(signal, fee_rate=fee_rate, entry_confidence_threshold=entry_conf_threshold)
+            current_price = ticker['last']
+            validated = validate_signal(
+                signal,
+                fee_rate=fee_rate,
+                entry_confidence_threshold=entry_conf_threshold,
+                atr=atr,
+                price=current_price,
+            )
 
             # Log raw response if validation turned a non-HOLD into HOLD
             if signal.action != "HOLD" and validated.action == "HOLD":
@@ -1734,6 +1750,9 @@ class TradingEngine:
                     realized_pnl = 0.0
                 order["realized_pnl"] = realized_pnl
                 order["cost_basis"] = pos.get("cost_basis", 0.0) if pos else 0.0
+                # Track loss timestamps for cooldown
+                if realized_pnl < 0:
+                    self.last_loss_time[symbol] = time.time()
                 tf = timeframe or (pos.get("timeframe") if pos else None)
                 order["timeframe"] = tf
                 order["strategy_type"] = signal.strategy_type

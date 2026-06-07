@@ -1,7 +1,7 @@
 from .base import Signal
 from typing import Dict, Any, Optional
 
-MIN_CONFIDENCE = 0.65
+MIN_CONFIDENCE = 0.75
 VALID_STRATEGY_TYPES = {"scalping", "momentum", "mean_reversion", "breakout"}
 
 
@@ -10,6 +10,8 @@ def validate_signal(
     market_data: Optional[Dict[str, Any]] = None,
     fee_rate: Optional[float] = None,
     entry_confidence_threshold: Optional[float] = None,
+    atr: Optional[float] = None,
+    price: Optional[float] = None,
 ) -> Signal:
     """
     Validate a trading signal.
@@ -102,5 +104,41 @@ def validate_signal(
             tsd = params.get("trailing_stop_distance_pct")
             if tsd is not None and sl is not None and tsd >= sl:
                 return Signal(action="HOLD", confidence=0.0, reasoning="trailing_stop_distance_pct must be less than stop_loss_pct")
+
+        # --- Risk/Reward and ATR-based stop enforcement ---
+        if signal.action in ("BUY", "SELL"):
+            params = signal.strategy_params or {}
+            stop_method = params.get("stop_loss_method", "fixed")
+            # Determine the effective stop_loss_pct
+            if stop_method == "atr_multiple":
+                if atr is not None and price is not None and price > 0:
+                    sl_pct = (params["stop_loss_atr_multiple"] * atr) / price
+                else:
+                    sl_pct = None  # cannot validate without ATR/price
+            else:
+                sl_pct = params.get("stop_loss_pct")
+
+            tp = params["take_profit_pct"]
+
+            # 1. Minimum risk/reward ratio (2:1)
+            MIN_RR = 2.0
+            if sl_pct is not None and sl_pct > 0:
+                if tp < MIN_RR * sl_pct:
+                    return Signal(action="HOLD", confidence=0.0,
+                                  reasoning=f"Risk/reward ratio too low: tp={tp:.4f}, sl={sl_pct:.4f} (min {MIN_RR}:1)")
+
+            # 2. Minimum stop distance based on ATR (if available)
+            MIN_ATR_MULTIPLIER = 1.0
+            if atr is not None and price is not None and price > 0:
+                min_stop_distance = MIN_ATR_MULTIPLIER * atr
+                if stop_method == "fixed" and sl_pct is not None:
+                    if sl_pct * price < min_stop_distance:
+                        return Signal(action="HOLD", confidence=0.0,
+                                      reasoning=f"Stop distance too small: {sl_pct*price:.4f} < 1× ATR ({min_stop_distance:.4f})")
+                elif stop_method == "atr_multiple":
+                    multiplier = params["stop_loss_atr_multiple"]
+                    if multiplier < MIN_ATR_MULTIPLIER:
+                        return Signal(action="HOLD", confidence=0.0,
+                                      reasoning=f"ATR multiplier too small: {multiplier} < {MIN_ATR_MULTIPLIER}")
 
     return signal
