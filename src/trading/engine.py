@@ -77,6 +77,9 @@ class TradingEngine:
         # Ensure trading is not paused on startup
         self.redis.delete("trading:paused")
 
+        # Track quote currency spent in the current cycle to avoid over-allocating
+        self._cycle_spent = 0.0
+
     def set_notifier(self, notifier):
         """Attach a notification service (e.g., TelegramBot)."""
         self.notifier = notifier
@@ -730,6 +733,7 @@ class TradingEngine:
                     continue
 
                 await self._reevaluate_coins()
+                self._cycle_spent = 0.0
                 for coin_entry in self.current_coins:
                     await self._process_coin(coin_entry)
                 await self._check_risk_management()
@@ -1746,13 +1750,12 @@ class TradingEngine:
                 except Exception as e:
                     logger.warning(f"Failed to apply news sentiment adjustment for {symbol}: {e}")
 
-            per_coin_budget = (quote_balance / self.effective_max_coins) * position_fraction if self.effective_max_coins > 0 else 0.0
-            amount = min(per_coin_budget, quote_balance)
+            # Desired amount based on fraction of total available quote balance
+            desired_amount = quote_balance * position_fraction
 
-            # Apply max risk per trade if provided
+            # Apply max risk per trade cap if provided
             max_risk_pct = params.get("max_risk_per_trade_pct")
             if max_risk_pct is not None and sl_pct > 0:
-                # Compute total portfolio value (quote balance + open positions value)
                 total_value = quote_balance
                 for sym, pos in self.positions.items():
                     try:
@@ -1761,10 +1764,13 @@ class TradingEngine:
                     except Exception:
                         pass
                 max_risk_amount = total_value * max_risk_pct
-                # The loss if stop is hit: amount * sl_pct
                 max_allowed_amount = max_risk_amount / sl_pct
-                amount = min(amount, max_allowed_amount)
+                desired_amount = min(desired_amount, max_allowed_amount)
                 logger.info(f"Max risk per trade: {max_risk_pct:.2%} of {total_value:.2f} = {max_risk_amount:.2f}, max allowed amount = {max_allowed_amount:.2f}")
+
+            # Cap at remaining available balance in this cycle
+            available = max(0.0, quote_balance - self._cycle_spent)
+            amount = min(desired_amount, available)
 
             if amount <= 0:
                 logger.info(f"Insufficient {quote} to buy {symbol}")
@@ -1794,15 +1800,15 @@ class TradingEngine:
                     # Adjust amount upward to meet the minimum
                     old_amount = amount
                     amount = required_quote
-                    # Check if we have enough balance for the adjusted amount
-                    if amount > quote_balance:
+                    # Check if the adjusted amount exceeds remaining cycle budget
+                    if amount > available:
                         logger.info(
                             f"BUY amount adjusted from {old_amount:.2f} to {amount:.2f} {quote} "
-                            f"to meet minimum, but insufficient balance ({quote_balance:.2f}). Skipping."
+                            f"to meet minimum, but exceeds remaining cycle budget ({available:.2f}). Skipping."
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"⚠️ BUY skipped for {symbol}: amount adjusted to {amount:.2f} but insufficient balance"
+                                f"⚠️ BUY skipped for {symbol}: amount adjusted to {amount:.2f} but insufficient remaining budget"
                             )
                         return
                     logger.info(
@@ -1821,6 +1827,7 @@ class TradingEngine:
             try:
                 order = await asyncio.to_thread(self.trader.create_market_buy_order, symbol, amount)
                 logger.info(f"BUY {symbol}: {order}")
+                self._cycle_spent += order['cost']
                 # Update or create position
                 # Extract fee info for cost basis tracking
                 fee = order.get('fee', {})

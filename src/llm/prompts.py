@@ -366,7 +366,7 @@ You MUST include the following risk parameters inside the "parameters" object fo
 - "take_profit_pct": a decimal between 0.005 and 2.0 (e.g., 0.05 for 5%). Must be greater than stop_loss_pct and at least 2× the fee rate.
 - "trailing_stop": true or false to enable a trailing stop.
 - "trailing_stop_distance_pct": required if "trailing_stop" is true; a decimal between 0.001 and 0.1 (e.g., 0.01 for 1%). Must be less than stop_loss_pct. If "trailing_stop" is false, set this to null.
-- "position_size_fraction": a decimal between 0.1 and 1.0 (e.g., 0.5 for 50% of budget). Must be > 0 and ≤ 1.
+- "position_size_fraction": a decimal between 0.1 and 1.0 representing the fraction of your **total available quote currency balance** to allocate to this trade (e.g., 0.5 for 50% of your entire quote balance). Must be > 0 and ≤ 1. The sum of this fraction across all coins you trade should not exceed 1.0, so leave enough capital for other opportunities.
 - "max_hold_time_seconds": a positive integer number of seconds (e.g., 3600 for 1 hour). Must be > 0.
 
 You may also include the following optional parameters to fine-tune risk management:
@@ -593,15 +593,17 @@ Current balances: {json.dumps(balance)}
             prompt += f"Other coins being traded (you must leave budget for them): {coin_list_str}\n"
         else:
             prompt += "This is the only coin being traded; you may use the full budget.\n"
-    prompt += (
-        "When setting position_size_fraction, consider that the total budget must be shared across all coins. "
-        "Do not allocate more than your fair share unless you have high confidence and other coins have lower priority. "
-        "The per-coin budget shown below is a guideline, but you may adjust it based on relative opportunity.\n"
-    )
     prompt += f"""Open positions: {json.dumps(open_positions)}
-Per-coin budget (balance / max_coins): {per_coin_budget:.2f} {symbol.split('/')[1]}
+Your total available {base_currency} balance: {base_balance:.2f}
+Suggested equal share per coin (balance / max_coins): {per_coin_budget:.2f} {base_currency}
 Maximum coins to trade: {max_coins}
 """
+    prompt += (
+        f"**position_size_fraction** now represents a fraction of your **total {base_currency} balance** (0.1 to 1.0). "
+        f"You may allocate more than the equal share for high‑confidence/high‑profit opportunities, and less for riskier ones. "
+        f"**Important:** The sum of position_size_fraction across all coins you intend to trade must not exceed 1.0, "
+        f"so that you leave enough capital for other coins. Plan your allocations accordingly.\n"
+    )
     base_coin = symbol.split('/')[0]
     quote_coin = symbol.split('/')[1]
     if min_order_amount is not None or min_order_cost is not None:
