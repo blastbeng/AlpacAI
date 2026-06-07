@@ -370,6 +370,8 @@ class TradingEngine:
                     pos["partial_tp_triggered"] = old["partial_tp_triggered"]
                 if "cooldown_after_loss_seconds" in old:
                     pos["cooldown_after_loss_seconds"] = old["cooldown_after_loss_seconds"]
+                if "news_sentiment_exit_threshold" in old:
+                    pos["news_sentiment_exit_threshold"] = old["news_sentiment_exit_threshold"]
                 if "timeframe" in old:
                     pos["timeframe"] = old["timeframe"]
         # Re-apply force_close for positions still missing risk parameters
@@ -1821,6 +1823,31 @@ class TradingEngine:
 
                         # Continue to check other risk conditions for the remaining position
 
+                # --- News sentiment exit ---
+                news_threshold = pos.get("news_sentiment_exit_threshold")
+                if news_threshold is not None and settings.NEWS_ENABLED:
+                    try:
+                        base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+                        agg = await asyncio.to_thread(
+                            get_aggregate_sentiment_from_db, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS
+                        )
+                        if agg and agg["avg_compound"] < news_threshold:
+                            logger.info(
+                                f"News sentiment exit for {symbol}: compound {agg['avg_compound']:.2f} < threshold {news_threshold}"
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"📰 Negative news exit for {symbol} (sentiment {agg['avg_compound']:.2f})"
+                                )
+                            await self._execute_signal(
+                                symbol,
+                                Signal(action="SELL", confidence=1.0, reasoning="News sentiment exit"),
+                                exit_reason="news_sentiment_exit"
+                            )
+                            continue  # skip further checks for this symbol
+                    except Exception as e:
+                        logger.debug(f"News sentiment check failed for {symbol}: {e}")
+
                 # Time‑based exit (LLM‑defined max hold time)
                 max_hold = pos.get("max_hold_time_seconds")
                 if max_hold is not None and max_hold > 0:
@@ -2016,6 +2043,7 @@ class TradingEngine:
                     self.positions[symbol]["partial_take_profit_fraction"] = params.get("partial_take_profit_fraction")
                     self.positions[symbol]["partial_tp_triggered"] = False
                     self.positions[symbol]["cooldown_after_loss_seconds"] = params["cooldown_after_loss_seconds"]
+                    self.positions[symbol]["news_sentiment_exit_threshold"] = params.get("news_sentiment_exit_threshold")
                     self.positions[symbol]["timeframe"] = timeframe
                     self.positions[symbol]["indicator_config"] = signal.indicator_config
                 else:
@@ -2041,6 +2069,7 @@ class TradingEngine:
                         "partial_take_profit_fraction": params.get("partial_take_profit_fraction"),
                         "partial_tp_triggered": False,
                         "cooldown_after_loss_seconds": params["cooldown_after_loss_seconds"],
+                        "news_sentiment_exit_threshold": params.get("news_sentiment_exit_threshold"),
                         "timeframe": timeframe,
                         "indicator_config": signal.indicator_config,
                     }
