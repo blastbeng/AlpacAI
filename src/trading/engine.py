@@ -1901,6 +1901,27 @@ class TradingEngine:
                 desired_amount = min(desired_amount, max_allowed_amount)
                 logger.info(f"Max risk per trade: {max_risk_pct:.2%} of {total_value:.2f} = {max_risk_amount:.2f}, max allowed amount = {max_allowed_amount:.2f}")
 
+            # --- Volatility-adjusted position sizing ---
+            if settings.VOLATILITY_ADJUST_POSITION_SIZE and sl_pct > 0:
+                # Compute total portfolio value (quote balance + open positions value)
+                total_value = quote_balance
+                for sym, pos in self.positions.items():
+                    try:
+                        t = await asyncio.to_thread(self.exchange.fetch_ticker, sym)
+                        total_value += pos['amount'] * t['last']
+                    except Exception:
+                        pass
+                target_risk_amount = total_value * settings.TARGET_RISK_PER_TRADE_PCT
+                # Amount that would risk exactly target_risk_amount if stop is hit
+                risk_adjusted_amount = target_risk_amount / sl_pct
+                # Cap desired_amount at risk_adjusted_amount (do not exceed LLM's fraction)
+                desired_amount = min(desired_amount, risk_adjusted_amount)
+                logger.debug(
+                    f"Volatility-adjusted sizing for {symbol}: "
+                    f"target_risk={target_risk_amount:.2f}, sl_pct={sl_pct:.4%}, "
+                    f"risk_adjusted_amount={risk_adjusted_amount:.2f}, final_desired={desired_amount:.2f}"
+                )
+
             # Cap at remaining available balance in this cycle
             available = max(0.0, quote_balance - self._cycle_spent)
             amount = min(desired_amount, available)

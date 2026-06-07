@@ -66,6 +66,19 @@ class Settings(BaseSettings):
             raise ValueError("MAX_DAILY_LOSS_PCT must be positive")
         return v
 
+    # Automatically adjust position size so that each trade risks a fixed % of the portfolio.
+    # The LLM's position_size_fraction is treated as a maximum; the engine will scale down
+    # if the stop distance would cause a larger loss than TARGET_RISK_PER_TRADE_PCT.
+    VOLATILITY_ADJUST_POSITION_SIZE: bool = True
+    TARGET_RISK_PER_TRADE_PCT: float = 0.02   # 2% of portfolio value at risk per trade
+
+    @field_validator("TARGET_RISK_PER_TRADE_PCT")
+    @classmethod
+    def validate_target_risk_pct(cls, v: float) -> float:
+        if v <= 0 or v > 1.0:
+            raise ValueError("TARGET_RISK_PER_TRADE_PCT must be between 0 and 1")
+        return v
+
     # OHLCV timeframes for multi-timeframe analysis
     OHLCV_TIMEFRAMES: list[str] = ["5m", "15m", "1h", "4h"]
 
