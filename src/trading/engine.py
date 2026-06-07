@@ -1922,14 +1922,14 @@ class TradingEngine:
                     f"risk_adjusted_amount={risk_adjusted_amount:.2f}, final_desired={desired_amount:.2f}"
                 )
 
-            # --- Minimum absolute profit check ---
-            if settings.MIN_PROFIT_PER_TRADE > 0:
-                # Expected gross profit if take-profit is hit (before fees)
+            # --- Minimum absolute profit check (LLM‑defined) ---
+            min_profit = params.get("min_profit_per_trade")
+            if min_profit is not None and min_profit > 0:
                 expected_gross_profit = desired_amount * tp_pct
-                if expected_gross_profit < settings.MIN_PROFIT_PER_TRADE:
+                if expected_gross_profit < min_profit:
                     logger.info(
                         f"Skipping BUY {symbol}: expected gross profit {expected_gross_profit:.4f} {quote} "
-                        f"below minimum {settings.MIN_PROFIT_PER_TRADE:.4f}"
+                        f"below LLM minimum {min_profit:.4f}"
                     )
                     if self.notifier:
                         await self.notifier.send_notification(
