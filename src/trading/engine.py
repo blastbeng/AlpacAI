@@ -357,6 +357,16 @@ class TradingEngine:
                     pos["trailing_stop_activation_pct"] = old["trailing_stop_activation_pct"]
                 if "breakeven_activation_pct" in old:
                     pos["breakeven_activation_pct"] = old["breakeven_activation_pct"]
+                if "lock_profit_activation_pct" in old:
+                    pos["lock_profit_activation_pct"] = old["lock_profit_activation_pct"]
+                if "lock_profit_level_pct" in old:
+                    pos["lock_profit_level_pct"] = old["lock_profit_level_pct"]
+                if "partial_take_profit_pct" in old:
+                    pos["partial_take_profit_pct"] = old["partial_take_profit_pct"]
+                if "partial_take_profit_fraction" in old:
+                    pos["partial_take_profit_fraction"] = old["partial_take_profit_fraction"]
+                if "partial_tp_triggered" in old:
+                    pos["partial_tp_triggered"] = old["partial_tp_triggered"]
                 if "cooldown_after_loss_seconds" in old:
                     pos["cooldown_after_loss_seconds"] = old["cooldown_after_loss_seconds"]
                 if "timeframe" in old:
