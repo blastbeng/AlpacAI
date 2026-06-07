@@ -59,22 +59,6 @@ def validate_signal(
         tp = params["take_profit_pct"]
         if not isinstance(tp, (int, float)) or not (0 < tp < 10.0):
             return Signal(action="HOLD", confidence=0.0, reasoning="Invalid take_profit_pct")
-        # Enforce minimum take-profit to cover fees AND spread
-        if fee_rate is not None and fee_rate > 0:
-            # Base minimum from fees: need (1+tp)*(1-fee)^2 > 1  => tp > 1/(1-f)^2 - 1
-            min_tp_pct = (1.0 / ((1.0 - fee_rate) ** 2)) - 1.0
-            # Add spread cost if available (spread_pct is in percent, e.g. 0.05 = 0.05%)
-            if spread_pct is not None and spread_pct > 0:
-                spread_decimal = spread_pct / 100.0
-                min_tp_pct += spread_decimal
-            # Add a small buffer (0.1%) to ensure net profit
-            min_tp_pct += 0.001
-            if tp <= min_tp_pct:
-                return Signal(
-                    action="HOLD",
-                    confidence=0.0,
-                    reasoning=f"take_profit_pct ({tp:.4%}) too low to cover fees+spread (min {min_tp_pct:.4%})"
-                )
         trailing = params["trailing_stop"]
         if not isinstance(trailing, bool):
             return Signal(action="HOLD", confidence=0.0, reasoning="trailing_stop must be boolean")
@@ -122,14 +106,6 @@ def validate_signal(
             ptf = params["partial_take_profit_fraction"]
             if not isinstance(ptf, (int, float)) or not (0 < ptf <= 1.0):
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid partial_take_profit_fraction")
-            # Enforce that partial TP covers fees+spread (same minimum as main TP)
-            if fee_rate is not None and fee_rate > 0:
-                min_tp_pct = (1.0 / ((1.0 - fee_rate) ** 2)) - 1.0
-                if spread_pct is not None and spread_pct > 0:
-                    min_tp_pct += spread_pct / 100.0
-                min_tp_pct += 0.001
-                if ptp <= min_tp_pct:
-                    return Signal(action="HOLD", confidence=0.0, reasoning=f"partial_take_profit_pct ({ptp:.4%}) too low to cover fees+spread (min {min_tp_pct:.4%})")
             # Partial TP must be less than main TP
             if ptp >= tp:
                 return Signal(action="HOLD", confidence=0.0, reasoning="partial_take_profit_pct must be less than take_profit_pct")

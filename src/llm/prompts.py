@@ -723,6 +723,10 @@ Maximum coins to trade: {max_coins}
         prompt += f"Mid-price bias (-1 = near bid, +1 = near ask): {mid_price_bias:.2f}\n"
     if fee_rate is not None:
         prompt += f"Taker fee rate for this symbol: {fee_rate*100:.2f}%\n"
+        prompt += (
+            "You must set take_profit_pct high enough to cover round‑trip fees and the spread. "
+            "The engine will not enforce any minimum – it trusts your calculation.\n"
+        )
     if unrealized_pnl is not None and position_info:
         prompt += f"Current position unrealized P&L: {unrealized_pnl:.2f} {symbol.split('/')[1]}\n"
         prompt += f"Position details: entry price {position_info.get('price')}, amount {position_info.get('amount')}\n"
@@ -841,7 +845,7 @@ You MUST include the following risk parameters in the "parameters" object:
 You may also include optional parameters: stop_loss_method, stop_loss_atr_multiple, trailing_stop_activation_pct, breakeven_activation_pct, lock_profit_activation_pct, lock_profit_level_pct, partial_take_profit_pct, partial_take_profit_fraction, max_risk_per_trade_pct, min_profit_per_trade, entry_confidence_threshold. See the system prompt for details.
 The bot will NOT use any default values. If you omit any required parameter, the trade will be skipped.
 
-**Fee awareness:** You MUST account for trading fees when setting take-profit and trailing stop distances. Ensure that after deducting fees (both entry and exit), a take-profit or trailing stop exit results in a net profit. You must ensure that the take-profit percentage is high enough to cover both entry and exit fees and still yield a net profit. The bot will not enforce any minimum; it is entirely your responsibility.
+**Fee awareness:** You are solely responsible for ensuring that every trade is profitable after fees and spread. The bot provides you with the taker fee rate and the current spread. You must set take_profit_pct (and partial_take_profit_pct if used) high enough to cover both entry and exit fees plus the spread, and still leave a net profit. There is no engine‑side minimum – if you set a take‑profit that is too low, the trade will lose money. Use the formula: minimum take_profit_pct = 1/(1-fee)^2 - 1 + spread_decimal. Add a buffer for safety.
 
 You are trading spot only (no shorting). Only output SELL if you currently hold the coin.
 
