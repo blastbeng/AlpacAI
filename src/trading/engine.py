@@ -27,6 +27,7 @@ from src.llm.prompts import (
     compute_mfi,
     compute_cci,
     compute_williams_r,
+    _format_news_for_prompt,
 )
 try:
     from src.news.fetcher import discover_trending_coins
@@ -81,16 +82,43 @@ class TradingEngine:
         self.notifier = notifier
 
     def _get_sentiment_str(self, symbol: str) -> str:
-        """Get a short news sentiment string for notifications."""
+        """Get a short news sentiment string for notifications, including an LLM summary."""
         if not settings.NEWS_ENABLED:
             return ""
         try:
             base_coin = symbol.split("/")[0] if "/" in symbol else symbol
             agg_sent = get_aggregate_sentiment_from_db(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
-            if agg_sent:
-                compound = agg_sent["avg_compound"]
-                sentiment_label = "positive" if compound > 0.05 else "negative" if compound < -0.05 else "neutral"
-                return f"📰 {sentiment_label} ({compound:+.2f}, {agg_sent['total_articles']} articles)"
+            if not agg_sent:
+                return ""
+
+            compound = agg_sent["avg_compound"]
+            sentiment_label = "positive" if compound > 0.05 else "negative" if compound < -0.05 else "neutral"
+            total = agg_sent["total_articles"]
+
+            # Try to get an LLM-generated summary of the news
+            summary = ""
+            try:
+                articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+                if articles:
+                    formatted = _format_news_for_prompt(articles)
+                    prompt = (
+                        f"Here are recent news headlines and summaries for {base_coin}:\n\n"
+                        f"{formatted}\n\n"
+                        "Based on these articles, write a single very short sentence (max 15 words) "
+                        "that explains the overall sentiment and the main reason for it. "
+                        "Do not include any other text."
+                    )
+                    summary = get_cached_llm_response(prompt, "", ttl=300).strip()
+                    # Limit length to avoid overly long notifications
+                    if len(summary) > 120:
+                        summary = summary[:117] + "..."
+            except Exception:
+                pass  # fallback to no summary
+
+            if summary:
+                return f"📰 {sentiment_label} ({compound:+.2f}, {total} articles) – {summary}"
+            else:
+                return f"📰 {sentiment_label} ({compound:+.2f}, {total} articles)"
         except Exception:
             pass
         return ""
