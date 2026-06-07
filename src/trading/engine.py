@@ -588,7 +588,6 @@ class TradingEngine:
                     continue
 
                 await self._reevaluate_coins()
-                await self._close_removed_positions()
                 for coin_entry in self.current_coins:
                     await self._process_coin(coin_entry)
                 await self._check_risk_management()
@@ -840,6 +839,13 @@ class TradingEngine:
                     break
             self.current_coins = fallback_coins
 
+        # Ensure all open positions remain in current_coins so they continue to be managed by the LLM strategy
+        for symbol, pos in self.positions.items():
+            if not any(entry["symbol"] == symbol for entry in self.current_coins):
+                tf = pos.get("timeframe") or (settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h")
+                self.current_coins.append({"symbol": symbol, "timeframe": tf})
+                logger.info(f"Keeping {symbol} in current_coins due to open position (timeframe={tf})")
+
         coin_labels = [f"{c['symbol']}({c['timeframe']})" for c in self.current_coins]
         logger.info(f"Selected coins: {coin_labels}")
         if self.notifier:
@@ -848,19 +854,6 @@ class TradingEngine:
             )
 
         await asyncio.to_thread(self.redis.set, last_key, now)
-
-    async def _close_removed_positions(self):
-        """Handle positions for coins that are no longer in the current selection.
-        Instead of force-selling, we keep the position and let risk management close it naturally.
-        """
-        current_symbols = {entry["symbol"] for entry in self.current_coins}
-        removed = [sym for sym in self.positions if sym not in current_symbols]
-        for sym in removed:
-            logger.info(f"Coin {sym} removed from selection. Position will be managed by risk parameters until closed.")
-            if self.notifier:
-                await self.notifier.send_notification(
-                    f"📤 {sym} removed from active coins. Existing position will be held and managed by stop-loss/take-profit."
-                )
 
     async def _process_coin(self, coin_entry: Dict[str, str]):
         """Fetch market data, get LLM strategy, validate, and execute."""
