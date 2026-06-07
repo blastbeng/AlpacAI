@@ -1677,10 +1677,7 @@ class TradingEngine:
                 await asyncio.to_thread(insert_trade, order)
                 await self._save_state()
                 if self.notifier:
-                    sentiment_str = self._get_sentiment_str(symbol)
                     buy_msg = f"🟢 BUY {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
-                    if sentiment_str:
-                        buy_msg += f" | {sentiment_str}"
                     await self.notifier.send_notification(buy_msg)
             except Exception as e:
                 logger.error(f"Buy order failed for {symbol}: {e}")
