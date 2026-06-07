@@ -1630,6 +1630,18 @@ class TradingEngine:
             # Use LLM-provided risk parameters directly (no hardcoded minimums)
             fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
             tp_pct = params["take_profit_pct"]
+            # Reject trade if take-profit is too low to cover fees
+            if fee_rate > 0:
+                min_tp_pct = (1.0 / ((1.0 - fee_rate) ** 2)) - 1.0 + 0.001
+                if tp_pct <= min_tp_pct:
+                    logger.info(
+                        f"Skipping BUY {symbol}: take_profit_pct {tp_pct:.4%} below minimum {min_tp_pct:.4%} to cover fees"
+                    )
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"⚠️ Skipping BUY {symbol}: take-profit too low ({tp_pct:.4%})"
+                        )
+                    return
             trailing_stop = params["trailing_stop"]
             trailing_stop_distance_pct = params.get("trailing_stop_distance_pct")
 

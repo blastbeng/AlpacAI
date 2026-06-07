@@ -58,6 +58,19 @@ def validate_signal(
         tp = params["take_profit_pct"]
         if not isinstance(tp, (int, float)) or not (0 < tp < 10.0):
             return Signal(action="HOLD", confidence=0.0, reasoning="Invalid take_profit_pct")
+        # Enforce minimum take-profit to cover fees
+        if fee_rate is not None and fee_rate > 0:
+            # Minimum tp_pct to break even after entry and exit fees (both taker fees)
+            # Approximate: need (1 + tp) * (1 - fee) * (1 - fee) > 1  => tp > 1/(1-f)^2 - 1
+            min_tp_pct = (1.0 / ((1.0 - fee_rate) ** 2)) - 1.0
+            # Add a small buffer (e.g., 0.1%) to ensure net profit
+            min_tp_pct += 0.001
+            if tp <= min_tp_pct:
+                return Signal(
+                    action="HOLD",
+                    confidence=0.0,
+                    reasoning=f"take_profit_pct ({tp:.4%}) too low to cover fees (min {min_tp_pct:.4%})"
+                )
         trailing = params["trailing_stop"]
         if not isinstance(trailing, bool):
             return Signal(action="HOLD", confidence=0.0, reasoning="trailing_stop must be boolean")
