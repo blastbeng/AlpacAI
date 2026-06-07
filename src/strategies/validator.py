@@ -10,6 +10,7 @@ def validate_signal(
     fee_rate: Optional[float] = None,
     atr: Optional[float] = None,
     price: Optional[float] = None,
+    spread_pct: Optional[float] = None,
 ) -> Signal:
     """
     Validate a trading signal.
@@ -58,18 +59,21 @@ def validate_signal(
         tp = params["take_profit_pct"]
         if not isinstance(tp, (int, float)) or not (0 < tp < 10.0):
             return Signal(action="HOLD", confidence=0.0, reasoning="Invalid take_profit_pct")
-        # Enforce minimum take-profit to cover fees
+        # Enforce minimum take-profit to cover fees AND spread
         if fee_rate is not None and fee_rate > 0:
-            # Minimum tp_pct to break even after entry and exit fees (both taker fees)
-            # Approximate: need (1 + tp) * (1 - fee) * (1 - fee) > 1  => tp > 1/(1-f)^2 - 1
+            # Base minimum from fees: need (1+tp)*(1-fee)^2 > 1  => tp > 1/(1-f)^2 - 1
             min_tp_pct = (1.0 / ((1.0 - fee_rate) ** 2)) - 1.0
-            # Add a small buffer (e.g., 0.1%) to ensure net profit
+            # Add spread cost if available (spread_pct is in percent, e.g. 0.05 = 0.05%)
+            if spread_pct is not None and spread_pct > 0:
+                spread_decimal = spread_pct / 100.0
+                min_tp_pct += spread_decimal
+            # Add a small buffer (0.1%) to ensure net profit
             min_tp_pct += 0.001
             if tp <= min_tp_pct:
                 return Signal(
                     action="HOLD",
                     confidence=0.0,
-                    reasoning=f"take_profit_pct ({tp:.4%}) too low to cover fees (min {min_tp_pct:.4%})"
+                    reasoning=f"take_profit_pct ({tp:.4%}) too low to cover fees+spread (min {min_tp_pct:.4%})"
                 )
         # Enforce minimum stop distance based on ATR (if available)
         if atr is not None and price is not None and price > 0 and atr > 0:

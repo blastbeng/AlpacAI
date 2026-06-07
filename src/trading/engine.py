@@ -1313,6 +1313,7 @@ class TradingEngine:
                 fee_rate=fee_rate,
                 atr=atr,
                 price=current_price,
+                spread_pct=spread_pct,
             )
 
             # Log raw response if validation turned a non-HOLD into HOLD
