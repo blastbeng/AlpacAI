@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Dict, List, Optional, Any
 
@@ -136,6 +137,75 @@ class TradingEngine:
                 # HOLD: no adjustment
         except Exception:
             pass
+        return confidence
+
+    def _adjust_confidence_for_technical(self, symbol: str, action: str, confidence: float,
+                                         rsi: Optional[float] = None,
+                                         macd: Optional[float] = None,
+                                         macd_signal: Optional[float] = None,
+                                         bb_upper: Optional[float] = None,
+                                         bb_lower: Optional[float] = None,
+                                         current_price: Optional[float] = None,
+                                         backtest_summary: Optional[str] = None) -> float:
+        """Adjust confidence based on technical indicators and backtest results."""
+        if action == "HOLD":
+            return confidence
+
+        # Indicator alignment
+        indicator_boost = 0.0
+        if action == "BUY":
+            if rsi is not None and rsi < 30:
+                indicator_boost += 0.1
+            elif rsi is not None and rsi > 70:
+                indicator_boost -= 0.1
+            if macd is not None and macd_signal is not None and macd > macd_signal:
+                indicator_boost += 0.05
+            elif macd is not None and macd_signal is not None and macd < macd_signal:
+                indicator_boost -= 0.05
+            if current_price is not None and bb_lower is not None and current_price <= bb_lower:
+                indicator_boost += 0.05
+            elif current_price is not None and bb_upper is not None and current_price >= bb_upper:
+                indicator_boost -= 0.05
+        elif action == "SELL":
+            if rsi is not None and rsi > 70:
+                indicator_boost += 0.1
+            elif rsi is not None and rsi < 30:
+                indicator_boost -= 0.1
+            if macd is not None and macd_signal is not None and macd < macd_signal:
+                indicator_boost += 0.05
+            elif macd is not None and macd_signal is not None and macd > macd_signal:
+                indicator_boost -= 0.05
+            if current_price is not None and bb_upper is not None and current_price >= bb_upper:
+                indicator_boost += 0.05
+            elif current_price is not None and bb_lower is not None and current_price <= bb_lower:
+                indicator_boost -= 0.05
+
+        # Backtest adjustment
+        backtest_boost = 0.0
+        if backtest_summary:
+            win_match = re.search(r'(\d+)\s*wins?', backtest_summary)
+            loss_match = re.search(r'(\d+)\s*losses?', backtest_summary)
+            net_match = re.search(r'net\s*([+-]?\d+\.?\d*)%', backtest_summary)
+            if win_match and loss_match:
+                wins = int(win_match.group(1))
+                losses = int(loss_match.group(1))
+                total = wins + losses
+                if total > 0:
+                    win_rate = wins / total
+                    if win_rate > 0.5:
+                        backtest_boost += 0.1
+                    elif win_rate < 0.4:
+                        backtest_boost -= 0.1
+            if net_match:
+                net_pct = float(net_match.group(1))
+                if net_pct > 0:
+                    backtest_boost += 0.05
+                elif net_pct < 0:
+                    backtest_boost -= 0.05
+
+        total_adjustment = indicator_boost + backtest_boost
+        confidence += total_adjustment
+        confidence = max(0.0, min(1.0, confidence))
         return confidence
 
     async def _refresh_news_cache(self):
@@ -1178,6 +1248,18 @@ class TradingEngine:
             # Adjust confidence based on news sentiment
             validated.confidence = self._adjust_confidence_for_sentiment(
                 symbol, validated.action, validated.confidence
+            )
+
+            # Adjust confidence based on technical indicators and backtest results
+            validated.confidence = self._adjust_confidence_for_technical(
+                symbol, validated.action, validated.confidence,
+                rsi=rsi,
+                macd=macd,
+                macd_signal=macd_signal,
+                bb_upper=bb_upper,
+                bb_lower=bb_lower,
+                current_price=current_price,
+                backtest_summary=getattr(validated, 'backtest_summary', None),
             )
 
             # Log raw response if validation turned a non-HOLD into HOLD
