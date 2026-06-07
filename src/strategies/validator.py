@@ -27,10 +27,6 @@ def validate_signal(
 
     # Require risk parameters for BUY/SELL
     if signal.action in ("BUY", "SELL"):
-        # Reject trades on coins with excessive spread
-        if spread_pct is not None and max_spread_pct is not None and spread_pct > max_spread_pct:
-            return Signal(action="HOLD", confidence=0.0, reasoning=f"Spread too high ({spread_pct:.4f}% > max {max_spread_pct:.4f}%)")
-
         params = signal.strategy_params or {}
         # Determine stop-loss method (default "fixed")
         stop_method = params.get("stop_loss_method", "fixed")
