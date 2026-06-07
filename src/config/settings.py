@@ -32,28 +32,6 @@ class Settings(BaseSettings):
             raise ValueError("MAX_COINS must be at least 1")
         return v
 
-    # Minimum ATR as a percentage of price to consider a coin tradeable.
-    # Coins with lower volatility are unlikely to move enough to cover fees.
-    MIN_ATR_PCT_FOR_TRADE: float = 0.005   # 0.5%
-
-    @field_validator("MIN_ATR_PCT_FOR_TRADE")
-    @classmethod
-    def validate_min_atr_pct(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("MIN_ATR_PCT_FOR_TRADE must be positive")
-        return v
-
-    # Maximum allowed spread as a percentage. Coins with higher spread are skipped
-    # to avoid excessive slippage costs.
-    MAX_SPREAD_PCT: float = 1.0  # 1%
-
-    @field_validator("MAX_SPREAD_PCT")
-    @classmethod
-    def validate_max_spread_pct(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("MAX_SPREAD_PCT must be positive")
-        return v
-
     # Maximum allowed daily realized loss as a fraction of initial balance.
     # If the day's cumulative realized P&L falls below this threshold, trading is paused until the next day.
     # Example: 0.05 = 5% loss limit.

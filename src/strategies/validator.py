@@ -11,7 +11,6 @@ def validate_signal(
     atr: Optional[float] = None,
     price: Optional[float] = None,
     spread_pct: Optional[float] = None,
-    max_spread_pct: Optional[float] = None,
 ) -> Signal:
     """
     Validate a trading signal.
