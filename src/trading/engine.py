@@ -738,6 +738,31 @@ class TradingEngine:
         sample_pairs = available_pairs[:50]
         tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_pairs)
 
+        # --- Fetch order books for top coins to compute real spread/depth for scalping score ---
+        top_n_for_ob = min(20, len(sample_pairs))
+        top_by_vol = sorted(sample_pairs, key=lambda s: tickers.get(s, {}).get('quoteVolume', 0) or 0, reverse=True)[:top_n_for_ob]
+        coin_spreads: Dict[str, float] = {}
+        coin_depths: Dict[str, float] = {}
+        for sym in top_by_vol:
+            try:
+                ob = await asyncio.to_thread(get_order_book, self.exchange, sym, 5)
+                bids = ob.get('bids', [])
+                asks = ob.get('asks', [])
+                if bids and asks:
+                    best_bid = bids[0][0]
+                    best_ask = asks[0][0]
+                    mid = (best_bid + best_ask) / 2
+                    if mid > 0:
+                        spread_pct = ((best_ask - best_bid) / mid) * 100
+                        coin_spreads[sym] = round(spread_pct, 4)
+                    # Depth: total volume within 1% of mid price
+                    bid_vol = sum(b[1] for b in bids if b[0] >= mid * 0.99)
+                    ask_vol = sum(a[1] for a in asks if a[0] <= mid * 1.01)
+                    total_depth = bid_vol + ask_vol
+                    coin_depths[sym] = round(total_depth, 2)
+            except Exception as e:
+                logger.debug(f"Order book fetch failed for {sym} during coin selection: {e}")
+
         # --- Compute scalping suitability scores for candidate coins ---
         coin_scores: Dict[str, float] = {}
         for sym in sample_pairs:
@@ -925,6 +950,8 @@ class TradingEngine:
             coin_indicators=coin_indicators,
             daily_pnl=perf["equity_curve"].get("daily_pnl"),
             coin_scores=coin_scores,
+            coin_spreads=coin_spreads,
+            coin_depths=coin_depths,
         )
         try:
             response = await asyncio.wait_for(

@@ -344,7 +344,7 @@ You may optionally include a "backtest_summary" field (string) when historical O
 
 When asked to select coins, return a JSON array of trading pair symbols (e.g., ["BTC/USDT", "ETH/USDT"]). Choose coins that are likely to deliver short-term profit based on recent price action, volume, and volatility. Prefer coins with high liquidity and clear short-term trends.
 
-When selecting coins, you will see a "scalping suitability score" (0-1) for each candidate. This score is a rough guide that combines volume, volatility, spread, and short-term momentum. Prefer coins with higher scores, but you may override based on your own analysis.
+When selecting coins, you will see a "scalping suitability score" (0-1) for each candidate, along with spread and depth metrics. Coins with very low spread (<0.1%) and high depth are ideal for scalping tiny percentages (e.g., 0.1-0.5% take-profit). Use this data to pick coins where you can reliably capture small gains.
 
 When asked to generate a strategy for a specific coin, return a JSON object with the following structure:
 {
@@ -412,6 +412,8 @@ def build_coin_selection_prompt(
     coin_indicators: Optional[Dict[str, Dict[str, Any]]] = None,
     daily_pnl: Optional[float] = None,
     coin_scores: Optional[Dict[str, float]] = None,
+    coin_spreads: Optional[Dict[str, float]] = None,
+    coin_depths: Optional[Dict[str, float]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -502,6 +504,17 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
             "Prioritise coins with higher scores, but use your own judgement. "
             "The score combines volume, volatility, spread, and momentum.\n"
         )
+    if coin_spreads or coin_depths:
+        prompt += "\nOrder book metrics for top coins (lower spread & higher depth = better for scalping):\n"
+        for sym in available_pairs[:50]:
+            parts = []
+            if sym in coin_spreads:
+                parts.append(f"spread={coin_spreads[sym]:.3f}%")
+            if sym in coin_depths:
+                parts.append(f"depth={coin_depths[sym]:.2f}")
+            if parts:
+                prompt += f"  {sym}: {', '.join(parts)}\n"
+        prompt += "Prefer coins with spread < 0.2% and high depth for scalping very small percentages.\n"
     if ohlcv_summary:
         prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
     if coin_indicators:
