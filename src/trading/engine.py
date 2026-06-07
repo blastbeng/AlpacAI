@@ -142,103 +142,6 @@ class TradingEngine:
             pass
         return ""
 
-    def _adjust_confidence_for_sentiment(self, symbol: str, action: str, confidence: float) -> float:
-        """Adjust confidence based on news sentiment alignment with the action."""
-        if not settings.NEWS_ENABLED:
-            return confidence
-        try:
-            base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-            agg_sent = get_aggregate_sentiment_from_db(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
-            if agg_sent:
-                compound = agg_sent["avg_compound"]
-                if action == "BUY":
-                    if compound > settings.NEWS_SENTIMENT_POSITIVE_THRESHOLD:
-                        boost = min(0.3, compound * 0.5)
-                        confidence = min(1.0, confidence + boost)
-                    elif compound < settings.NEWS_SENTIMENT_NEGATIVE_THRESHOLD:
-                        penalty = min(0.3, abs(compound) * 0.5)
-                        confidence = max(0.0, confidence - penalty)
-                elif action == "SELL":
-                    if compound < settings.NEWS_SENTIMENT_NEGATIVE_THRESHOLD:
-                        boost = min(0.3, abs(compound) * 0.5)
-                        confidence = min(1.0, confidence + boost)
-                    elif compound > settings.NEWS_SENTIMENT_POSITIVE_THRESHOLD:
-                        penalty = min(0.3, compound * 0.5)
-                        confidence = max(0.0, confidence - penalty)
-                # HOLD: no adjustment
-        except Exception:
-            pass
-        return confidence
-
-    def _adjust_confidence_for_technical(self, symbol: str, action: str, confidence: float,
-                                         rsi: Optional[float] = None,
-                                         macd: Optional[float] = None,
-                                         macd_signal: Optional[float] = None,
-                                         bb_upper: Optional[float] = None,
-                                         bb_lower: Optional[float] = None,
-                                         current_price: Optional[float] = None,
-                                         backtest_summary: Optional[str] = None) -> float:
-        """Adjust confidence based on technical indicators and backtest results."""
-        if action == "HOLD":
-            return confidence
-
-        # Indicator alignment
-        indicator_boost = 0.0
-        if action == "BUY":
-            if rsi is not None and rsi < 30:
-                indicator_boost += 0.1
-            elif rsi is not None and rsi > 70:
-                indicator_boost -= 0.1
-            if macd is not None and macd_signal is not None and macd > macd_signal:
-                indicator_boost += 0.05
-            elif macd is not None and macd_signal is not None and macd < macd_signal:
-                indicator_boost -= 0.05
-            if current_price is not None and bb_lower is not None and current_price <= bb_lower:
-                indicator_boost += 0.05
-            elif current_price is not None and bb_upper is not None and current_price >= bb_upper:
-                indicator_boost -= 0.05
-        elif action == "SELL":
-            if rsi is not None and rsi > 70:
-                indicator_boost += 0.1
-            elif rsi is not None and rsi < 30:
-                indicator_boost -= 0.1
-            if macd is not None and macd_signal is not None and macd < macd_signal:
-                indicator_boost += 0.05
-            elif macd is not None and macd_signal is not None and macd > macd_signal:
-                indicator_boost -= 0.05
-            if current_price is not None and bb_upper is not None and current_price >= bb_upper:
-                indicator_boost += 0.05
-            elif current_price is not None and bb_lower is not None and current_price <= bb_lower:
-                indicator_boost -= 0.05
-
-        # Backtest adjustment
-        backtest_boost = 0.0
-        if backtest_summary:
-            win_match = re.search(r'(\d+)\s*wins?', backtest_summary)
-            loss_match = re.search(r'(\d+)\s*losses?', backtest_summary)
-            net_match = re.search(r'net\s*([+-]?\d+\.?\d*)%', backtest_summary)
-            if win_match and loss_match:
-                wins = int(win_match.group(1))
-                losses = int(loss_match.group(1))
-                total = wins + losses
-                if total > 0:
-                    win_rate = wins / total
-                    if win_rate > 0.5:
-                        backtest_boost += 0.1
-                    elif win_rate < 0.4:
-                        backtest_boost -= 0.1
-            if net_match:
-                net_pct = float(net_match.group(1))
-                if net_pct > 0:
-                    backtest_boost += 0.05
-                elif net_pct < 0:
-                    backtest_boost -= 0.05
-
-        total_adjustment = indicator_boost + backtest_boost
-        confidence += total_adjustment
-        confidence = max(0.0, min(1.0, confidence))
-        return confidence
-
     async def _refresh_news_cache(self):
         """Periodically fetch news for tracked coins and top-volume coins to keep cache warm."""
         if not settings.NEWS_ENABLED:
@@ -1344,23 +1247,6 @@ class TradingEngine:
                 price=current_price,
             )
 
-            # Adjust confidence based on news sentiment
-            validated.confidence = self._adjust_confidence_for_sentiment(
-                symbol, validated.action, validated.confidence
-            )
-
-            # Adjust confidence based on technical indicators and backtest results
-            validated.confidence = self._adjust_confidence_for_technical(
-                symbol, validated.action, validated.confidence,
-                rsi=rsi,
-                macd=macd,
-                macd_signal=macd_signal,
-                bb_upper=bb_upper,
-                bb_lower=bb_lower,
-                current_price=current_price,
-                backtest_summary=getattr(validated, 'backtest_summary', None),
-            )
-
             # Log raw response if validation turned a non-HOLD into HOLD
             if signal.action != "HOLD" and validated.action == "HOLD":
                 logger.warning(
@@ -1750,48 +1636,8 @@ class TradingEngine:
             else:
                 sl_pct = params["stop_loss_pct"]
 
-            # Use per-coin budget as the buy amount, capped at available balance
             quote_balance = balance.get(quote, 0.0)
             position_fraction = params["position_size_fraction"]
-            risk_multiplier = {"low": 0.5, "medium": 1.0, "high": 1.5}.get(signal.risk_level, 1.0)
-            position_fraction *= risk_multiplier
-            position_fraction = max(0.1, min(1.0, position_fraction))
-
-            # Scale position size by directional confidence (lower confidence → smaller position)
-            confidence_multiplier = signal.confidence
-            position_fraction *= confidence_multiplier
-            position_fraction = max(0.1, min(1.0, position_fraction))
-
-            # --- News sentiment risk adjustment ---
-            if settings.NEWS_ENABLED and settings.NEWS_SENTIMENT_RISK_ADJUSTMENT:
-                try:
-                    base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-                    agg_sent = get_aggregate_sentiment_from_db(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
-                    if agg_sent:
-                        compound = agg_sent["avg_compound"]
-                        # Skip BUY if sentiment is extremely negative
-                        if settings.NEWS_SENTIMENT_SKIP_BUY_ON_VERY_NEGATIVE and compound < settings.NEWS_SENTIMENT_NEGATIVE_THRESHOLD:
-                            logger.info(f"Skipping BUY for {symbol}: news sentiment very negative ({compound})")
-                            if self.notifier:
-                                await self.notifier.send_notification(
-                                    f"⚠️ Skipping BUY for {symbol}: very negative news sentiment ({compound})"
-                                )
-                            return
-                        # Adjust position size multiplier based on sentiment
-                        if compound < settings.NEWS_SENTIMENT_NEGATIVE_THRESHOLD:
-                            multiplier = settings.NEWS_SENTIMENT_POSITION_SIZE_MULTIPLIER_NEGATIVE
-                        elif compound > settings.NEWS_SENTIMENT_POSITIVE_THRESHOLD:
-                            multiplier = settings.NEWS_SENTIMENT_POSITION_SIZE_MULTIPLIER_POSITIVE
-                        else:
-                            multiplier = 1.0
-                        position_fraction *= multiplier
-                        position_fraction = max(0.1, min(1.0, position_fraction))
-                        logger.info(
-                            f"News sentiment adjustment for {symbol}: compound={compound}, "
-                            f"multiplier={multiplier}, new position_fraction={position_fraction}"
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to apply news sentiment adjustment for {symbol}: {e}")
 
             # Desired amount based on fraction of total available quote balance
             desired_amount = quote_balance * position_fraction
