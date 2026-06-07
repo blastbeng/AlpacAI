@@ -593,6 +593,7 @@ def build_strategy_prompt(
     aggregate_sentiment: Optional[Dict[str, Any]] = None,
     cycle_spent: Optional[float] = None,
     remaining_balance: Optional[float] = None,
+    market_regime: Optional[str] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -643,6 +644,15 @@ Maximum coins to trade: {max_coins}
         )
     if assigned_timeframe:
         prompt += f"\nAssigned trading timeframe for this coin: {assigned_timeframe}. Base your decision primarily on the OHLCV data for this timeframe.\n"
+    if market_regime:
+        prompt += f"\nMarket regime: {market_regime}\n"
+        prompt += (
+            "Use this regime to adjust your strategy:\n"
+            "- Trending: use wider stops (to avoid being shaken out) and larger position sizes if trend is strong.\n"
+            "- Ranging: use tighter stops and smaller positions; prefer mean‑reversion strategies.\n"
+            "- High volatility: reduce position size and widen stops.\n"
+            "- Low volatility: you may tighten stops but beware of false breakouts.\n"
+        )
 
     # --- Volatility, order book imbalance, and position P&L context ---
     if atr is not None:

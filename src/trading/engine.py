@@ -1067,6 +1067,24 @@ class TradingEngine:
                         cci = compute_cci(highs, lows, closes, period=cci_period)
                         williams_r = compute_williams_r(highs, lows, closes, period=willr_period)
 
+            # --- Market regime classification ---
+            market_regime = "unknown"
+            if adx is not None and atr is not None and atr > 0:
+                current_price = ticker['last']
+                if current_price > 0:
+                    if adx > 25:
+                        market_regime = "trending"
+                    else:
+                        market_regime = "ranging"
+                    # Volatility: ATR as % of price
+                    atr_pct = (atr / current_price) * 100
+                    if atr_pct > 5.0:
+                        market_regime += " (high volatility)"
+                    elif atr_pct < 1.0:
+                        market_regime += " (low volatility)"
+                    else:
+                        market_regime += " (normal volatility)"
+
             # Extract raw candles for the assigned timeframe
             raw_candles = None
             if ohlcv_data and assigned_tf in ohlcv_data:
@@ -1252,6 +1270,7 @@ class TradingEngine:
                 aggregate_sentiment=aggregate_sentiment,
                 cycle_spent=self._cycle_spent,
                 remaining_balance=remaining,
+                market_regime=market_regime,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
