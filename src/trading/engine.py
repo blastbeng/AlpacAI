@@ -1345,7 +1345,7 @@ class TradingEngine:
                 logger.info(f"LLM decided not to execute trade for {symbol}. Reason: {validated.reasoning}")
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"⏭️ {symbol}: LLM skipped trade – {validated.reasoning}"
+                        f"⏭️ {symbol}: LLM skipped trade"
                     )
                 return
 
