@@ -1919,7 +1919,6 @@ class TradingEngine:
                 await asyncio.to_thread(insert_trade, order)
                 await self._save_state()
                 if self.notifier:
-                    sentiment_str = self._get_sentiment_str(symbol)
                     # Human-readable labels for common exit reasons
                     reason_labels = {
                         "manual_sell": "🖐️ Manual",
@@ -1935,8 +1934,6 @@ class TradingEngine:
                     reason_label = reason_labels.get(exit_reason, exit_reason) if exit_reason else None
                     reason_str = f" [{reason_label}]" if reason_label else ""
                     sell_msg = f"🔴 SELL{reason_str} {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
-                    if sentiment_str:
-                        sell_msg += f" | {sentiment_str}"
                     await self.notifier.send_notification(sell_msg)
             except Exception as e:
                 logger.error(f"Sell order failed for {symbol}: {e}")
