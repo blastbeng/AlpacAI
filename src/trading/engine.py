@@ -110,6 +110,34 @@ class TradingEngine:
             pass
         return ""
 
+    def _adjust_confidence_for_sentiment(self, symbol: str, action: str, confidence: float) -> float:
+        """Adjust confidence based on news sentiment alignment with the action."""
+        if not settings.NEWS_ENABLED:
+            return confidence
+        try:
+            base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+            agg_sent = get_aggregate_sentiment_from_db(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+            if agg_sent:
+                compound = agg_sent["avg_compound"]
+                if action == "BUY":
+                    if compound > settings.NEWS_SENTIMENT_POSITIVE_THRESHOLD:
+                        boost = min(0.3, compound * 0.5)
+                        confidence = min(1.0, confidence + boost)
+                    elif compound < settings.NEWS_SENTIMENT_NEGATIVE_THRESHOLD:
+                        penalty = min(0.3, abs(compound) * 0.5)
+                        confidence = max(0.0, confidence - penalty)
+                elif action == "SELL":
+                    if compound < settings.NEWS_SENTIMENT_NEGATIVE_THRESHOLD:
+                        boost = min(0.3, abs(compound) * 0.5)
+                        confidence = min(1.0, confidence + boost)
+                    elif compound > settings.NEWS_SENTIMENT_POSITIVE_THRESHOLD:
+                        penalty = min(0.3, compound * 0.5)
+                        confidence = max(0.0, confidence - penalty)
+                # HOLD: no adjustment
+        except Exception:
+            pass
+        return confidence
+
     async def _refresh_news_cache(self):
         """Periodically fetch news for tracked coins and top-volume coins to keep cache warm."""
         if not settings.NEWS_ENABLED:
@@ -1145,6 +1173,11 @@ class TradingEngine:
                 fee_rate=fee_rate,
                 atr=atr,
                 price=current_price,
+            )
+
+            # Adjust confidence based on news sentiment
+            validated.confidence = self._adjust_confidence_for_sentiment(
+                symbol, validated.action, validated.confidence
             )
 
             # Log raw response if validation turned a non-HOLD into HOLD
