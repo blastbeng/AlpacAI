@@ -872,7 +872,29 @@ class TradingEngine:
             try:
                 parsed = json.loads(response)
                 new_coins: List[Dict[str, str]] = []
-                if isinstance(parsed, list):
+                llm_max_coins = None
+
+                if isinstance(parsed, dict):
+                    # New format: {"coins": [...], "max_coins": N}
+                    coins_list = parsed.get("coins", [])
+                    llm_max_coins = parsed.get("max_coins")
+                    if not isinstance(coins_list, list):
+                        logger.error("LLM coin selection 'coins' field is not a list.")
+                        coins_list = []
+                    for item in coins_list:
+                        if isinstance(item, dict) and "symbol" in item:
+                            sym = item["symbol"]
+                            if sym in available_pairs:
+                                tf = item.get("timeframe")
+                                if tf not in settings.OHLCV_TIMEFRAMES:
+                                    tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
+                                new_coins.append({"symbol": sym, "timeframe": tf})
+                        elif isinstance(item, str):
+                            if item in available_pairs:
+                                default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
+                                new_coins.append({"symbol": item, "timeframe": default_tf})
+                elif isinstance(parsed, list):
+                    # Old format: plain list of objects or strings
                     for item in parsed:
                         if isinstance(item, dict) and "symbol" in item:
                             sym = item["symbol"]
@@ -882,21 +904,30 @@ class TradingEngine:
                                     tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
                                 new_coins.append({"symbol": sym, "timeframe": tf})
                         elif isinstance(item, str):
-                            # backward compatibility: plain string
                             if item in available_pairs:
                                 default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
                                 new_coins.append({"symbol": item, "timeframe": default_tf})
-                    # Deduplicate by symbol, keeping first occurrence
-                    seen = set()
-                    deduped = []
-                    for entry in new_coins:
-                        sym = entry["symbol"]
-                        if sym not in seen:
-                            seen.add(sym)
-                            deduped.append(entry)
-                    self.current_coins = deduped[: self.effective_max_coins]
                 else:
-                    logger.error("LLM coin selection response is not a list.")
+                    logger.error("LLM coin selection response is neither a list nor a dict.")
+
+                # Deduplicate by symbol, keeping first occurrence
+                seen = set()
+                deduped = []
+                for entry in new_coins:
+                    sym = entry["symbol"]
+                    if sym not in seen:
+                        seen.add(sym)
+                        deduped.append(entry)
+
+                # Use the LLM's chosen number of coins to update effective_max_coins
+                if llm_max_coins is not None and isinstance(llm_max_coins, int) and 1 <= llm_max_coins <= self.effective_max_coins:
+                    self.effective_max_coins = llm_max_coins
+                else:
+                    # Fallback: use the length of the deduped list, capped at the engine's max
+                    self.effective_max_coins = min(len(deduped), self.effective_max_coins)
+
+                self.current_coins = deduped[: self.effective_max_coins]
+
             except json.JSONDecodeError:
                 logger.error("Failed to parse coin selection response.")
 
