@@ -1,7 +1,6 @@
 from .base import Signal
 from typing import Dict, Any, Optional
 
-MIN_CONFIDENCE = 0.75
 VALID_STRATEGY_TYPES = {"scalping", "momentum", "mean_reversion", "breakout"}
 
 
@@ -9,24 +8,18 @@ def validate_signal(
     signal: Signal,
     market_data: Optional[Dict[str, Any]] = None,
     fee_rate: Optional[float] = None,
-    entry_confidence_threshold: Optional[float] = None,
     atr: Optional[float] = None,
     price: Optional[float] = None,
 ) -> Signal:
     """
     Validate a trading signal.
     - If action is HOLD, return as-is.
-    - If confidence < MIN_CONFIDENCE, return HOLD.
-    - If strategy_type is set but not in the allowed set, return HOLD.
-    - Validate known parameters inside strategy_params if provided.
-    Otherwise return the original signal.
+    - Validate strategy_type and required risk parameters.
+    - Enforce risk/reward and ATR-based stop rules.
+    Confidence is NOT used to reject trades; it will be used later for position sizing.
     """
     if signal.action == "HOLD":
         return signal
-
-    threshold = entry_confidence_threshold if entry_confidence_threshold is not None else MIN_CONFIDENCE
-    if signal.confidence < threshold:
-        return Signal(action="HOLD", confidence=0.0, reasoning="Confidence too low")
 
     if signal.strategy_type and signal.strategy_type not in VALID_STRATEGY_TYPES:
         return Signal(action="HOLD", confidence=0.0, reasoning=f"Invalid strategy type: {signal.strategy_type}")
@@ -92,10 +85,6 @@ def validate_signal(
             mrp = params["max_risk_per_trade_pct"]
             if not isinstance(mrp, (int, float)) or not (0 < mrp <= 1.0):
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid max_risk_per_trade_pct")
-        if "entry_confidence_threshold" in params:
-            ect = params["entry_confidence_threshold"]
-            if not isinstance(ect, (int, float)) or not (0 <= ect <= 1.0):
-                return Signal(action="HOLD", confidence=0.0, reasoning="Invalid entry_confidence_threshold")
 
         # Logical consistency checks (no hardcoded values)
         if sl is not None and tp <= sl:

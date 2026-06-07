@@ -1123,13 +1123,10 @@ class TradingEngine:
             response = await asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 60)
             strategy = create_strategy_from_llm(response)
             signal = strategy.generate_signal({})
-            # Extract per-trade confidence threshold if present
-            entry_conf_threshold = signal.strategy_params.get("entry_confidence_threshold") if signal.strategy_params else None
             current_price = ticker['last']
             validated = validate_signal(
                 signal,
                 fee_rate=fee_rate,
-                entry_confidence_threshold=entry_conf_threshold,
                 atr=atr,
                 price=current_price,
             )
@@ -1528,6 +1525,11 @@ class TradingEngine:
             position_fraction = params["position_size_fraction"]
             risk_multiplier = {"low": 0.5, "medium": 1.0, "high": 1.5}.get(signal.risk_level, 1.0)
             position_fraction *= risk_multiplier
+            position_fraction = max(0.1, min(1.0, position_fraction))
+
+            # Scale position size by directional confidence (lower confidence → smaller position)
+            confidence_multiplier = signal.confidence
+            position_fraction *= confidence_multiplier
             position_fraction = max(0.1, min(1.0, position_fraction))
 
             # --- News sentiment risk adjustment ---
