@@ -1261,6 +1261,17 @@ class TradingEngine:
                 if t.get("symbol") == symbol and t.get("side") == "sell"
             ][-10:]
 
+            # Fetch aggregate sentiment for the symbol
+            aggregate_sentiment = None
+            if settings.NEWS_ENABLED:
+                try:
+                    base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+                    aggregate_sentiment = await asyncio.to_thread(
+                        get_aggregate_sentiment_from_db, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS
+                    )
+                except Exception as e:
+                    logger.debug(f"Could not fetch aggregate sentiment for {symbol}: {e}")
+
             prompt = build_strategy_prompt(
                 symbol=symbol,
                 ticker=ticker,
@@ -1310,6 +1321,7 @@ class TradingEngine:
                 min_order_cost=min_order_cost,
                 all_coins=self.current_coins,
                 past_trades=past_trades,
+                aggregate_sentiment=aggregate_sentiment,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:

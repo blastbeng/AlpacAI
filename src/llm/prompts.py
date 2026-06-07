@@ -579,6 +579,7 @@ def build_strategy_prompt(
     min_order_cost: Optional[float] = None,
     all_coins: Optional[List[Dict[str, str]]] = None,
     past_trades: Optional[List[Dict[str, Any]]] = None,
+    aggregate_sentiment: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -729,16 +730,32 @@ Maximum coins to trade: {max_coins}
             )
         prompt += "Use these past outcomes to avoid repeating mistakes and to reinforce successful patterns.\n"
 
-    # --- News section ---
+    # --- Aggregate sentiment summary ---
+    if aggregate_sentiment:
+        prompt += (
+            f"\nAggregate news sentiment for {symbol}:\n"
+            f"  Compound score: {aggregate_sentiment['avg_compound']:.2f}  (range -1 to +1)\n"
+            f"  Positive articles: {aggregate_sentiment['positive']}\n"
+            f"  Negative articles: {aggregate_sentiment['negative']}\n"
+            f"  Neutral articles: {aggregate_sentiment['neutral']}\n"
+            f"  Total articles: {aggregate_sentiment['total_articles']}\n"
+        )
+        prompt += (
+            "Use this aggregate sentiment to adjust your confidence, position size, and risk parameters. "
+            "Strong positive sentiment may justify higher confidence and larger positions; "
+            "strong negative sentiment should make you more cautious or even skip the trade.\n"
+        )
+
+    # --- News section (detailed articles) ---
     news_section = ""
     if settings.NEWS_ENABLED:
         base = symbol.split("/")[0] if "/" in symbol else symbol
         articles = get_news_for_symbol(base, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
         if articles:
-            news_section = "Recent news for this coin:\n" + _format_news_for_prompt(articles)
+            news_section = "Recent news articles for this coin:\n" + _format_news_for_prompt(articles)
     if news_section:
         prompt += f"\n{news_section}\n"
-        prompt += "Consider the news sentiment above when setting your confidence, position size, and max hold time. "
+        prompt += "Consider the detailed news headlines above when setting your confidence, position size, and max hold time. "
         prompt += "If sentiment is very negative, reduce max hold time to limit exposure.\n"
 
     prompt += f"""
