@@ -79,6 +79,18 @@ class Settings(BaseSettings):
             raise ValueError("TARGET_RISK_PER_TRADE_PCT must be between 0 and 1")
         return v
 
+    # Minimum expected gross profit (in quote currency) required to enter a trade.
+    # Trades with a smaller potential gain are skipped to avoid negligible returns.
+    # Set to 0 to disable this filter.
+    MIN_PROFIT_PER_TRADE: float = 0.0
+
+    @field_validator("MIN_PROFIT_PER_TRADE")
+    @classmethod
+    def validate_min_profit_per_trade(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("MIN_PROFIT_PER_TRADE must be non-negative")
+        return v
+
     # OHLCV timeframes for multi-timeframe analysis
     OHLCV_TIMEFRAMES: list[str] = ["5m", "15m", "1h", "4h"]
 

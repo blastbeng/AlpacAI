@@ -1922,6 +1922,21 @@ class TradingEngine:
                     f"risk_adjusted_amount={risk_adjusted_amount:.2f}, final_desired={desired_amount:.2f}"
                 )
 
+            # --- Minimum absolute profit check ---
+            if settings.MIN_PROFIT_PER_TRADE > 0:
+                # Expected gross profit if take-profit is hit (before fees)
+                expected_gross_profit = desired_amount * tp_pct
+                if expected_gross_profit < settings.MIN_PROFIT_PER_TRADE:
+                    logger.info(
+                        f"Skipping BUY {symbol}: expected gross profit {expected_gross_profit:.4f} {quote} "
+                        f"below minimum {settings.MIN_PROFIT_PER_TRADE:.4f}"
+                    )
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"⚠️ Skipping BUY {symbol}: profit too small ({expected_gross_profit:.4f} {quote})"
+                        )
+                    return
+
             # Cap at remaining available balance in this cycle
             available = max(0.0, quote_balance - self._cycle_spent)
             amount = min(desired_amount, available)
