@@ -465,13 +465,17 @@ Available trading pairs with market data and minimum trade cost (in {base_curren
 
 **Your primary objective is profit across short, medium, and long timeframes. Prioritize coins where you find the most profit potential, regardless of timeframe.** Prioritize coins with strong momentum, high volume, and clear trends on multiple timeframes. Avoid coins that are flat or declining on all timeframes. You may keep current coins only if they still show potential on at least one timeframe.
 
-Select up to {max_coins} coins to trade. You MUST only select coins where the per-coin budget ({per_coin_budget:.2f} {base_currency}) is greater than or equal to the coin's min_trade_cost. Skip any coin that does not meet this requirement. Prefer coins with high volume and positive momentum. You may keep some current coins if they are still promising and meet the budget requirement, or replace them.
+Select between 1 and {max_coins} coins to trade. You decide the exact number based on how many high‑quality opportunities you see. If market conditions are poor, you may choose fewer coins (even just 1) to concentrate capital on the best setup. If many strong setups exist, you may select up to {max_coins}. You MUST only select coins where the per-coin budget ({per_coin_budget:.2f} {base_currency}) is greater than or equal to the coin's min_trade_cost. Skip any coin that does not meet this requirement. Prefer coins with high volume and positive momentum. You may keep some current coins if they are still promising and meet the budget requirement, or replace them.
 
 **Use the historical performance data to guide your selection.** Prefer coins that have a positive average P&L and a win rate above 50% in recent trades. Avoid coins that have a string of losses or a negative average P&L, unless there is a strong technical or news‑driven reason to include them.
 
 Each symbol can only appear once in your selection. Choose the single best timeframe for each coin based on the multi-timeframe OHLCV data.
 
-Return a JSON array of objects, each with "symbol" and "timeframe" fields. The timeframe must be one of the available timeframes (e.g., "5m", "15m", "1h", "4h") that you believe is most suitable for trading that coin based on the multi-timeframe OHLCV data. Example: [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, ...]"""
+Return a JSON object with two fields:
+- "coins": a JSON array of objects, each with "symbol" and "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h").
+- "max_coins": an integer between 1 and {max_coins} indicating how many coins you actually want to trade. This must equal the length of the "coins" array.
+
+Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "ETH/USDT", "timeframe": "15m"}}], "max_coins": 2}}"""
     if ohlcv_summary:
         prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
     if coin_indicators:
