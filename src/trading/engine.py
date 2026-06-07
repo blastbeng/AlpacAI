@@ -70,6 +70,8 @@ class TradingEngine:
         self.initial_balance: float = 0.0
         self.last_loss_time: Dict[str, float] = {}  # symbol -> timestamp of last losing trade
         self.cooldown_durations: Dict[str, float] = {}  # symbol -> cooldown seconds set by LLM
+        self._last_strategy_eval: Dict[str, float] = {}   # symbol -> timestamp of last strategy evaluation
+        self._strategy_intervals: Dict[str, float] = {}    # symbol -> custom interval in seconds
         self.notifier = None
         self._load_state()
         # Restore paper simulator state from trade history
@@ -687,8 +689,14 @@ class TradingEngine:
 
                 await self._reevaluate_coins()
                 self._cycle_spent = 0.0
+                now = time.time()
                 for coin_entry in self.current_coins:
-                    await self._process_coin(coin_entry)
+                    symbol = coin_entry["symbol"]
+                    interval = self._strategy_intervals.get(symbol, STRATEGY_INTERVAL)
+                    last_eval = self._last_strategy_eval.get(symbol, 0)
+                    if now - last_eval >= interval:
+                        await self._process_coin(coin_entry)
+                        self._last_strategy_eval[symbol] = now
                 await self._check_risk_management()
                 await self._save_state()
             except Exception as e:
@@ -2075,6 +2083,9 @@ class TradingEngine:
                     self.positions[symbol]["partial_tp_triggered"] = False
                     self.positions[symbol]["cooldown_after_loss_seconds"] = params["cooldown_after_loss_seconds"]
                     self.positions[symbol]["news_sentiment_exit_threshold"] = params.get("news_sentiment_exit_threshold")
+                    custom_interval = params.get("strategy_interval_seconds")
+                    if custom_interval is not None:
+                        self._strategy_intervals[symbol] = custom_interval
                     self.positions[symbol]["timeframe"] = timeframe
                     self.positions[symbol]["indicator_config"] = signal.indicator_config
                 else:
@@ -2104,6 +2115,9 @@ class TradingEngine:
                         "timeframe": timeframe,
                         "indicator_config": signal.indicator_config,
                     }
+                    custom_interval = params.get("strategy_interval_seconds")
+                    if custom_interval is not None:
+                        self._strategy_intervals[symbol] = custom_interval
                 order["strategy_type"] = signal.strategy_type
                 order["timeframe"] = timeframe
                 self.trade_history.append(order)
@@ -2193,6 +2207,8 @@ class TradingEngine:
                     order["hold_time_seconds"] = None
                 # Remove position
                 self.positions.pop(symbol, None)
+                self._strategy_intervals.pop(symbol, None)
+                self._last_strategy_eval.pop(symbol, None)
                 self.trade_history.append(order)
                 await asyncio.to_thread(insert_trade, order)
                 await self._save_state()

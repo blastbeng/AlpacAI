@@ -141,6 +141,10 @@ def validate_signal(
             nst = params["news_sentiment_exit_threshold"]
             if not isinstance(nst, (int, float)) or not (-1.0 <= nst <= 1.0):
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid news_sentiment_exit_threshold")
+        if "strategy_interval_seconds" in params:
+            si = params["strategy_interval_seconds"]
+            if not isinstance(si, (int, float)) or si <= 0:
+                return Signal(action="HOLD", confidence=0.0, reasoning="Invalid strategy_interval_seconds")
 
         # Logical consistency checks (no hardcoded values)
         if sl is not None and tp <= sl:
