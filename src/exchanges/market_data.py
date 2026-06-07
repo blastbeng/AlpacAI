@@ -15,10 +15,13 @@ def get_available_pairs(exchange: ccxt.Exchange, base_currency: str) -> List[str
 
 def get_tickers(exchange: ccxt.Exchange, symbols: Optional[List[str]] = None) -> Dict[str, Any]:
     """Fetch tickers for given symbols. If symbols is None, fetch all."""
+    params = {}
+    if exchange.id == 'kucoin':
+        params['type'] = 'spot'
     if symbols:
-        return exchange.fetch_tickers(symbols)
+        return exchange.fetch_tickers(symbols, params=params)
     else:
-        return exchange.fetch_tickers()
+        return exchange.fetch_tickers(params=params)
 
 def get_order_book(exchange: ccxt.Exchange, symbol: str, limit: int = 20) -> Dict[str, Any]:
     """Fetch order book for a symbol."""
