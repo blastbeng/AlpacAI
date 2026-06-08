@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     NEWS_ENABLED: bool = False
     NEWS_UPDATE_INTERVAL_MINUTES: int = 60
 
+    # Fast news refresh for currently tracked coins (minutes)
+    NEWS_FAST_UPDATE_INTERVAL_MINUTES: int = 5
+
     NEWS_API_KEY: Optional[str] = None       # for NewsAPI.org
     TWITTER_BEARER_TOKEN: Optional[str] = None
     REDDIT_CLIENT_ID: Optional[str] = None

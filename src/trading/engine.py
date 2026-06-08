@@ -148,6 +148,36 @@ class TradingEngine:
             pass
         return ""
 
+    async def _fetch_and_store_news_for_symbol(self, symbol: str):
+        """Fetch news for a single symbol and store it in the database."""
+        if not settings.NEWS_ENABLED:
+            return
+        try:
+            from src.news.fetcher import fetch_news_for_symbol
+            base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+            articles = await asyncio.to_thread(fetch_news_for_symbol, symbol)
+            if articles:
+                await asyncio.to_thread(store_news_articles, base_coin, articles)
+        except Exception as e:
+            logger.debug(f"News fetch/store failed for {symbol}: {e}")
+
+    async def _refresh_current_coins_news_fast(self):
+        """Fast news refresh loop – only for the coins currently tracked by the engine."""
+        if not settings.NEWS_ENABLED:
+            return
+        # Fetch immediately on startup, then periodically
+        while True:
+            try:
+                symbols = [entry["symbol"] for entry in self.current_coins]
+                if symbols:
+                    logger.debug(f"Fast news refresh for {len(symbols)} current coins")
+                    await asyncio.gather(
+                        *[self._fetch_and_store_news_for_symbol(sym) for sym in symbols]
+                    )
+            except Exception as e:
+                logger.error(f"Fast news refresh error: {e}")
+            await asyncio.sleep(settings.NEWS_FAST_UPDATE_INTERVAL_MINUTES * 60)
+
     async def _refresh_news_cache(self):
         """Periodically fetch news for tracked coins and top-volume coins to keep cache warm."""
         if not settings.NEWS_ENABLED:
@@ -158,57 +188,17 @@ class TradingEngine:
             logger.warning("News module not available; skipping background news refresh.")
             return
 
-        # Perform an initial fetch immediately so news is available on startup.
-        # Run all fetches in parallel with a timeout to avoid blocking the bot.
-        try:
-            symbols_to_refresh = set(entry["symbol"] for entry in self.current_coins)
-            if symbols_to_refresh:
-                logger.info(
-                    f"Starting background initial news fetch for {len(symbols_to_refresh)} coins "
-                    f"(timeout={settings.NEWS_INITIAL_FETCH_TIMEOUT_SECONDS}s). Trading continues immediately."
-                )
-
-                async def _fetch_and_store(sym: str):
-                    try:
-                        articles = await asyncio.to_thread(fetch_news_for_symbol, sym)
-                        if articles:
-                            base_coin = sym.split("/")[0] if "/" in sym else sym
-                            await asyncio.to_thread(store_news_articles, base_coin, articles)
-                    except Exception as e:
-                        logger.debug(f"Initial news fetch failed for {sym}: {e}")
-
-                await asyncio.wait_for(
-                    asyncio.gather(*[_fetch_and_store(sym) for sym in symbols_to_refresh]),
-                    timeout=settings.NEWS_INITIAL_FETCH_TIMEOUT_SECONDS,
-                )
-                logger.info("Initial news fetch complete.")
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Initial news fetch timed out. Some news will be missing until the next refresh cycle."
-            )
-        except Exception as e:
-            logger.warning(f"Initial news fetch error: {e}")
-
-        # Log current news table status
-        try:
-            from src.database import get_news_for_symbol
-            for sym in symbols_to_refresh:
-                base_coin = sym.split("/")[0] if "/" in sym else sym
-                articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
-                logger.info(f"News DB check: {base_coin} has {len(articles)} articles.")
-        except Exception as e:
-            logger.warning(f"News DB status check failed: {e}")
-
         while True:
             try:
                 cycle_start = time.time()
-                # Determine symbols to refresh: current coins + top 10 by volume
-                symbols_to_refresh = set(entry["symbol"] for entry in self.current_coins)
+                # Slow refresh: all available pairs EXCEPT the coins already handled by the fast loop
+                current_symbols = {entry["symbol"] for entry in self.current_coins}
+                symbols_to_refresh = set()
                 try:
                     available_pairs = await asyncio.to_thread(
                         get_available_pairs, self.exchange, self.base_currency
                     )
-                    symbols_to_refresh.update(available_pairs)
+                    symbols_to_refresh = set(available_pairs) - current_symbols
                 except Exception as e:
                     logger.warning(f"Could not get available pairs for news refresh: {e}")
 
@@ -756,6 +746,7 @@ class TradingEngine:
         logger.info("Trading engine started.")
         # Start background news refresh task
         asyncio.create_task(self._refresh_news_cache())
+        asyncio.create_task(self._refresh_current_coins_news_fast())
         # Start background market data download task
         asyncio.create_task(self._download_market_data_loop())
         while True:
@@ -1281,6 +1272,12 @@ class TradingEngine:
         for sym in new_symbols:
             logger.info(f"Triggering immediate backfill for newly selected coin {sym}")
             asyncio.create_task(self._backfill_new_coin(sym))
+
+        # Also trigger immediate news fetch for newly selected coins
+        if settings.NEWS_ENABLED:
+            for sym in new_symbols:
+                logger.info(f"Triggering immediate news fetch for newly selected coin {sym}")
+                asyncio.create_task(self._fetch_and_store_news_for_symbol(sym))
 
         coin_labels = [f"{c['symbol']}({c['timeframe']})" for c in self.current_coins]
         logger.info(f"Selected coins: {coin_labels}")
