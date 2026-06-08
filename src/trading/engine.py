@@ -1518,6 +1518,17 @@ class TradingEngine:
 
             # --- LLM‑controlled trade filters ---
             params = signal.strategy_params or {}
+
+            # Compute stop-loss percentage for max risk cap (needed for slippage check)
+            sl_pct = None
+            if validated.action == "BUY":
+                stop_method = params.get("stop_loss_method", "fixed")
+                if stop_method == "atr_multiple" and atr is not None and atr > 0:
+                    atr_mult = params["stop_loss_atr_multiple"]
+                    sl_pct = (atr_mult * atr) / current_price
+                else:
+                    sl_pct = params.get("stop_loss_pct")
+
             max_spread = params.get("max_spread_pct")
             if max_spread is not None and spread_pct is not None and spread_pct > max_spread:
                 logger.info(f"Skipping {symbol}: spread {spread_pct:.4f}% exceeds LLM max {max_spread:.4f}%")
@@ -1559,6 +1570,74 @@ class TradingEngine:
                             f"⚠️ Skipping {symbol}: insufficient depth at take-profit ({cum_vol:.4f} < {min_depth_tp:.4f})"
                         )
                     return
+
+            # --- LLM‑controlled max slippage for market buy ---
+            max_slippage = params.get("max_slippage_pct")
+            if max_slippage is not None and max_slippage > 0 and validated.action == "BUY":
+                # Compute expected average fill price for the intended buy amount
+                quote_balance = balance.get(self.base_currency, 0.0)
+                position_fraction = params["position_size_fraction"]
+                desired_quote = quote_balance * position_fraction
+                # Apply max risk cap if present
+                max_risk_pct = params.get("max_risk_per_trade_pct")
+                if max_risk_pct is not None and sl_pct is not None and sl_pct > 0:
+                    total_value = quote_balance
+                    for sym, pos in self.positions.items():
+                        try:
+                            t = await asyncio.to_thread(self.exchange.fetch_ticker, sym)
+                            total_value += pos['amount'] * t['last']
+                        except Exception:
+                            pass
+                    max_risk_amount = total_value * max_risk_pct
+                    max_allowed_amount = max_risk_amount / sl_pct
+                    desired_quote = min(desired_quote, max_allowed_amount)
+                # Cap at remaining cycle budget
+                available = max(0.0, quote_balance - self._cycle_spent)
+                desired_quote = min(desired_quote, available)
+                if desired_quote > 0:
+                    # Walk the order book asks to compute volume-weighted average price
+                    asks = order_book.get('asks', [])
+                    remaining = desired_quote
+                    total_cost = 0.0
+                    total_base = 0.0
+                    for ask in asks:
+                        price_level = ask[0]
+                        volume = ask[1]
+                        cost_at_level = price_level * volume
+                        if cost_at_level >= remaining:
+                            base_filled = remaining / price_level
+                            total_cost += remaining
+                            total_base += base_filled
+                            remaining = 0
+                            break
+                        else:
+                            total_cost += cost_at_level
+                            total_base += volume
+                            remaining -= cost_at_level
+                    if remaining > 0:
+                        logger.info(
+                            f"Skipping BUY {symbol}: insufficient order book depth to fill "
+                            f"{desired_quote:.2f} {self.base_currency} (remaining {remaining:.2f})"
+                        )
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                f"⚠️ Skipping BUY {symbol}: insufficient depth for order size"
+                            )
+                        return
+                    avg_price = total_cost / total_base if total_base > 0 else 0
+                    best_ask = asks[0][0] if asks else 0
+                    if best_ask > 0:
+                        slippage_pct = (avg_price - best_ask) / best_ask * 100
+                        if slippage_pct > max_slippage:
+                            logger.info(
+                                f"Skipping BUY {symbol}: expected slippage {slippage_pct:.4f}% "
+                                f"exceeds LLM max {max_slippage:.4f}%"
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⚠️ Skipping BUY {symbol}: slippage too high ({slippage_pct:.4f}%)"
+                                )
+                            return
 
             # Respect the LLM's execute flag – skip trade if the LLM decided not to execute
             if not getattr(validated, 'execute', True):

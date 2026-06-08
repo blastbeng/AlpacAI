@@ -165,6 +165,10 @@ def validate_signal(
             mdatp = params["min_depth_at_take_profit"]
             if not isinstance(mdatp, (int, float)) or mdatp <= 0:
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid min_depth_at_take_profit")
+        if "max_slippage_pct" in params:
+            msp = params["max_slippage_pct"]
+            if not isinstance(msp, (int, float)) or msp <= 0:
+                return Signal(action="HOLD", confidence=0.0, reasoning="Invalid max_slippage_pct")
         if "min_confidence" in params:
             mc = params["min_confidence"]
             if not isinstance(mc, (int, float)) or not (0.0 <= mc <= 1.0):
