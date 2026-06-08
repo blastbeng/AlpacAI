@@ -72,6 +72,7 @@ class TradingEngine:
         self.cooldown_durations: Dict[str, float] = {}  # symbol -> cooldown seconds set by LLM
         self._last_strategy_eval: Dict[str, float] = {}   # symbol -> timestamp of last strategy evaluation
         self._strategy_intervals: Dict[str, float] = {}    # symbol -> custom interval in seconds
+        self._coin_revaluation_interval = COIN_REVALUATION_INTERVAL
         self.notifier = None
         self._load_state()
         # Restore paper simulator state from trade history
@@ -735,7 +736,7 @@ class TradingEngine:
         last_key = "trading:last_coin_eval"
         last_eval = await asyncio.to_thread(self.redis.get, last_key)
         now = time.time()
-        if last_eval and (now - float(last_eval)) < COIN_REVALUATION_INTERVAL and self.current_coins:
+        if last_eval and (now - float(last_eval)) < self._coin_revaluation_interval and self.current_coins:
             return
 
         available_pairs = await asyncio.to_thread(get_available_pairs, self.exchange, self.base_currency)
@@ -1056,6 +1057,17 @@ class TradingEngine:
                 if llm_max_coins is not None and isinstance(llm_max_coins, int) and 0 <= llm_max_coins <= self.max_coins:
                     self.effective_max_coins = llm_max_coins
                 else:
+                    # Fallback: use the length of the deduped list, capped at the engine's max
+                    self.effective_max_coins = min(len(deduped), self.effective_max_coins)
+
+                # Optional: LLM can set the global coin re-evaluation interval
+                new_interval = parsed.get("coin_revaluation_interval_seconds")
+                if new_interval is not None:
+                    if isinstance(new_interval, (int, float)) and new_interval >= 60:
+                        self._coin_revaluation_interval = new_interval
+                        logger.info(f"LLM set coin re-evaluation interval to {new_interval}s")
+                    else:
+                        logger.warning(f"Invalid coin_revaluation_interval_seconds: {new_interval}")
                     # Fallback: use the length of the deduped list, capped at the engine's max
                     self.effective_max_coins = min(len(deduped), self.effective_max_coins)
 

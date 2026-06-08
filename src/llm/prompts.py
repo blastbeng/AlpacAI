@@ -310,6 +310,8 @@ Example: If ATR=50 and current price=5000, a 2× ATR stop distance is 100, so st
 - You must set a cooldown duration for every BUY. After a losing trade on a coin, the bot will skip that coin for the duration you specify.
 - If the daily realized P&L is deeply negative or market conditions are poor, you may select 0 coins in the coin selection step. This will pause trading until the next evaluation cycle.
 
+You may also set a global coin re-evaluation interval by including the optional field `"coin_revaluation_interval_seconds"` in your coin selection JSON. This controls how often the bot re-evaluates the entire coin list. Set a shorter interval (e.g., 120-300s) for fast scalping, or a longer interval (e.g., 900-1800s) for slower markets. Minimum 60 seconds. If omitted, the previous value (or default 900s) is kept.
+
 You will receive recent news headlines with sentiment scores for each coin. Use this information to gauge market sentiment and potential catalysts.
 - Strong positive sentiment may justify higher confidence, larger position sizes, and longer max hold times.
 - Strong negative sentiment should make you more cautious: reduce position size, tighten stops, shorten max hold time, or avoid the coin entirely.
@@ -507,7 +509,9 @@ Return a JSON object with two fields:
 - "coins": a JSON array of objects, each with "symbol" and "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h").
 - "max_coins": an integer between 0 and {max_coins} indicating how many coins you actually want to trade. Set to 0 to pause trading. This must equal the length of the "coins" array.
 
-Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "ETH/USDT", "timeframe": "15m"}}], "max_coins": 2}}"""
+You may optionally include "coin_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the coin list.
+
+Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "ETH/USDT", "timeframe": "15m"}}], "max_coins": 2, "coin_revaluation_interval_seconds": 300}}"""
     if coin_scores:
         prompt += "\nScalping suitability scores (0-1, higher = better for quick small profits):\n"
         for sym in available_pairs[:50]:
