@@ -516,7 +516,11 @@ Key principles:
 - Set a stop-loss based on recent swing lows, support levels, or ATR. Use the ATR to gauge volatility and choose a stop distance that gives the trade enough room to breathe while limiting risk. You decide the appropriate multiplier and reward:risk ratio based on current market conditions, volatility, and your confidence. You have full freedom to choose the stop distance. Use the ATR to gauge volatility and set a stop that gives the trade enough room while limiting risk. There is no hardcoded minimum – you decide what is appropriate.
 Example: If ATR=50 and current price=5000, a 2× ATR stop distance is 100, so stop_loss_pct = 100/5000 = 0.02 (2%). Place the stop at 4900. If the nearest swing low is at 4920, use that as the stop level (distance 80, which is 1.6× ATR, still acceptable).
 - Set a take-profit that you believe is achievable given the current trend, volatility, and order‑book depth. The reward:risk ratio is entirely your decision; you may accept lower ratios if the probability of success is high, or demand higher ratios in uncertain markets.
-- **CRITICAL:** `take_profit_pct` MUST be strictly greater than `stop_loss_pct`. Double-check this before outputting JSON. If take_profit_pct ≤ stop_loss_pct, the trade will be rejected.
+- **CRITICAL – READ THIS TWICE:** `take_profit_pct` MUST be strictly greater than `stop_loss_pct`.  
+  If you accidentally set `take_profit_pct ≤ stop_loss_pct`, the entire trade will be rejected and the bot will do nothing.  
+  Before outputting JSON, verify: `take_profit_pct > stop_loss_pct`.  
+  Example: stop_loss_pct=0.02, take_profit_pct=0.05 → OK.  
+  Example: stop_loss_pct=0.03, take_profit_pct=0.03 → REJECTED.
 - Set a maximum hold time (max_hold_time_seconds) for every trade. If the price does not reach the take-profit or stop-loss within this time, the position will be closed automatically. Choose a time appropriate for the timeframe (e.g., 1-4 hours for 1h candles, 15-60 minutes for 5m candles).
 - Use trailing stops to lock in profits when the price moves favourably.
 - Adjust position size according to your confidence, risk level, account drawdown, and portfolio exposure. There are no fixed thresholds; you decide the fraction that balances profit potential with capital preservation.
@@ -1066,6 +1070,14 @@ Maximum coins to trade: {max_coins}
             f"Remaining available for this coin: {remaining_balance:.2f} {base_currency}\n"
             "Your position_size_fraction must not require more than the remaining balance. "
             "If the remaining balance is low, reduce your fraction accordingly or output HOLD.\n"
+        )
+        # Help the LLM set min_profit_per_trade realistically
+        max_possible_amount = min(per_coin_budget, remaining_balance)
+        prompt += (
+            f"The maximum amount that can actually be allocated to this trade is "
+            f"{max_possible_amount:.2f} {base_currency} (the smaller of the per‑coin budget and the remaining balance). "
+            "If you set `min_profit_per_trade`, ensure it is not larger than "
+            "`max_possible_amount * take_profit_pct`. Otherwise the trade will be skipped.\n"
         )
     prompt += (
         f"**position_size_fraction** now represents a fraction of your **total {base_currency} balance** (0.1 to 1.0). "

@@ -2277,13 +2277,50 @@ class TradingEngine:
                 spread_pct=spread_pct,
             )
 
-            # Log raw response if validation turned a non-HOLD into HOLD
+            # If the LLM produced a BUY/SELL but the validator rejected it due to a parameter
+            # error, give the LLM one chance to fix its own mistake.
             if signal.action != "HOLD" and validated.action == "HOLD":
                 logger.warning(
                     f"LLM signal for {symbol} rejected by validator. "
                     f"Original action={signal.action}, confidence={signal.confidence}, "
                     f"reasoning={validated.reasoning}. Raw LLM response: {response}"
                 )
+                # Only retry if the rejection looks like a parameter mistake (not a market condition)
+                if any(kw in validated.reasoning.lower() for kw in [
+                    "stop_loss_pct", "take_profit_pct", "trailing_stop_distance",
+                    "invalid", "missing", "must be"
+                ]):
+                    correction_prompt = (
+                        f"Your previous trading decision for {symbol} was rejected because: "
+                        f"{validated.reasoning}\n"
+                        "Please fix the error and output a corrected JSON decision. "
+                        "All other market data remains the same."
+                    )
+                    try:
+                        corrected_response = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                get_cached_llm_response,
+                                correction_prompt,
+                                SYSTEM_PROMPT,
+                                30,
+                            ),
+                            timeout=60.0,
+                        )
+                        corrected_signal = create_strategy_from_llm(corrected_response).generate_signal({})
+                        validated = validate_signal(
+                            corrected_signal,
+                            fee_rate=fee_rate,
+                            atr=atr,
+                            price=current_price,
+                            spread_pct=spread_pct,
+                        )
+                        if validated.action != "HOLD":
+                            logger.info(f"LLM corrected its signal for {symbol}: {validated.action}")
+                            signal = corrected_signal  # use the corrected signal for logging
+                        else:
+                            logger.warning(f"LLM correction for {symbol} still invalid: {validated.reasoning}")
+                    except Exception as e:
+                        logger.error(f"LLM correction call failed for {symbol}: {e}")
 
             # Log and notify the decision
             logger.info(f"Decision for {symbol}: {validated.action} (confidence: {validated.confidence:.2f})")
