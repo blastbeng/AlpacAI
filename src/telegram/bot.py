@@ -530,12 +530,9 @@ class TelegramBot:
                 if key == "coins" and isinstance(value, list):
                     if value and isinstance(value[0], dict):
                         value = [c.get("symbol", c) for c in value]
-                # Compact sentiment to just avg_compound and total_articles
+                # Compact sentiment to just the numeric compound value (e.g., 0.05 or -0.05)
                 if key == "sentiment" and isinstance(value, dict):
-                    value = {
-                        "avg_compound": value.get("avg_compound"),
-                        "total_articles": value.get("total_articles"),
-                    }
+                    value = round(value.get("avg_compound", 0), 2)
                 # Truncate backtest summary to 50 characters
                 if key == "backtest" and isinstance(value, str):
                     if len(value) > 50:
