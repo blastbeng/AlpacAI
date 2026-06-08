@@ -663,6 +663,7 @@ def build_strategy_prompt(
     recent_trades_data: Optional[List[Dict[str, Any]]] = None,
     multi_tf_raw_candles: Optional[Dict[str, List[List]]] = None,
     multi_tf_indicators: Optional[Dict[str, Dict[str, Any]]] = None,
+    scalping_feasibility_score: Optional[float] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -803,6 +804,13 @@ Maximum coins to trade: {max_coins}
         prompt += (
             "Use this to assess micro‑momentum and liquidity. "
             "A high frequency of small trades with tight spreads is ideal for scalping.\n"
+        )
+    if scalping_feasibility_score is not None:
+        prompt += f"\nScalping feasibility score: {scalping_feasibility_score:.3f} (0-1, higher = better for very small take‑profits)\n"
+        prompt += (
+            "This score combines spread, order book depth at 0.1%, trade frequency, and volatility. "
+            "A score above 0.7 suggests the coin is highly suitable for scalping tiny percentages (e.g., 0.1-0.5% take‑profit). "
+            "Use this to decide whether to employ a scalping strategy and how tight to set your take‑profit and stop‑loss.\n"
         )
     if fee_rate is not None:
         prompt += f"Taker fee rate for this symbol: {fee_rate*100:.2f}%\n"

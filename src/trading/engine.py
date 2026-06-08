@@ -1425,6 +1425,46 @@ class TradingEngine:
                         "ask_volume": round(ask_vol, 4),
                     }
 
+            # --- Scalping feasibility score ---
+            scalping_score = None
+            if spread_pct is not None and depth_profile and recent_trades_raw:
+                # 1. Spread score: 1.0 if spread <= 0.05%, 0.0 if spread >= 0.5%
+                spread_score = max(0.0, min(1.0, 1.0 - (spread_pct - 0.05) / 0.45)) if spread_pct > 0.05 else 1.0
+
+                # 2. Depth score: use ask volume at 0.1% distance (if available)
+                depth_01 = depth_profile.get("0.1%", {}).get("ask_volume", 0)
+                depth_score = min(1.0, depth_01 / 1.0) if depth_01 else 0.0
+
+                # 3. Trade frequency: trades per minute from recent_trades_raw
+                if len(recent_trades_raw) >= 2:
+                    timestamps = [t['timestamp'] for t in recent_trades_raw if 'timestamp' in t]
+                    if len(timestamps) >= 2:
+                        time_span_seconds = (max(timestamps) - min(timestamps)) / 1000.0
+                        if time_span_seconds > 0:
+                            trades_per_minute = len(timestamps) / (time_span_seconds / 60.0)
+                        else:
+                            trades_per_minute = 0
+                    else:
+                        trades_per_minute = 0
+                else:
+                    trades_per_minute = 0
+                freq_score = min(1.0, trades_per_minute / 10.0)
+
+                # 4. Volatility score: ATR% – moderate is best (0.5%–2%)
+                if atr is not None and current_price > 0:
+                    atr_pct = (atr / current_price) * 100
+                    if atr_pct < 0.3:
+                        vol_score = 0.2
+                    elif atr_pct > 5.0:
+                        vol_score = 0.3
+                    else:
+                        vol_score = max(0.0, 1.0 - abs(atr_pct - 1.5) / 3.5)
+                else:
+                    vol_score = 0.5
+
+                # Composite score (equal weights)
+                scalping_score = round(0.25 * spread_score + 0.25 * depth_score + 0.25 * freq_score + 0.25 * vol_score, 3)
+
             # Fee rate for this symbol
             fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
 
@@ -1535,6 +1575,7 @@ class TradingEngine:
                 recent_trades_data=recent_trades_raw,
                 multi_tf_raw_candles=multi_tf_raw_candles,
                 multi_tf_indicators=multi_tf_indicators,
+                scalping_feasibility_score=scalping_score,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
