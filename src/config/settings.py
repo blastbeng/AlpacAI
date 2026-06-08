@@ -75,6 +75,15 @@ class Settings(BaseSettings):
                 )
         return self
 
+    @model_validator(mode="after")
+    def set_database_path(self):
+        if "DATABASE_PATH" not in self.model_fields_set:
+            if self.TRADING_MODE == "paper":
+                self.DATABASE_PATH = "data/paper.db"
+            else:
+                self.DATABASE_PATH = "data/bot.db"
+        return self
+
     # Ollama
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "deepseek-v4-flash"
