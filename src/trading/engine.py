@@ -259,12 +259,14 @@ class TradingEngine:
 
     async def _backfill_ohlcv(self, symbol: str, timeframe: str, start_ms: int, end_ms: int):
         """Fetch and store all missing OHLCV candles between start_ms and end_ms."""
+        logger.info(f"Backfill started for {symbol} {timeframe}: {start_ms} → {end_ms}")
         latest_ts = await asyncio.to_thread(get_latest_ohlcv_timestamp, symbol, timeframe)
         if latest_ts is None:
             since = start_ms
         else:
             since = max(start_ms, latest_ts + 1)
 
+        total_inserted = 0
         while since < end_ms:
             try:
                 candles = await asyncio.to_thread(
@@ -278,6 +280,9 @@ class TradingEngine:
                 break
 
             await asyncio.to_thread(insert_ohlcv_batch, symbol, timeframe, candles)
+            batch_count = len(candles)
+            total_inserted += batch_count
+            logger.debug(f"Backfill batch: {symbol} {timeframe} fetched {batch_count} candles from {since}")
 
             last_ts = candles[-1][0]
             if last_ts <= since:
@@ -287,7 +292,7 @@ class TradingEngine:
             # Small delay to avoid rate limits
             await asyncio.sleep(0.2)
 
-        logger.debug(f"Backfill complete for {symbol} {timeframe}")
+        logger.info(f"Backfill complete for {symbol} {timeframe}: {total_inserted} candles inserted")
 
     async def _fill_gaps(self, symbol: str, timeframe: str):
         """Detect and fill gaps in stored OHLCV data for a symbol/timeframe."""
@@ -298,11 +303,13 @@ class TradingEngine:
         # Get all stored timestamps
         candles = await asyncio.to_thread(get_ohlcv, symbol, timeframe, limit=50000)
         if len(candles) < 2:
+            logger.debug(f"Not enough data to check gaps for {symbol} {timeframe}")
             return
 
         timestamps = sorted(c["timestamp"] for c in candles)
 
         # Find and fill gaps larger than 1.5x the expected interval
+        gaps_found = 0
         gaps_filled = 0
         max_gaps_per_cycle = 5  # Limit gap fills per cycle to avoid rate limits
         for i in range(len(timestamps) - 1):
@@ -310,12 +317,18 @@ class TradingEngine:
                 break
             gap = timestamps[i + 1] - timestamps[i]
             if gap > interval_ms * 1.5:
+                gaps_found += 1
                 gap_start = timestamps[i] + interval_ms
                 gap_end = timestamps[i + 1] - interval_ms
                 if gap_end > gap_start:
-                    logger.info(f"Gap detected for {symbol} {timeframe}: {gap_start} to {gap_end}")
+                    logger.info(f"Gap detected for {symbol} {timeframe}: {gap_start} → {gap_end} (size {gap}ms)")
                     await self._backfill_ohlcv(symbol, timeframe, gap_start, gap_end)
                     gaps_filled += 1
+
+        if gaps_found == 0:
+            logger.debug(f"No gaps found for {symbol} {timeframe}")
+        else:
+            logger.info(f"Gap check for {symbol} {timeframe}: {gaps_found} gaps found, {gaps_filled} filled")
 
     async def _backfill_new_coin(self, symbol: str):
         """Immediately backfill 30 days of OHLCV data for a newly selected coin."""
@@ -339,11 +352,12 @@ class TradingEngine:
                 if not self.current_coins:
                     logger.debug("No coins tracked; skipping market data download.")
                 else:
-                    logger.debug("Starting market data download cycle...")
+                    logger.info("Starting market data download cycle...")
                     now_ms = int(time.time() * 1000)
                     start_ms = now_ms - 30 * 24 * 60 * 60 * 1000  # 30 days ago
                     for coin_entry in self.current_coins:
                         symbol = coin_entry["symbol"]
+                        logger.debug(f"Downloading market data for {symbol}")
                         for tf in settings.OHLCV_TIMEFRAMES:
                             try:
                                 await self._backfill_ohlcv(symbol, tf, start_ms, now_ms)
@@ -352,7 +366,7 @@ class TradingEngine:
                                 logger.warning(f"Market data download failed for {symbol} {tf}: {e}")
                         # Small delay between coins to avoid rate limits
                         await asyncio.sleep(0.5)
-                    logger.debug("Market data download cycle complete.")
+                    logger.info("Market data download cycle complete.")
             except Exception as e:
                 logger.error(f"Market data download loop error: {e}", exc_info=True)
 
