@@ -1649,6 +1649,17 @@ class TradingEngine:
                 )
             except Exception as e:
                 logger.debug(f"Could not fetch recent trades for {symbol}: {e}")
+
+            # Compute Cumulative Volume Delta (CVD) from recent trades
+            cvd = None
+            cvd_normalized = None
+            if recent_trades_raw:
+                buy_vol = sum(t.get('amount', 0) for t in recent_trades_raw if t.get('side') == 'buy')
+                sell_vol = sum(t.get('amount', 0) for t in recent_trades_raw if t.get('side') == 'sell')
+                total_vol = buy_vol + sell_vol
+                cvd = round(buy_vol - sell_vol, 6)
+                cvd_normalized = round(cvd / total_vol, 4) if total_vol > 0 else None
+
             balance = await asyncio.to_thread(self.trader.fetch_balance)
             base_balance = balance.get(self.base_currency, 0.0)
             if base_balance <= 0 or self.effective_max_coins == 0:
@@ -1880,9 +1891,11 @@ class TradingEngine:
             bid_wall_volume = None
             ask_wall_volume = None
             order_book_pressure = None
+            order_book_pressure_trend = None
             depth_imbalances = None
             order_book_slope = None
             mid_price_bias = None
+            mid = None
 
             bids = order_book.get('bids', [])
             asks = order_book.get('asks', [])
@@ -1914,6 +1927,15 @@ class TradingEngine:
                 total_wall = bid_wall_volume + ask_wall_volume
                 if total_wall > 0:
                     order_book_pressure = bid_wall_volume / total_wall
+
+                # Order book pressure trend (change since last cycle)
+                if order_book_pressure is not None:
+                    pressure_key = f"ob_pressure:prev:{symbol}"
+                    prev_pressure_raw = await asyncio.to_thread(self.redis.get, pressure_key)
+                    if prev_pressure_raw is not None:
+                        prev_pressure = float(prev_pressure_raw)
+                        order_book_pressure_trend = round(order_book_pressure - prev_pressure, 4)
+                    await asyncio.to_thread(self.redis.setex, pressure_key, 3600, str(order_book_pressure))
 
                 # --- Deeper order‑book metrics ---
                 depth_imbalances = {}
@@ -1953,6 +1975,20 @@ class TradingEngine:
                         "ask_volume": round(ask_vol, 4),
                     }
 
+            # --- Market impact estimate (price movement per unit of volume) ---
+            market_impact_score = None
+            if depth_profile and mid is not None and mid > 0:
+                ask_vol_01 = depth_profile.get("0.1%", {}).get("ask_volume", 0)
+                if ask_vol_01 > 0:
+                    price_move_per_unit = (mid * 0.001) / ask_vol_01
+                    impact_pct = (price_move_per_unit / mid) * 100 if mid > 0 else 0
+                    if impact_pct <= 0.001:
+                        market_impact_score = 1.0
+                    elif impact_pct >= 0.1:
+                        market_impact_score = 0.0
+                    else:
+                        market_impact_score = round(max(0.0, min(1.0, 1.0 - (impact_pct - 0.001) / 0.099)), 3)
+
             # --- Scalping feasibility score ---
             scalping_score = None
             if spread_pct is not None and depth_profile and recent_trades_raw:
@@ -1990,8 +2026,57 @@ class TradingEngine:
                 else:
                     vol_score = 0.5
 
-                # Composite score (equal weights)
-                scalping_score = round(0.25 * spread_score + 0.25 * depth_score + 0.25 * freq_score + 0.25 * vol_score, 3)
+                # Composite score (with optional market impact component)
+                if market_impact_score is not None:
+                    scalping_score = round(0.20 * spread_score + 0.20 * depth_score + 0.20 * freq_score + 0.20 * vol_score + 0.20 * market_impact_score, 3)
+                else:
+                    scalping_score = round(0.25 * spread_score + 0.25 * depth_score + 0.25 * freq_score + 0.25 * vol_score, 3)
+
+            # Pre-computed slippage estimate for per-coin budget order size
+            estimated_slippage_pct = None
+            if asks and per_coin_budget > 0:
+                desired_quote = per_coin_budget
+                remaining_slip = desired_quote
+                total_cost_slip = 0.0
+                total_base_slip = 0.0
+                for ask in asks:
+                    price_level = ask[0]
+                    volume = ask[1]
+                    cost_at_level = price_level * volume
+                    if cost_at_level >= remaining_slip:
+                        base_filled = remaining_slip / price_level
+                        total_cost_slip += remaining_slip
+                        total_base_slip += base_filled
+                        remaining_slip = 0
+                        break
+                    else:
+                        total_cost_slip += cost_at_level
+                        total_base_slip += volume
+                        remaining_slip -= cost_at_level
+                if total_base_slip > 0 and asks[0][0] > 0:
+                    avg_fill_price = total_cost_slip / total_base_slip
+                    best_ask_price = asks[0][0]
+                    estimated_slippage_pct = round((avg_fill_price - best_ask_price) / best_ask_price * 100, 4)
+
+            # ATR Percentile (volatility context)
+            atr_percentile = None
+            if atr is not None and atr > 0:
+                atr_percentile_key = f"atr_percentile:{symbol}"
+                try:
+                    stored_atr = await asyncio.to_thread(self.redis.get, atr_percentile_key)
+                    if stored_atr:
+                        atr_history = json.loads(stored_atr)
+                    else:
+                        atr_history = []
+                    atr_history.append(atr)
+                    atr_history = atr_history[-100:]
+                    await asyncio.to_thread(self.redis.setex, atr_percentile_key, 7 * 24 * 3600, json.dumps(atr_history))
+                    if len(atr_history) >= 5:
+                        sorted_atr = sorted(atr_history)
+                        rank = sum(1 for v in sorted_atr if v <= atr)
+                        atr_percentile = round(rank / len(sorted_atr) * 100, 1)
+                except Exception as e:
+                    logger.debug(f"ATR percentile computation failed for {symbol}: {e}")
 
             # Fee rate for this symbol
             fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
@@ -2156,6 +2241,12 @@ class TradingEngine:
                 btc_dominance=global_market.get("btc_dominance") if global_market else None,
                 total_market_cap=global_market if global_market else None,
                 altcoin_season=altcoin_season,
+                cvd=cvd,
+                cvd_normalized=cvd_normalized,
+                order_book_pressure_trend=order_book_pressure_trend,
+                estimated_slippage_pct=estimated_slippage_pct,
+                atr_percentile=atr_percentile,
+                market_impact_score=market_impact_score,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:

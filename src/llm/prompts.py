@@ -1030,6 +1030,12 @@ def build_strategy_prompt(
     btc_dominance: Optional[float] = None,
     total_market_cap: Optional[Dict[str, Any]] = None,
     altcoin_season: Optional[Dict[str, Any]] = None,
+    cvd: Optional[float] = None,
+    cvd_normalized: Optional[float] = None,
+    order_book_pressure_trend: Optional[float] = None,
+    estimated_slippage_pct: Optional[float] = None,
+    atr_percentile: Optional[float] = None,
+    market_impact_score: Optional[float] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -1138,6 +1144,15 @@ Maximum coins to trade: {max_coins}
             "based on current volatility and your risk assessment.\n"
             "You may set any stop distance you believe is appropriate. Use the ATR to inform your decision, but there is no enforced minimum.\n"
         )
+    if atr_percentile is not None:
+        prompt += f"ATR percentile (relative to last 100 observations): {atr_percentile:.1f}%\n"
+        prompt += (
+            "This tells you whether current volatility is unusually high or low. "
+            "A high percentile (>80%) means volatility is elevated – consider wider stops and smaller positions. "
+            "A low percentile (<20%) means volatility is compressed – a breakout may be imminent; "
+            "use tighter stops but be prepared for a sudden expansion. "
+            "A mid-range percentile (40-60%) indicates normal volatility conditions.\n"
+        )
     if atr_multi_tf:
         prompt += f"ATR across timeframes: {json.dumps(atr_multi_tf)}\n"
         prompt += (
@@ -1192,6 +1207,14 @@ Maximum coins to trade: {max_coins}
         prompt += f"Ask wall volume (within 1% of best ask): {ask_wall_volume:.4f}\n"
     if order_book_pressure is not None:
         prompt += f"Order book pressure (0 = strong sell, 1 = strong buy): {order_book_pressure:.2f}\n"
+    if order_book_pressure_trend is not None:
+        direction = "increasing" if order_book_pressure_trend > 0 else "decreasing" if order_book_pressure_trend < 0 else "unchanged"
+        prompt += f"Order book pressure trend: {order_book_pressure_trend:+.4f} ({direction} since last cycle)\n"
+        prompt += (
+            "A rising pressure trend indicates building buy-side conviction; "
+            "a falling trend indicates growing sell-side pressure or potential spoofing (walls being pulled). "
+            "Use this to distinguish genuine order flow from transient walls.\n"
+        )
     if depth_imbalances:
         prompt += f"Order book depth imbalances (bid_vol/total_vol at distance from mid): {json.dumps(depth_imbalances)}\n"
     if order_book_slope is not None:
@@ -1225,18 +1248,52 @@ Maximum coins to trade: {max_coins}
             "Use this to assess micro‑momentum and liquidity. "
             "A high frequency of small trades with tight spreads is ideal for scalping.\n"
         )
+    if cvd is not None:
+        prompt += f"\nCumulative Volume Delta (CVD) from recent trades: {cvd:.6f}"
+        if cvd_normalized is not None:
+            prompt += f" (normalized: {cvd_normalized:+.4f})"
+        prompt += "\n"
+        prompt += (
+            "CVD is the net buying volume (buy volume minus sell volume) from recent trades. "
+            "A positive CVD indicates aggressive buying pressure; a negative CVD indicates selling pressure. "
+            "The normalized value (range -1 to +1) shows the imbalance strength. "
+            "Use CVD alongside order book pressure to confirm directional conviction: "
+            "positive CVD + high order book pressure = strong buy signal; "
+            "negative CVD + low order book pressure = strong sell signal. "
+            "Divergences (e.g., price rising but CVD falling) warn of weakening momentum.\n"
+        )
     if scalping_feasibility_score is not None:
         prompt += f"\nScalping feasibility score: {scalping_feasibility_score:.3f} (0-1, higher = better for very small take‑profits)\n"
+        if market_impact_score is not None:
+            prompt += f"  Market impact component: {market_impact_score:.3f} (0-1, higher = lower price impact per unit of volume)\n"
         prompt += (
-            "This score combines spread, order book depth at 0.1%, trade frequency, and volatility. "
+            "This score combines spread, order book depth at 0.1%, trade frequency, volatility, and market impact. "
             "A score above 0.7 suggests the coin is highly suitable for scalping tiny percentages (e.g., 0.1-0.5% take‑profit). "
+            "The market impact component measures how much the price moves per unit of volume – a low impact means "
+            "your orders are less likely to move the market against you. "
             "Use this to decide whether to employ a scalping strategy and how tight to set your take‑profit and stop‑loss.\n"
+        )
+    elif market_impact_score is not None:
+        prompt += f"\nMarket impact score: {market_impact_score:.3f} (0-1, higher = lower price impact per unit of volume)\n"
+        prompt += (
+            "This measures how much the price moves per unit of volume traded. "
+            "A high score means your orders will have minimal price impact; a low score means even small orders can move the price. "
+            "Use this to gauge execution quality and adjust position size accordingly.\n"
         )
     if fee_rate is not None:
         prompt += f"Taker fee rate for this symbol: {fee_rate*100:.2f}%\n"
         prompt += (
             "You must set take_profit_pct high enough to cover round‑trip fees and the spread. "
             "The engine will not enforce any minimum – it trusts your calculation.\n"
+        )
+    if estimated_slippage_pct is not None:
+        prompt += f"\nEstimated slippage for a per-coin budget market buy: {estimated_slippage_pct:.4f}%\n"
+        prompt += (
+            "This is the expected slippage (average fill price vs best ask) for a market buy order "
+            "sized to the per-coin budget. Use this to decide whether to reduce position_size_fraction "
+            "or skip the trade entirely if slippage is too high. "
+            "For scalping very small percentages, slippage above 0.05% may erode profitability. "
+            "If slippage is high, consider a smaller position or a different coin.\n"
         )
     if unrealized_pnl is not None and position_info:
         prompt += f"Current position unrealized P&L: {unrealized_pnl:.2f} {symbol.split('/')[1]}\n"
