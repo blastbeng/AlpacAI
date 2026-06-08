@@ -497,8 +497,8 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"Failed to send Telegram notification: {e}", exc_info=True)
 
-        # --- Log summary to JSONL file ---
-        if summary is not None:
+        # --- Log summary to JSONL file (if enabled) ---
+        if summary is not None and settings.NOTIFICATION_LOG_ENABLED:
             data_dir = Path(settings.DATA_DIR)
             data_dir.mkdir(parents=True, exist_ok=True)
             log_path = data_dir / "notifications.jsonl"

@@ -197,6 +197,9 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
 
+    # Notification log control
+    NOTIFICATION_LOG_ENABLED: bool = True
+
     def reload(self):
         """Reload settings from .env file and environment variables."""
         new_settings = self.__class__()
