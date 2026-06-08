@@ -296,6 +296,70 @@ def compute_ichimoku(
     }
 
 
+def compute_parabolic_sar(
+    highs: List[float], lows: List[float],
+    acceleration: float = 0.02, max_acceleration: float = 0.2
+) -> Optional[float]:
+    """Compute Parabolic SAR (latest value).
+
+    Uses the standard Wilder's method. Returns the current SAR value,
+    or None if insufficient data.
+    """
+    if len(highs) < 2:
+        return None
+
+    # Initialise
+    sar = lows[0]  # start with first low (assume uptrend)
+    ep = highs[0]  # extreme point
+    af = acceleration
+    trend = 1  # 1 = uptrend, -1 = downtrend
+
+    for i in range(1, len(highs)):
+        prev_sar = sar
+        prev_ep = ep
+        prev_af = af
+        prev_trend = trend
+
+        # Update SAR
+        sar = prev_sar + prev_af * (prev_ep - prev_sar)
+
+        # Ensure SAR is below the low of the prior two bars in uptrend
+        if trend == 1:
+            if i >= 2:
+                sar = min(sar, lows[i-1], lows[i-2])
+            else:
+                sar = min(sar, lows[i-1])
+        else:
+            if i >= 2:
+                sar = max(sar, highs[i-1], highs[i-2])
+            else:
+                sar = max(sar, highs[i-1])
+
+        # Check for reversal
+        if trend == 1:
+            if lows[i] < sar:
+                trend = -1
+                sar = ep  # new SAR is the previous extreme point
+                ep = lows[i]
+                af = acceleration
+            else:
+                if highs[i] > ep:
+                    ep = highs[i]
+                    af = min(af + acceleration, max_acceleration)
+        else:
+            if highs[i] > sar:
+                trend = 1
+                sar = ep
+                ep = highs[i]
+                af = acceleration
+            else:
+                if lows[i] < ep:
+                    ep = lows[i]
+                    af = min(af + acceleration, max_acceleration)
+
+    return round(sar, 8)
+
+
 def compute_macd(
     closes: List[float], fast: int = 12, slow: int = 26, signal: int = 9
 ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
@@ -835,6 +899,7 @@ def build_strategy_prompt(
     ichimoku: Optional[Dict[str, Optional[float]]] = None,
     market_breadth: Optional[Dict[str, Any]] = None,
     depth_trend: Optional[float] = None,
+    parabolic_sar: Optional[float] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -1188,6 +1253,14 @@ Maximum coins to trade: {max_coins}
             "A positive delta means depth is increasing (growing liquidity and conviction); "
             "a negative delta means depth is decreasing (thinning liquidity). "
             "Increasing depth supports larger positions and tighter stops; decreasing depth warrants caution.\n"
+        )
+    if parabolic_sar is not None:
+        prompt += f"\nParabolic SAR: {parabolic_sar:.6f}\n"
+        prompt += (
+            "Parabolic SAR is a trailing stop/reversal indicator. "
+            "When the price is above the SAR, the trend is up; when below, the trend is down. "
+            "The SAR can be used as a dynamic stop‑loss level: place your stop just below the SAR in an uptrend, "
+            "or just above in a downtrend. A flip of the SAR relative to price signals a potential trend reversal.\n"
         )
 
     # --- News section (detailed articles) ---

@@ -32,6 +32,7 @@ from src.llm.prompts import (
     compute_williams_r,
     compute_vwap,
     compute_ichimoku,
+    compute_parabolic_sar,
     _format_news_for_prompt,
 )
 try:
@@ -1708,6 +1709,15 @@ class TradingEngine:
                         williams_r = ind.get('williams_r')
                         ichimoku = ind.get('ichimoku')
 
+            # Compute Parabolic SAR for the assigned timeframe
+            parabolic_sar = None
+            if assigned_tf in multi_tf_raw_candles:
+                candles = multi_tf_raw_candles[assigned_tf]
+                if len(candles) >= 2:
+                    sar_highs = [c[2] for c in candles]
+                    sar_lows = [c[3] for c in candles]
+                    parabolic_sar = compute_parabolic_sar(sar_highs, sar_lows)
+
             # Compute VWAP for each timeframe
             vwap_multi_tf: Dict[str, float] = {}
             for tf in settings.OHLCV_TIMEFRAMES:
@@ -2039,6 +2049,7 @@ class TradingEngine:
                 ichimoku=ichimoku,
                 market_breadth=getattr(self, '_market_breadth', None),
                 depth_trend=depth_trend,
+                parabolic_sar=parabolic_sar,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
