@@ -81,7 +81,7 @@ class Settings(BaseSettings):
             if self.TRADING_MODE == "paper":
                 self.DATABASE_PATH = "data/paper.db"
             else:
-                self.DATABASE_PATH = "data/bot.db"
+                self.DATABASE_PATH = "data/bengobot.db"
         return self
 
     # Ollama
@@ -106,7 +106,7 @@ class Settings(BaseSettings):
     DATA_DIR: str = "data"
 
     # Database
-    DATABASE_PATH: str = "data/bot.db"
+    DATABASE_PATH: str = "data/bengobot.db"
 
     # News
     NEWS_ENABLED: bool = False
