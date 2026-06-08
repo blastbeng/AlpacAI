@@ -517,7 +517,7 @@ class TelegramBot:
             "symbol", "action", "confidence", "reason",
             "price", "amount", "realized_pnl", "exit_reason", "mode",
             "coins", "daily_pnl", "target_amount", "strategy_type",
-            "sentiment", "backtest",
+            "sentiment", "backtest", "indicators",
         }
         compact = {}
         for key in allowed_keys:
