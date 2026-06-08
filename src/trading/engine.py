@@ -240,8 +240,98 @@ class TradingEngine:
 
             await asyncio.sleep(settings.NEWS_UPDATE_INTERVAL_MINUTES * 60)
 
+    @staticmethod
+    def _timeframe_to_ms(timeframe: str) -> int:
+        """Convert a timeframe string (e.g., '1m', '5m', '1h') to milliseconds."""
+        units = {
+            'm': 60_000,
+            'h': 3_600_000,
+            'd': 86_400_000,
+            'w': 604_800_000,
+            'M': 2_592_000_000,  # approximate (30 days)
+        }
+        match = re.match(r'^(\d+)([mhdwM])$', timeframe)
+        if not match:
+            return 3_600_000  # default to 1h
+        amount = int(match.group(1))
+        unit = match.group(2)
+        return amount * units.get(unit, 3_600_000)
+
+    async def _backfill_ohlcv(self, symbol: str, timeframe: str, start_ms: int, end_ms: int):
+        """Fetch and store all missing OHLCV candles between start_ms and end_ms."""
+        latest_ts = await asyncio.to_thread(get_latest_ohlcv_timestamp, symbol, timeframe)
+        if latest_ts is None:
+            since = start_ms
+        else:
+            since = max(start_ms, latest_ts + 1)
+
+        while since < end_ms:
+            try:
+                candles = await asyncio.to_thread(
+                    self.exchange.fetch_ohlcv, symbol, timeframe, since=since, limit=500
+                )
+            except Exception as e:
+                logger.warning(f"fetch_ohlcv failed for {symbol} {timeframe} at {since}: {e}")
+                break
+
+            if not candles:
+                break
+
+            await asyncio.to_thread(insert_ohlcv_batch, symbol, timeframe, candles)
+
+            last_ts = candles[-1][0]
+            if last_ts <= since:
+                # Avoid infinite loop if exchange returns same candle
+                break
+            since = last_ts + 1
+            # Small delay to avoid rate limits
+            await asyncio.sleep(0.2)
+
+        logger.debug(f"Backfill complete for {symbol} {timeframe}")
+
+    async def _fill_gaps(self, symbol: str, timeframe: str):
+        """Detect and fill gaps in stored OHLCV data for a symbol/timeframe."""
+        interval_ms = self._timeframe_to_ms(timeframe)
+        if interval_ms <= 0:
+            return
+
+        # Get all stored timestamps
+        candles = await asyncio.to_thread(get_ohlcv, symbol, timeframe, limit=50000)
+        if len(candles) < 2:
+            return
+
+        timestamps = sorted(c["timestamp"] for c in candles)
+
+        # Find and fill gaps larger than 1.5x the expected interval
+        gaps_filled = 0
+        max_gaps_per_cycle = 5  # Limit gap fills per cycle to avoid rate limits
+        for i in range(len(timestamps) - 1):
+            if gaps_filled >= max_gaps_per_cycle:
+                break
+            gap = timestamps[i + 1] - timestamps[i]
+            if gap > interval_ms * 1.5:
+                gap_start = timestamps[i] + interval_ms
+                gap_end = timestamps[i + 1] - interval_ms
+                if gap_end > gap_start:
+                    logger.info(f"Gap detected for {symbol} {timeframe}: {gap_start} to {gap_end}")
+                    await self._backfill_ohlcv(symbol, timeframe, gap_start, gap_end)
+                    gaps_filled += 1
+
+    async def _backfill_new_coin(self, symbol: str):
+        """Immediately backfill 30 days of OHLCV data for a newly selected coin."""
+        now_ms = int(time.time() * 1000)
+        start_ms = now_ms - 30 * 24 * 60 * 60 * 1000
+        logger.info(f"Starting immediate backfill for newly selected coin {symbol}")
+        for tf in settings.OHLCV_TIMEFRAMES:
+            try:
+                await self._backfill_ohlcv(symbol, tf, start_ms, now_ms)
+                await self._fill_gaps(symbol, tf)
+            except Exception as e:
+                logger.error(f"Initial backfill failed for {symbol} {tf}: {e}")
+        logger.info(f"Immediate backfill complete for {symbol}")
+
     async def _download_market_data_loop(self):
-        """Periodically download and store OHLCV data for tracked coins."""
+        """Periodically download and store OHLCV data for tracked coins, with gap detection."""
         # Initial delay to let the engine settle
         await asyncio.sleep(30)
         while True:
@@ -250,38 +340,19 @@ class TradingEngine:
                     logger.debug("No coins tracked; skipping market data download.")
                 else:
                     logger.debug("Starting market data download cycle...")
-                    total_candles = 0
+                    now_ms = int(time.time() * 1000)
+                    start_ms = now_ms - 30 * 24 * 60 * 60 * 1000  # 30 days ago
                     for coin_entry in self.current_coins:
                         symbol = coin_entry["symbol"]
                         for tf in settings.OHLCV_TIMEFRAMES:
                             try:
-                                # Get the latest timestamp we already have
-                                latest_ts = await asyncio.to_thread(
-                                    get_latest_ohlcv_timestamp, symbol, tf
-                                )
-                                if latest_ts:
-                                    since_ms = latest_ts + 1   # start just after the last stored candle
-                                else:
-                                    # No data yet; fetch last 30 days
-                                    since_ms = int(time.time() * 1000) - 30 * 24 * 60 * 60 * 1000
-
-                                logger.debug(f"Fetching OHLCV for {symbol} {tf} since {since_ms}")
-                                raw_candles = await asyncio.to_thread(
-                                    self.exchange.fetch_ohlcv, symbol, tf, since=since_ms, limit=500
-                                )
-                                if raw_candles:
-                                    logger.debug(f"Received {len(raw_candles)} candles for {symbol} {tf}")
-                                    await asyncio.to_thread(
-                                        insert_ohlcv_batch, symbol, tf, raw_candles
-                                    )
-                                    total_candles += len(raw_candles)
-                                else:
-                                    logger.debug(f"No new candles for {symbol} {tf}")
+                                await self._backfill_ohlcv(symbol, tf, start_ms, now_ms)
+                                await self._fill_gaps(symbol, tf)
                             except Exception as e:
                                 logger.warning(f"Market data download failed for {symbol} {tf}: {e}")
                         # Small delay between coins to avoid rate limits
                         await asyncio.sleep(0.5)
-                    logger.debug(f"Market data download cycle complete. Total candles stored: {total_candles}")
+                    logger.debug("Market data download cycle complete.")
             except Exception as e:
                 logger.error(f"Market data download loop error: {e}", exc_info=True)
 
@@ -765,6 +836,7 @@ class TradingEngine:
         if last_eval and (now - float(last_eval)) < self._coin_revaluation_interval and self.current_coins:
             return
 
+        old_coins = list(self.current_coins)
         available_pairs = await asyncio.to_thread(get_available_pairs, self.exchange, self.base_currency)
         if not available_pairs:
             logger.warning("No available pairs found.")
@@ -1138,6 +1210,13 @@ class TradingEngine:
                 tf = pos.get("timeframe") or (settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h")
                 self.current_coins.append({"symbol": symbol, "timeframe": tf})
                 logger.info(f"Keeping {symbol} in current_coins due to open position (timeframe={tf})")
+
+        # Trigger immediate backfill for newly selected coins
+        old_symbols = {entry["symbol"] for entry in old_coins}
+        new_symbols = {entry["symbol"] for entry in self.current_coins} - old_symbols
+        for sym in new_symbols:
+            logger.info(f"Triggering immediate backfill for newly selected coin {sym}")
+            asyncio.create_task(self._backfill_new_coin(sym))
 
         coin_labels = [f"{c['symbol']}({c['timeframe']})" for c in self.current_coins]
         logger.info(f"Selected coins: {coin_labels}")
