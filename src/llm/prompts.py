@@ -660,6 +660,8 @@ def build_coin_selection_prompt(
     sentiment_trend: Optional[Dict[str, Optional[float]]] = None,
     volume_trends: Optional[Dict[str, Optional[float]]] = None,
     market_breadth: Optional[Dict[str, Any]] = None,
+    btc_dominance: Optional[float] = None,
+    total_market_cap: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -889,6 +891,28 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
             "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
             "Use this to gauge overall market participation and adjust your coin selection and risk parameters accordingly.\n"
         )
+    if btc_dominance is not None:
+        prompt += f"\nBitcoin dominance: {btc_dominance:.2f}%\n"
+        prompt += (
+            "Bitcoin dominance measures BTC's share of the total crypto market cap. "
+            "High or rising dominance (>55%) often means altcoins underperform as capital flows into BTC; "
+            "low or falling dominance (<45%) signals 'altseason' where altcoins outperform. "
+            "Use this to bias your selection: prefer BTC when dominance is rising, "
+            "and consider more altcoins when dominance is falling.\n"
+        )
+    if total_market_cap:
+        mc_usd = total_market_cap.get("total_market_cap_usd")
+        mc_change = total_market_cap.get("market_cap_change_24h_usd")
+        if mc_usd is not None:
+            prompt += f"\nTotal crypto market cap: ${mc_usd:,.0f}\n"
+        if mc_change is not None:
+            prompt += f"Total market cap 24h change: {mc_change:+.2f}%\n"
+        if mc_usd is not None or mc_change is not None:
+            prompt += (
+                "The total market cap indicates the overall size and health of the crypto market. "
+                "A rising market cap confirms an expanding market (risk-on); a falling market cap suggests contraction (risk-off). "
+                "Use this alongside market breadth and Fear & Greed to gauge the macro environment.\n"
+            )
     if news_section:
         prompt += f"\n{news_section}\n"
     prompt += (
@@ -991,6 +1015,8 @@ def build_strategy_prompt(
     keltner_channels: Optional[Dict[str, float]] = None,
     pivot_points: Optional[Dict[str, float]] = None,
     donchian_channels: Optional[Dict[str, float]] = None,
+    btc_dominance: Optional[float] = None,
+    total_market_cap: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -1341,6 +1367,27 @@ Maximum coins to trade: {max_coins}
             "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
             "Use this to gauge overall market participation and adjust your coin selection and risk parameters accordingly.\n"
         )
+    if btc_dominance is not None:
+        prompt += f"\nBitcoin dominance: {btc_dominance:.2f}%\n"
+        prompt += (
+            "High/rising BTC dominance (>55%) often means altcoins underperform; "
+            "low/falling dominance (<45%) signals altseason. "
+            "Adjust your confidence and position size accordingly: "
+            "prefer BTC or reduce altcoin exposure when dominance is rising.\n"
+        )
+    if total_market_cap:
+        mc_usd = total_market_cap.get("total_market_cap_usd")
+        mc_change = total_market_cap.get("market_cap_change_24h_usd")
+        if mc_usd is not None:
+            prompt += f"\nTotal crypto market cap: ${mc_usd:,.0f}\n"
+        if mc_change is not None:
+            prompt += f"Total market cap 24h change: {mc_change:+.2f}%\n"
+        if mc_usd is not None or mc_change is not None:
+            prompt += (
+                "A rising total market cap confirms an expanding market (risk-on); "
+                "a falling market cap suggests contraction (risk-off). "
+                "Use this to adjust your risk parameters and position size.\n"
+            )
     if depth_trend is not None:
         prompt += f"\nOrder book depth trend (change in total depth within 1% of mid since last cycle): {depth_trend:+.4f}\n"
         prompt += (

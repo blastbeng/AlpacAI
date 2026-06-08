@@ -173,6 +173,39 @@ class TradingEngine:
             logger.warning(f"Failed to fetch Fear & Greed Index: {e}")
         return None
 
+    async def _fetch_global_market_data(self) -> Optional[Dict[str, Any]]:
+        """Fetch global crypto market data (BTC dominance, total market cap) from CoinGecko, cached in Redis."""
+        cache_key = "global_market:data"
+        try:
+            cached = await asyncio.to_thread(self.redis.get, cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            pass
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    "https://api.coingecko.com/api/v3/global",
+                    timeout=10.0,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    gd = data.get("data", {})
+                    result = {
+                        "btc_dominance": round(gd.get("market_cap_percentage", {}).get("btc", 0.0), 2),
+                        "eth_dominance": round(gd.get("market_cap_percentage", {}).get("eth", 0.0), 2),
+                        "total_market_cap_usd": gd.get("total_market_cap", {}).get("usd", 0),
+                        "total_volume_usd": gd.get("total_volume", {}).get("usd", 0),
+                        "market_cap_change_24h_usd": round(gd.get("market_cap_change_percentage_24h_usd", 0.0), 2),
+                    }
+                    ttl = getattr(settings, 'GLOBAL_MARKET_DATA_CACHE_TTL_SECONDS', 1800)
+                    await asyncio.to_thread(self.redis.setex, cache_key, ttl, json.dumps(result))
+                    return result
+        except Exception as e:
+            logger.warning(f"Failed to fetch global market data: {e}")
+        return None
+
     def _get_news_summary(self, symbol: str) -> str:
         """Return a very short summary of the latest news article for the symbol."""
         if not settings.NEWS_ENABLED:
@@ -1310,6 +1343,7 @@ class TradingEngine:
 
         perf = self._compute_performance_metrics()
         fear_greed = await self._get_fear_greed_index()
+        global_market = await self._fetch_global_market_data()
         # Current trading session
         now_utc = datetime.now(timezone.utc)
         utc_hour = now_utc.hour
@@ -1359,6 +1393,8 @@ class TradingEngine:
             sentiment_trend=sentiment_trend,
             volume_trends=volume_trends,
             market_breadth=market_breadth,
+            btc_dominance=global_market.get("btc_dominance") if global_market else None,
+            total_market_cap=global_market if global_market else None,
         )
         try:
             response = await asyncio.wait_for(
@@ -1997,6 +2033,7 @@ class TradingEngine:
 
             remaining = max(0.0, base_balance - self._cycle_spent)
             fear_greed = await self._get_fear_greed_index()
+            global_market = await self._fetch_global_market_data()
             # Current trading session
             now_utc = datetime.now(timezone.utc)
             utc_hour = now_utc.hour
@@ -2082,6 +2119,8 @@ class TradingEngine:
                 keltner_channels=keltner_channels,
                 pivot_points=pivot_points,
                 donchian_channels=donchian_channels,
+                btc_dominance=global_market.get("btc_dominance") if global_market else None,
+                total_market_cap=global_market if global_market else None,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
