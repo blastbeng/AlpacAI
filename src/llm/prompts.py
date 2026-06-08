@@ -779,6 +779,7 @@ def build_strategy_prompt(
     sentiment_trend: Optional[float] = None,
     volume_trend: Optional[float] = None,
     market_breadth: Optional[Dict[str, Any]] = None,
+    depth_trend: Optional[float] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -1107,6 +1108,13 @@ Maximum coins to trade: {max_coins}
             f"candidate coins have a positive 24h change ({market_breadth['positive_count']} positive).\n"
             "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
             "Use this to gauge overall market participation and adjust your coin selection and risk parameters accordingly.\n"
+        )
+    if depth_trend is not None:
+        prompt += f"\nOrder book depth trend (change in total depth within 1% of mid since last cycle): {depth_trend:+.4f}\n"
+        prompt += (
+            "A positive delta means depth is increasing (growing liquidity and conviction); "
+            "a negative delta means depth is decreasing (thinning liquidity). "
+            "Increasing depth supports larger positions and tighter stops; decreasing depth warrants caution.\n"
         )
 
     # --- News section (detailed articles) ---

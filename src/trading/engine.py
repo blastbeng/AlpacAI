@@ -1783,6 +1783,17 @@ class TradingEngine:
                 bid_wall_volume = sum(bid[1] for bid in bids if bid[0] >= bid_threshold)
                 ask_wall_volume = sum(ask[1] for ask in asks if ask[0] <= ask_threshold)
 
+                # Order book depth trend
+                depth_trend = None
+                if bid_wall_volume is not None and ask_wall_volume is not None:
+                    current_depth = bid_wall_volume + ask_wall_volume
+                    depth_key = f"depth:prev:{symbol}"
+                    prev_raw = await asyncio.to_thread(self.redis.get, depth_key)
+                    if prev_raw is not None:
+                        prev_depth = float(prev_raw)
+                        depth_trend = round(current_depth - prev_depth, 4)
+                    await asyncio.to_thread(self.redis.setex, depth_key, 3600, str(current_depth))
+
                 # Order book pressure: bid_wall / (bid_wall + ask_wall)
                 total_wall = bid_wall_volume + ask_wall_volume
                 if total_wall > 0:
@@ -2018,6 +2029,7 @@ class TradingEngine:
                 sentiment_trend=sentiment_trend_val,
                 volume_trend=volume_trend_val,
                 market_breadth=getattr(self, '_market_breadth', None),
+                depth_trend=depth_trend,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
