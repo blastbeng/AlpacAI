@@ -5,6 +5,7 @@ import logging
 import math
 import re
 import time
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
 from src.config.settings import settings
@@ -1247,6 +1248,18 @@ class TradingEngine:
 
         perf = self._compute_performance_metrics()
         fear_greed = await self._get_fear_greed_index()
+        # Current trading session
+        now_utc = datetime.now(timezone.utc)
+        utc_hour = now_utc.hour
+        if 0 <= utc_hour < 7:
+            session_label = "Asian"
+        elif 7 <= utc_hour < 12:
+            session_label = "European"
+        elif 12 <= utc_hour < 20:
+            session_label = "US"
+        else:
+            session_label = "Low activity"
+        session_info = {"utc_hour": utc_hour, "session": session_label}
         prompt = build_coin_selection_prompt(
             available_pairs=sample_pairs,
             current_coins=self.current_coins,
@@ -1269,6 +1282,7 @@ class TradingEngine:
             correlation_matrix=correlation_matrix,
             fear_greed_index=fear_greed,
             relative_strength_btc=relative_strength_btc,
+            session_info=session_info,
         )
         try:
             response = await asyncio.wait_for(
@@ -1829,6 +1843,18 @@ class TradingEngine:
 
             remaining = max(0.0, base_balance - self._cycle_spent)
             fear_greed = await self._get_fear_greed_index()
+            # Current trading session
+            now_utc = datetime.now(timezone.utc)
+            utc_hour = now_utc.hour
+            if 0 <= utc_hour < 7:
+                session_label = "Asian"
+            elif 7 <= utc_hour < 12:
+                session_label = "European"
+            elif 12 <= utc_hour < 20:
+                session_label = "US"
+            else:
+                session_label = "Low activity"
+            session_info = {"utc_hour": utc_hour, "session": session_label}
             prompt = build_strategy_prompt(
                 symbol=symbol,
                 ticker=ticker,
@@ -1891,6 +1917,7 @@ class TradingEngine:
                 relative_strength_btc=rel_strength_btc,
                 vwap=vwap,
                 vwap_multi_tf=vwap_multi_tf,
+                session_info=session_info,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:

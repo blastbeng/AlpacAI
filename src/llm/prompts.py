@@ -456,6 +456,7 @@ def build_coin_selection_prompt(
     correlation_matrix: Optional[Dict[str, Dict[str, float]]] = None,
     fear_greed_index: Optional[Dict[str, Any]] = None,
     relative_strength_btc: Optional[Dict[str, Dict[str, Any]]] = None,
+    session_info: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -620,6 +621,13 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
             "Use it to gauge the general mood: extreme fear may present buying opportunities, "
             "extreme greed may signal a market top. Adjust your coin selection and risk parameters accordingly.\n"
         )
+    if session_info:
+        prompt += (
+            f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
+            "Use this to gauge typical market activity: Asian session often has lower volatility, "
+            "European and US sessions have higher volume and volatility. Adjust your coin selection "
+            "and risk parameters accordingly.\n"
+        )
     if relative_strength_btc:
         prompt += "\nRelative strength vs BTC (ratio = coin_price / btc_price; relative_24h_pct = outperformance vs BTC over 24h):\n"
         for sym, data in relative_strength_btc.items():
@@ -735,6 +743,7 @@ def build_strategy_prompt(
     relative_strength_btc: Optional[Dict[str, Any]] = None,
     vwap: Optional[float] = None,
     vwap_multi_tf: Optional[Dict[str, float]] = None,
+    session_info: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -825,6 +834,13 @@ Maximum coins to trade: {max_coins}
             "Compare VWAP across timeframes: if the price is above VWAP on all timeframes, "
             "the trend is strongly bullish. Divergences (e.g., above on 5m but below on 1h) "
             "may indicate a short‑term bounce within a larger downtrend.\n"
+        )
+    if session_info:
+        prompt += (
+            f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
+            "Use this to gauge typical market activity: Asian session often has lower volatility, "
+            "European and US sessions have higher volume and volatility. Adjust your coin selection "
+            "and risk parameters accordingly.\n"
         )
 
     # --- Volatility, order book imbalance, and position P&L context ---
