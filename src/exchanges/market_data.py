@@ -19,7 +19,20 @@ def get_tickers(exchange: ccxt.Exchange, symbols: Optional[List[str]] = None) ->
     if exchange.id == 'kucoin':
         params['type'] = 'spot'
     if symbols:
-        return exchange.fetch_tickers(symbols, params=params)
+        try:
+            return exchange.fetch_tickers(symbols, params=params)
+        except ccxt.ArgumentsRequired:
+            logger.warning(
+                "fetch_tickers failed due to ambiguous market IDs; falling back to individual fetch_ticker calls"
+            )
+            # Fallback: fetch each ticker individually
+            tickers = {}
+            for sym in symbols:
+                try:
+                    tickers[sym] = exchange.fetch_ticker(sym, params=params)
+                except Exception as e:
+                    logger.warning("Failed to fetch ticker for %s: %s", sym, e)
+            return tickers
     else:
         return exchange.fetch_tickers(params=params)
 
