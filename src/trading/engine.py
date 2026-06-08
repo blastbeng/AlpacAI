@@ -2017,6 +2017,7 @@ class TradingEngine:
                 session_info=session_info,
                 sentiment_trend=sentiment_trend_val,
                 volume_trend=volume_trend_val,
+                market_breadth=getattr(self, '_market_breadth', None),
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
