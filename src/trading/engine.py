@@ -1038,6 +1038,40 @@ class TradingEngine:
                         ind['williams_r'] = compute_williams_r(highs, lows, closes)
                         coin_indicators[sym][tf] = ind
 
+        # Fetch historical OHLCV from database for longer-term trend analysis (up to 30 days)
+        historical_ohlcv_summary = {}
+        if settings.OHLCV_TIMEFRAMES:
+            since_ms = int(time.time() * 1000) - 30 * 24 * 60 * 60 * 1000
+
+            async def _fetch_historical_summary(sym):
+                sym_summary = {}
+                for tf in settings.OHLCV_TIMEFRAMES:
+                    try:
+                        db_candles = await asyncio.to_thread(
+                            get_ohlcv, sym, tf, since_ms=since_ms, limit=500
+                        )
+                        if db_candles and len(db_candles) >= 2:
+                            open_price = db_candles[0]["open"]
+                            close_price = db_candles[-1]["close"]
+                            high = max(c["high"] for c in db_candles)
+                            low = min(c["low"] for c in db_candles)
+                            volume = sum(c["volume"] for c in db_candles)
+                            change_pct = ((close_price - open_price) / open_price) * 100 if open_price else 0
+                            sym_summary[tf] = {
+                                "candles": len(db_candles),
+                                "change_pct": round(change_pct, 2),
+                                "high": high,
+                                "low": low,
+                                "volume": volume,
+                            }
+                    except Exception as e:
+                        logger.debug(f"Failed to fetch historical OHLCV for {sym} {tf}: {e}")
+                return sym, sym_summary
+
+            tasks = [_fetch_historical_summary(sym) for sym in sorted_by_vol]
+            results = await asyncio.gather(*tasks)
+            historical_ohlcv_summary = {sym: summary for sym, summary in results if summary}
+
         # Build market_limits with a concrete min_cost for each symbol
         market_limits = {}
         for symbol in sample_pairs:
@@ -1103,6 +1137,7 @@ class TradingEngine:
             coin_scores=coin_scores,
             coin_spreads=coin_spreads,
             coin_depths=coin_depths,
+            historical_ohlcv_summary=historical_ohlcv_summary,
         )
         try:
             response = await asyncio.wait_for(

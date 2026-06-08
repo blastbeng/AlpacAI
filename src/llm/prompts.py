@@ -432,6 +432,7 @@ def build_coin_selection_prompt(
     coin_scores: Optional[Dict[str, float]] = None,
     coin_spreads: Optional[Dict[str, float]] = None,
     coin_depths: Optional[Dict[str, float]] = None,
+    historical_ohlcv_summary: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -539,6 +540,13 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
         prompt += "Prefer coins with spread < 0.2% and high depth for scalping very small percentages.\n"
     if ohlcv_summary:
         prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
+    if historical_ohlcv_summary:
+        prompt += (
+            "\nHistorical OHLCV summary from database (up to 30 days, price change %, high, low, volume, candle count):\n"
+            f"{json.dumps(historical_ohlcv_summary, indent=2)}\n"
+            "Use this longer-term data to assess sustained trends and avoid coins in prolonged decline. "
+            "Prefer coins with consistent upward momentum over the full period.\n"
+        )
     if coin_indicators:
         prompt += "\nTechnical indicators for candidate coins:\n"
         for sym, tf_indicators in coin_indicators.items():
