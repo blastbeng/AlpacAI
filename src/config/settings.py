@@ -182,6 +182,10 @@ class Settings(BaseSettings):
     NEWS_COIN_DISCOVERY_MIN_SENTIMENT: float = 0.3  # minimum avg compound to consider
     NEWS_COIN_DISCOVERY_MIN_ARTICLES: int = 3       # minimum articles to be considered
 
+    # Fear & Greed Index
+    FEAR_GREED_ENABLED: bool = True
+    FEAR_GREED_CACHE_TTL_SECONDS: int = 3600  # 1 hour
+
     # Rate limiting for news providers
     NEWS_RATE_LIMIT_ENABLED: bool = True
     NEWS_RATE_LIMIT_PER_SOURCE_SECONDS: float = 1.0   # minimum seconds between requests to the same source

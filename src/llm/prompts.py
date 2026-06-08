@@ -434,6 +434,7 @@ def build_coin_selection_prompt(
     coin_depths: Optional[Dict[str, float]] = None,
     historical_ohlcv_summary: Optional[Dict[str, Dict[str, Any]]] = None,
     correlation_matrix: Optional[Dict[str, Dict[str, float]]] = None,
+    fear_greed_index: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -590,6 +591,14 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
             prompt += "\n".join(lines) + "\n"
     if market_trend:
         prompt += f"\nOverall market trend ({market_trend['symbol']}): 24h change {market_trend.get('change_24h')}%, last price {market_trend.get('last')}\n"
+    if fear_greed_index:
+        prompt += (
+            f"\nCrypto Fear & Greed Index: {fear_greed_index['value']} "
+            f"({fear_greed_index['classification']})\n"
+            "This index reflects overall market sentiment (0 = Extreme Fear, 100 = Extreme Greed). "
+            "Use it to gauge the general mood: extreme fear may present buying opportunities, "
+            "extreme greed may signal a market top. Adjust your coin selection and risk parameters accordingly.\n"
+        )
     if news_sentiment:
         prompt += "\n## News Sentiment\n"
         prompt += "Aggregate sentiment from recent news articles (compound score -1 to +1, higher = more positive):\n"
@@ -691,6 +700,7 @@ def build_strategy_prompt(
     multi_tf_raw_candles: Optional[Dict[str, List[List]]] = None,
     multi_tf_indicators: Optional[Dict[str, Dict[str, Any]]] = None,
     scalping_feasibility_score: Optional[float] = None,
+    fear_greed_index: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}

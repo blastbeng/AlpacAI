@@ -1,4 +1,5 @@
 import asyncio
+import httpx
 import json
 import logging
 import math
@@ -131,6 +132,38 @@ class TradingEngine:
         except Exception:
             pass
         return ""
+
+    async def _get_fear_greed_index(self) -> Optional[Dict[str, Any]]:
+        """Fetch Crypto Fear & Greed Index from alternative.me, cached in Redis."""
+        if not getattr(settings, 'FEAR_GREED_ENABLED', True):
+            return None
+        cache_key = "fear_greed:index"
+        try:
+            cached = await asyncio.to_thread(self.redis.get, cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            pass
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    "https://api.alternative.me/fng/?limit=1",
+                    timeout=10.0
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    entry = data.get("data", [{}])[0]
+                    result = {
+                        "value": int(entry.get("value", 50)),
+                        "classification": entry.get("value_classification", "neutral"),
+                    }
+                    ttl = getattr(settings, 'FEAR_GREED_CACHE_TTL_SECONDS', 3600)
+                    await asyncio.to_thread(self.redis.setex, cache_key, ttl, json.dumps(result))
+                    return result
+        except Exception as e:
+            logger.warning(f"Failed to fetch Fear & Greed Index: {e}")
+        return None
 
     def _get_news_summary(self, symbol: str) -> str:
         """Return a very short summary of the latest news article for the symbol."""
@@ -1191,6 +1224,7 @@ class TradingEngine:
                             correlation_matrix[sym_a][sym_b] = round(cov / (std_a * std_b), 3)
 
         perf = self._compute_performance_metrics()
+        fear_greed = await self._get_fear_greed_index()
         prompt = build_coin_selection_prompt(
             available_pairs=sample_pairs,
             current_coins=self.current_coins,
@@ -1211,6 +1245,7 @@ class TradingEngine:
             coin_depths=coin_depths,
             historical_ohlcv_summary=historical_ohlcv_summary,
             correlation_matrix=correlation_matrix,
+            fear_greed_index=fear_greed,
         )
         try:
             response = await asyncio.wait_for(
@@ -1742,6 +1777,7 @@ class TradingEngine:
                     logger.debug(f"Could not fetch aggregate sentiment for {symbol}: {e}")
 
             remaining = max(0.0, base_balance - self._cycle_spent)
+            fear_greed = await self._get_fear_greed_index()
             prompt = build_strategy_prompt(
                 symbol=symbol,
                 ticker=ticker,
@@ -1800,6 +1836,7 @@ class TradingEngine:
                 multi_tf_raw_candles=multi_tf_raw_candles,
                 multi_tf_indicators=multi_tf_indicators,
                 scalping_feasibility_score=scalping_score,
+                fear_greed_index=fear_greed,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
