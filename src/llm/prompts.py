@@ -592,6 +592,12 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
         prompt += "\n"
     if news_section:
         prompt += f"\n{news_section}\n"
+    prompt += (
+        "\n**Sentiment is a critical factor in coin selection.** "
+        "Prefer coins with a positive aggregate sentiment (compound > 0.1). "
+        "Avoid coins with strongly negative sentiment (compound < -0.2) unless there is overwhelming technical evidence. "
+        "Use sentiment to gauge market hype and potential short‑term momentum.\n"
+    )
     if performance:
         perf_text = f"""
 Historical Performance Data:
