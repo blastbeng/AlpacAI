@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -533,12 +534,41 @@ class TelegramBot:
                 # Compact sentiment to just the numeric compound value (e.g., 0.05 or -0.05)
                 if key == "sentiment" and isinstance(value, dict):
                     value = round(value.get("avg_compound", 0), 2)
-                # Truncate backtest summary to 50 characters
+                # Compact backtest to a short win/loss summary
                 if key == "backtest" and isinstance(value, str):
-                    if len(value) > 50:
-                        value = value[:47] + "..."
+                    value = TelegramBot._compact_backtest(value)
                 compact[key] = value
         return compact
+
+    @staticmethod
+    def _compact_backtest(text: str) -> str:
+        """Extract timeframe and win/loss summary from a backtest string."""
+        # Try to find timeframe like "15m backtest" or "Historical 15m backtest"
+        tf_match = re.search(r'(?:Historical\s+)?(\d+[mhdw])\s*backtest', text)
+        timeframe = tf_match.group(1) if tf_match else None
+
+        # Try to find "X trades, Y% win rate"
+        trades_winrate = re.search(r'(\d+)\s*trades?.*?(\d+)%\s*win\s*rate', text)
+        if trades_winrate:
+            trades = int(trades_winrate.group(1))
+            win_rate = int(trades_winrate.group(2))
+            wins = round(trades * win_rate / 100)
+            losses = trades - wins
+            prefix = f"{timeframe}: " if timeframe else ""
+            return f"{prefix}{trades} trades, {win_rate}% win ({wins}W/{losses}L)"
+
+        # Try to find "X wins, Y losses"
+        wins_losses = re.search(r'(\d+)\s*wins?.*?(\d+)\s*losses?', text)
+        if wins_losses:
+            wins = int(wins_losses.group(1))
+            losses = int(wins_losses.group(2))
+            prefix = f"{timeframe}: " if timeframe else ""
+            return f"{prefix}{wins}W/{losses}L"
+
+        # Fallback: truncate to 50 chars
+        if len(text) > 50:
+            text = text[:47] + "..."
+        return text
 
     async def send_notification(self, message: str, summary: dict = None):
         """Send a notification to the stored chat ID and optionally log a summary."""
