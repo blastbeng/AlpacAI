@@ -31,6 +31,7 @@ from src.llm.prompts import (
     compute_cci,
     compute_williams_r,
     compute_vwap,
+    compute_ichimoku,
     _format_news_for_prompt,
 )
 try:
@@ -1171,6 +1172,7 @@ class TradingEngine:
                         ind['mfi'] = compute_mfi(highs, lows, closes, volumes)
                         ind['cci'] = compute_cci(highs, lows, closes)
                         ind['williams_r'] = compute_williams_r(highs, lows, closes)
+                        ind['ichimoku'] = compute_ichimoku(highs, lows, closes)
                         coin_indicators[sym][tf] = ind
 
         # Fetch historical OHLCV from database for longer-term trend analysis (up to 30 days)
@@ -1617,6 +1619,9 @@ class TradingEngine:
             mfi_period = ind_cfg.get('mfi_period', 14) if ind_cfg else 14
             cci_period = ind_cfg.get('cci_period', 20) if ind_cfg else 20
             willr_period = ind_cfg.get('willr_period', 14) if ind_cfg else 14
+            ichimoku_tenkan = ind_cfg.get('ichimoku_tenkan', 9) if ind_cfg else 9
+            ichimoku_kijun = ind_cfg.get('ichimoku_kijun', 26) if ind_cfg else 26
+            ichimoku_senkou_b = ind_cfg.get('ichimoku_senkou_b', 52) if ind_cfg else 52
 
             # Compute indicators for all timeframes
             multi_tf_indicators: Dict[str, Dict[str, Any]] = {}
@@ -1640,6 +1645,7 @@ class TradingEngine:
             mfi = None
             cci = None
             williams_r = None
+            ichimoku = None
 
             for tf in settings.OHLCV_TIMEFRAMES:
                 if tf in ohlcv_data and ohlcv_data[tf]:
@@ -1677,6 +1683,7 @@ class TradingEngine:
                         ind['mfi'] = compute_mfi(highs, lows, closes, volumes, period=mfi_period)
                         ind['cci'] = compute_cci(highs, lows, closes, period=cci_period)
                         ind['williams_r'] = compute_williams_r(highs, lows, closes, period=willr_period)
+                        ind['ichimoku'] = compute_ichimoku(highs, lows, closes, tenkan_period=ichimoku_tenkan, kijun_period=ichimoku_kijun, senkou_b_period=ichimoku_senkou_b)
                     multi_tf_indicators[tf] = ind
                     # Keep the assigned timeframe's indicators for backward compatibility
                     if tf == assigned_tf:
@@ -1699,6 +1706,7 @@ class TradingEngine:
                         mfi = ind.get('mfi')
                         cci = ind.get('cci')
                         williams_r = ind.get('williams_r')
+                        ichimoku = ind.get('ichimoku')
 
             # Compute VWAP for each timeframe
             vwap_multi_tf: Dict[str, float] = {}
@@ -2028,6 +2036,7 @@ class TradingEngine:
                 session_info=session_info,
                 sentiment_trend=sentiment_trend_val,
                 volume_trend=volume_trend_val,
+                ichimoku=ichimoku,
                 market_breadth=getattr(self, '_market_breadth', None),
                 depth_trend=depth_trend,
             )
@@ -2096,6 +2105,8 @@ class TradingEngine:
                     ind_parts.append(f"CCI={cci:.2f}")
                 if williams_r is not None:
                     ind_parts.append(f"WR={williams_r:.2f}")
+                if ichimoku is not None:
+                    ind_parts.append(f"Ichi T={ichimoku['tenkan_sen']:.2f}/K={ichimoku['kijun_sen']:.2f}")
                 indicator_str = " | ".join(ind_parts) if ind_parts else ""
                 sentiment_str = self._get_sentiment_str(symbol)
                 msg = f"{emoji} {symbol}: {validated.action} (confidence: {validated.confidence:.2f}) – {validated.reasoning}"
@@ -2126,6 +2137,7 @@ class TradingEngine:
                         "mfi": mfi,
                         "cci": cci,
                         "williams_r": williams_r,
+                        "ichimoku": ichimoku,
                     },
                     "backtest": getattr(validated, 'backtest_summary', None),
                     "strategy_type": signal.strategy_type,

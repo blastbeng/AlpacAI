@@ -248,6 +248,54 @@ def compute_vwap(candles: List[List]) -> Optional[float]:
     return total_value / total_volume
 
 
+def compute_ichimoku(
+    highs: List[float], lows: List[float], closes: List[float],
+    tenkan_period: int = 9, kijun_period: int = 26, senkou_b_period: int = 52,
+) -> Optional[Dict[str, Optional[float]]]:
+    """Compute Ichimoku Cloud components.
+
+    Returns dict with tenkan_sen, kijun_sen, senkou_span_a, senkou_span_b,
+    chikou_span, cloud_top, cloud_bottom. Returns None if insufficient data.
+    """
+    if len(closes) < senkou_b_period:
+        return None
+
+    # Tenkan-sen (Conversion Line): (highest high + lowest low) / 2 over tenkan_period
+    tenkan_high = max(highs[-tenkan_period:])
+    tenkan_low = min(lows[-tenkan_period:])
+    tenkan_sen = (tenkan_high + tenkan_low) / 2
+
+    # Kijun-sen (Base Line): (highest high + lowest low) / 2 over kijun_period
+    kijun_high = max(highs[-kijun_period:])
+    kijun_low = min(lows[-kijun_period:])
+    kijun_sen = (kijun_high + kijun_low) / 2
+
+    # Senkou Span A (Leading Span A): (Tenkan-sen + Kijun-sen) / 2
+    senkou_span_a = (tenkan_sen + kijun_sen) / 2
+
+    # Senkou Span B (Leading Span B): (highest high + lowest low) / 2 over senkou_b_period
+    senkou_b_high = max(highs[-senkou_b_period:])
+    senkou_b_low = min(lows[-senkou_b_period:])
+    senkou_span_b = (senkou_b_high + senkou_b_low) / 2
+
+    # Chikou Span (Lagging Span): current close
+    chikou_span = closes[-1]
+
+    # Cloud boundaries
+    cloud_top = max(senkou_span_a, senkou_span_b)
+    cloud_bottom = min(senkou_span_a, senkou_span_b)
+
+    return {
+        "tenkan_sen": round(tenkan_sen, 8),
+        "kijun_sen": round(kijun_sen, 8),
+        "senkou_span_a": round(senkou_span_a, 8),
+        "senkou_span_b": round(senkou_span_b, 8),
+        "chikou_span": round(chikou_span, 8),
+        "cloud_top": round(cloud_top, 8),
+        "cloud_bottom": round(cloud_bottom, 8),
+    }
+
+
 def compute_macd(
     closes: List[float], fast: int = 12, slow: int = 26, signal: int = 9
 ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
@@ -613,6 +661,9 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
                     lines.append(f"    CCI(20)={ind['cci']:.2f}")
                 if ind.get('williams_r') is not None:
                     lines.append(f"    Williams %R(14)={ind['williams_r']:.2f}")
+                if ind.get('ichimoku') is not None:
+                    ich = ind['ichimoku']
+                    lines.append(f"    Ichimoku: Tenkan={ich['tenkan_sen']:.4f} Kijun={ich['kijun_sen']:.4f} SpanA={ich['senkou_span_a']:.4f} SpanB={ich['senkou_span_b']:.4f} Cloud={ich['cloud_bottom']:.4f}-{ich['cloud_top']:.4f}")
             prompt += "\n".join(lines) + "\n"
     if market_trend:
         prompt += f"\nOverall market trend ({market_trend['symbol']}): 24h change {market_trend.get('change_24h')}%, last price {market_trend.get('last')}\n"
@@ -778,6 +829,7 @@ def build_strategy_prompt(
     session_info: Optional[Dict[str, Any]] = None,
     sentiment_trend: Optional[float] = None,
     volume_trend: Optional[float] = None,
+    ichimoku: Optional[Dict[str, Optional[float]]] = None,
     market_breadth: Optional[Dict[str, Any]] = None,
     depth_trend: Optional[float] = None,
 ) -> str:
@@ -917,6 +969,21 @@ Maximum coins to trade: {max_coins}
         prompt += f"Commodity Channel Index (CCI 20): {cci:.2f}\n"
     if williams_r is not None:
         prompt += f"Williams %R (14): {williams_r:.2f}\n"
+    if ichimoku is not None:
+        prompt += (
+            f"Ichimoku Cloud: Tenkan-sen={ichimoku['tenkan_sen']:.4f}, "
+            f"Kijun-sen={ichimoku['kijun_sen']:.4f}, "
+            f"Senkou Span A={ichimoku['senkou_span_a']:.4f}, "
+            f"Senkou Span B={ichimoku['senkou_span_b']:.4f}, "
+            f"Cloud: {ichimoku['cloud_bottom']:.4f} - {ichimoku['cloud_top']:.4f}\n"
+        )
+        prompt += (
+            "Interpretation: Price above the cloud confirms an uptrend; below confirms a downtrend. "
+            "Tenkan-sen crossing above Kijun-sen is a bullish signal; crossing below is bearish. "
+            "The cloud (between Span A and Span B) acts as dynamic support/resistance – "
+            "a thick cloud means strong support/resistance; a thin cloud means it can be easily broken. "
+            "Chikou Span (current close) above past prices confirms bullish momentum.\n"
+        )
     if order_book_imbalance is not None:
         prompt += f"Order book imbalance (bid_vol / ask_vol): {order_book_imbalance:.2f} ( >1 = buying pressure)\n"
     if spread_pct is not None:
@@ -1015,6 +1082,9 @@ Maximum coins to trade: {max_coins}
                     lines.append(f"  CCI={ind['cci']:.2f}")
                 if ind.get('williams_r') is not None:
                     lines.append(f"  Williams %R={ind['williams_r']:.2f}")
+                if ind.get('ichimoku') is not None:
+                    ich = ind['ichimoku']
+                    lines.append(f"  Ichimoku: Tenkan={ich['tenkan_sen']:.4f} Kijun={ich['kijun_sen']:.4f} SpanA={ich['senkou_span_a']:.4f} SpanB={ich['senkou_span_b']:.4f} Cloud={ich['cloud_bottom']:.4f}-{ich['cloud_top']:.4f}")
                 prompt += "\n".join(lines) + "\n"
         prompt += (
             "Use these indicators across timeframes to confirm signals. "
