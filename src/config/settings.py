@@ -121,7 +121,7 @@ class Settings(BaseSettings):
     REDDIT_CLIENT_SECRET: Optional[str] = None
     REDDIT_USER_AGENT: str = "trading-bot/1.0"
     NEWS_MAX_ARTICLES_PER_SYMBOL: int = 5
-    NEWS_CACHE_TTL_SECONDS: int = 900        # 15 minutes
+    NEWS_CACHE_TTL_SECONDS: int = 1800       # 30 minutes
     NEWS_HTTP_TIMEOUT_SECONDS: float = 30.0   # timeout for each news source HTTP request
     NEWS_INITIAL_FETCH_TIMEOUT_SECONDS: float = 60.0   # max seconds for initial news fetch on startup
     NEWS_RETENTION_SECONDS: int = 86400   # delete articles older than 24 hours
