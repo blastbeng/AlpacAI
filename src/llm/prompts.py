@@ -411,6 +411,9 @@ You may optionally include an "indicator_config" object in your strategy JSON to
 - mfi_period (int, default 14)
 - cci_period (int, default 20)
 - willr_period (int, default 14)
+- ichimoku_tenkan (int, default 9)
+- ichimoku_kijun (int, default 26)
+- ichimoku_senkou_b (int, default 52)
 
 You may optionally include a "backtest_summary" field (string) when historical OHLCV data is provided. This should be a concise summary of your backtest analysis, e.g., "Simulated 5 trades over 30 days: 3 wins, 2 losses, net +2.3%". Include it only if you performed a backtest.
 
@@ -1227,6 +1230,7 @@ If the position is already in profit, consider trailing the stop.
 - MFI: volume-weighted RSI. Overbought > 80, oversold < 20. Divergences can signal reversals.
 - CCI: measures deviation from average. Values above +100 suggest overbought, below -100 oversold. Use for timing entries/exits.
 - Williams %R: similar to Stochastic, ranges -100 to 0. Values above -20 overbought, below -80 oversold.
+- Ichimoku Cloud: provides trend direction, support/resistance, and momentum in one system. Price above the cloud = uptrend; below = downtrend; inside = ranging/uncertain. Tenkan-sen crossing above Kijun-sen is bullish (golden cross); crossing below is bearish (death cross). The cloud (between Senkou Span A and B) acts as dynamic support/resistance. A thick cloud means strong S/R; a thin cloud is easily broken. Chikou Span (current close) above past prices confirms bullish momentum; below confirms bearish.
 
 You MUST include the following risk parameters in the "parameters" object:
 - stop_loss_pct (required unless using stop_loss_method="atr_multiple"), take_profit_pct, trailing_stop, trailing_stop_distance_pct, position_size_fraction, max_hold_time_seconds, cooldown_after_loss_seconds.
