@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 class TelegramBot:
     _log_lock = threading.Lock()
+    MAX_LOG_SIZE = 10 * 1024 * 1024   # 10 MB
+    MAX_LOG_BACKUPS = 10
 
     def __init__(self, engine: TradingEngine):
         self.engine = engine
@@ -484,6 +487,27 @@ class TelegramBot:
 
         await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
 
+    def _write_notification_log(self, log_path: Path, summary: dict):
+        """Write a summary dict as a JSON line to log_path, rotating if > MAX_LOG_SIZE."""
+        with TelegramBot._log_lock:
+            # Rotate if file exists and is too large
+            if log_path.exists() and log_path.stat().st_size >= self.MAX_LOG_SIZE:
+                # Remove oldest backup if it exists
+                oldest = log_path.with_suffix(f".jsonl.{self.MAX_LOG_BACKUPS}")
+                if oldest.exists():
+                    oldest.unlink()
+                # Shift existing backups
+                for i in range(self.MAX_LOG_BACKUPS - 1, 0, -1):
+                    src = log_path.with_suffix(f".jsonl.{i}")
+                    dst = log_path.with_suffix(f".jsonl.{i+1}")
+                    if src.exists():
+                        src.rename(dst)
+                # Rename current log to .1
+                log_path.rename(log_path.with_suffix(".jsonl.1"))
+            # Write the new entry
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(summary, ensure_ascii=False) + "\n")
+
     async def send_notification(self, message: str, summary: dict = None):
         """Send a notification to the stored chat ID and optionally log a summary."""
         chat_id = await asyncio.to_thread(get_telegram_chat_id)
@@ -507,12 +531,7 @@ class TelegramBot:
             if "timestamp" not in summary:
                 summary["timestamp"] = datetime.now(timezone.utc).isoformat()
 
-            def _write_log():
-                with TelegramBot._log_lock:
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(json.dumps(summary, ensure_ascii=False) + "\n")
-
-            await asyncio.to_thread(_write_log)
+            await asyncio.to_thread(self._write_notification_log, log_path, summary)
 
     async def start(self):
         """Start the bot (initialize, start polling, start application)."""
