@@ -914,6 +914,17 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
                 "A rising market cap confirms an expanding market (risk-on); a falling market cap suggests contraction (risk-off). "
                 "Use this alongside market breadth and Fear & Greed to gauge the macro environment.\n"
             )
+    if altcoin_season:
+        value = altcoin_season.get("value", 50)
+        desc = altcoin_season.get("description", "")
+        prompt += f"\nAltcoin Season Index: {value} ({desc})\n"
+        prompt += (
+            "This index indicates whether altcoins are outperforming Bitcoin. "
+            "A value above 75 means 'Altcoin Season' (altcoins are strongly outperforming BTC); "
+            "below 25 means 'Bitcoin Season' (BTC is dominating). "
+            "Use this to bias your coin selection: during Altcoin Season, prefer altcoins; "
+            "during Bitcoin Season, prefer BTC or reduce altcoin exposure.\n"
+        )
     if news_section:
         prompt += f"\n{news_section}\n"
     prompt += (
