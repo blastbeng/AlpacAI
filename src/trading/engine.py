@@ -1375,6 +1375,7 @@ class TradingEngine:
         perf = self._compute_performance_metrics()
         fear_greed = await self._get_fear_greed_index()
         global_market = await self._fetch_global_market_data()
+        altcoin_season = await self._fetch_altcoin_season_index()
         # Current trading session
         now_utc = datetime.now(timezone.utc)
         utc_hour = now_utc.hour
@@ -1426,6 +1427,7 @@ class TradingEngine:
             market_breadth=market_breadth,
             btc_dominance=global_market.get("btc_dominance") if global_market else None,
             total_market_cap=global_market if global_market else None,
+            altcoin_season=altcoin_season,
         )
         try:
             response = await asyncio.wait_for(
@@ -2065,6 +2067,7 @@ class TradingEngine:
             remaining = max(0.0, base_balance - self._cycle_spent)
             fear_greed = await self._get_fear_greed_index()
             global_market = await self._fetch_global_market_data()
+            altcoin_season = await self._fetch_altcoin_season_index()
             # Current trading session
             now_utc = datetime.now(timezone.utc)
             utc_hour = now_utc.hour
@@ -2152,6 +2155,7 @@ class TradingEngine:
                 donchian_channels=donchian_channels,
                 btc_dominance=global_market.get("btc_dominance") if global_market else None,
                 total_market_cap=global_market if global_market else None,
+                altcoin_season=altcoin_season,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:

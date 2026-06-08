@@ -662,6 +662,7 @@ def build_coin_selection_prompt(
     market_breadth: Optional[Dict[str, Any]] = None,
     btc_dominance: Optional[float] = None,
     total_market_cap: Optional[Dict[str, Any]] = None,
+    altcoin_season: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -1017,6 +1018,7 @@ def build_strategy_prompt(
     donchian_channels: Optional[Dict[str, float]] = None,
     btc_dominance: Optional[float] = None,
     total_market_cap: Optional[Dict[str, Any]] = None,
+    altcoin_season: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -1388,6 +1390,18 @@ Maximum coins to trade: {max_coins}
                 "a falling market cap suggests contraction (risk-off). "
                 "Use this to adjust your risk parameters and position size.\n"
             )
+    if altcoin_season:
+        value = altcoin_season.get("value", 50)
+        desc = altcoin_season.get("description", "")
+        prompt += f"\nAltcoin Season Index: {value} ({desc})\n"
+        prompt += (
+            "This index indicates whether altcoins are outperforming Bitcoin. "
+            "A value above 75 means 'Altcoin Season' (altcoins are strongly outperforming BTC); "
+            "below 25 means 'Bitcoin Season' (BTC is dominating). "
+            "Use this to adjust your confidence and position size: "
+            "during Altcoin Season, you may increase altcoin exposure; "
+            "during Bitcoin Season, reduce altcoin exposure or prefer BTC.\n"
+        )
     if depth_trend is not None:
         prompt += f"\nOrder book depth trend (change in total depth within 1% of mid since last cycle): {depth_trend:+.4f}\n"
         prompt += (
