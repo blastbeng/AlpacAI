@@ -1203,7 +1203,7 @@ class TradingEngine:
             if settings.OHLCV_TIMEFRAMES:
                 try:
                     ohlcv_data = await asyncio.to_thread(
-                        get_multi_timeframe_ohlcv, self.exchange, symbol, [assigned_tf], limit=50
+                        get_multi_timeframe_ohlcv, self.exchange, symbol, settings.OHLCV_TIMEFRAMES, limit=50
                     )
                 except Exception as e:
                     logger.warning(f"OHLCV fetch failed for {symbol}: {e}")
@@ -1234,6 +1234,9 @@ class TradingEngine:
             cci_period = ind_cfg.get('cci_period', 20) if ind_cfg else 20
             willr_period = ind_cfg.get('willr_period', 14) if ind_cfg else 14
 
+            # Compute indicators for all timeframes
+            multi_tf_indicators: Dict[str, Dict[str, Any]] = {}
+            multi_tf_raw_candles: Dict[str, List[List]] = {}
             atr = None
             rsi = None
             macd = None
@@ -1253,30 +1256,65 @@ class TradingEngine:
             mfi = None
             cci = None
             williams_r = None
-            if ohlcv_data and assigned_tf in ohlcv_data:
-                candles = ohlcv_data[assigned_tf]
-                if candles:
-                    atr = compute_atr(candles)
+
+            for tf in settings.OHLCV_TIMEFRAMES:
+                if tf in ohlcv_data and ohlcv_data[tf]:
+                    candles = ohlcv_data[tf]
+                    multi_tf_raw_candles[tf] = candles
+                    ind = {}
+                    if len(candles) >= 2:
+                        ind['atr'] = compute_atr(candles)
                     if len(candles) >= 26:
                         closes = [c[4] for c in candles]
                         highs = [c[2] for c in candles]
                         lows = [c[3] for c in candles]
                         volumes = [c[5] for c in candles]
-                        rsi = compute_rsi(closes, period=rsi_period)
-                        macd, macd_signal, macd_hist = compute_macd(closes, fast=macd_fast, slow=macd_slow, signal=macd_signal_period)
-                        bb_upper, bb_middle, bb_lower = compute_bollinger_bands(closes, period=bb_period, std_dev=bb_std)
+                        ind['rsi'] = compute_rsi(closes, period=rsi_period)
+                        macd_val, macd_sig, macd_hist_val = compute_macd(closes, fast=macd_fast, slow=macd_slow, signal=macd_signal_period)
+                        ind['macd'] = macd_val
+                        ind['macd_signal'] = macd_sig
+                        ind['macd_hist'] = macd_hist_val
+                        bb_upper_val, bb_middle_val, bb_lower_val = compute_bollinger_bands(closes, period=bb_period, std_dev=bb_std)
+                        ind['bb_upper'] = bb_upper_val
+                        ind['bb_middle'] = bb_middle_val
+                        ind['bb_lower'] = bb_lower_val
                         ema_9_list = compute_ema(closes, ema_fast)
                         ema_21_list = compute_ema(closes, ema_slow)
-                        if ema_9_list:
-                            ema_9 = ema_9_list[-1]
-                        if ema_21_list:
-                            ema_21 = ema_21_list[-1]
-                        stochastic_k, stochastic_d = compute_stochastic(highs, lows, closes, period=stoch_k_period, smooth_k=stoch_d_period)
-                        adx, plus_di, minus_di = compute_adx(highs, lows, closes, period=adx_period)
-                        obv = compute_obv(closes, volumes)
-                        mfi = compute_mfi(highs, lows, closes, volumes, period=mfi_period)
-                        cci = compute_cci(highs, lows, closes, period=cci_period)
-                        williams_r = compute_williams_r(highs, lows, closes, period=willr_period)
+                        ind['ema_9'] = ema_9_list[-1] if ema_9_list else None
+                        ind['ema_21'] = ema_21_list[-1] if ema_21_list else None
+                        stoch_k, stoch_d = compute_stochastic(highs, lows, closes, period=stoch_k_period, smooth_k=stoch_d_period)
+                        ind['stochastic_k'] = stoch_k
+                        ind['stochastic_d'] = stoch_d
+                        adx_val, plus_di_val, minus_di_val = compute_adx(highs, lows, closes, period=adx_period)
+                        ind['adx'] = adx_val
+                        ind['plus_di'] = plus_di_val
+                        ind['minus_di'] = minus_di_val
+                        ind['obv'] = compute_obv(closes, volumes)
+                        ind['mfi'] = compute_mfi(highs, lows, closes, volumes, period=mfi_period)
+                        ind['cci'] = compute_cci(highs, lows, closes, period=cci_period)
+                        ind['williams_r'] = compute_williams_r(highs, lows, closes, period=willr_period)
+                    multi_tf_indicators[tf] = ind
+                    # Keep the assigned timeframe's indicators for backward compatibility
+                    if tf == assigned_tf:
+                        atr = ind.get('atr')
+                        rsi = ind.get('rsi')
+                        macd = ind.get('macd')
+                        macd_signal = ind.get('macd_signal')
+                        macd_hist = ind.get('macd_hist')
+                        bb_upper = ind.get('bb_upper')
+                        bb_middle = ind.get('bb_middle')
+                        bb_lower = ind.get('bb_lower')
+                        ema_9 = ind.get('ema_9')
+                        ema_21 = ind.get('ema_21')
+                        stochastic_k = ind.get('stochastic_k')
+                        stochastic_d = ind.get('stochastic_d')
+                        adx = ind.get('adx')
+                        plus_di = ind.get('plus_di')
+                        minus_di = ind.get('minus_di')
+                        obv = ind.get('obv')
+                        mfi = ind.get('mfi')
+                        cci = ind.get('cci')
+                        williams_r = ind.get('williams_r')
 
             # --- Market regime classification ---
             market_regime = "unknown"
@@ -1296,10 +1334,8 @@ class TradingEngine:
                     else:
                         market_regime += " (normal volatility)"
 
-            # Extract raw candles for the assigned timeframe
-            raw_candles = None
-            if ohlcv_data and assigned_tf in ohlcv_data:
-                raw_candles = ohlcv_data[assigned_tf]
+            # Extract raw candles for the assigned timeframe (from multi-timeframe data)
+            raw_candles = multi_tf_raw_candles.get(assigned_tf)
 
             # Fetch historical OHLCV from DB for backtest analysis (last 30 days)
             historical_ohlcv = None
@@ -1497,6 +1533,8 @@ class TradingEngine:
                 remaining_balance=remaining,
                 market_regime=market_regime,
                 recent_trades_data=recent_trades_raw,
+                multi_tf_raw_candles=multi_tf_raw_candles,
+                multi_tf_indicators=multi_tf_indicators,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:

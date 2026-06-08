@@ -661,6 +661,8 @@ def build_strategy_prompt(
     remaining_balance: Optional[float] = None,
     market_regime: Optional[str] = None,
     recent_trades_data: Optional[List[Dict[str, Any]]] = None,
+    multi_tf_raw_candles: Optional[Dict[str, List[List]]] = None,
+    multi_tf_indicators: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -812,8 +814,51 @@ Maximum coins to trade: {max_coins}
         prompt += f"Current position unrealized P&L: {unrealized_pnl:.2f} {symbol.split('/')[1]}\n"
         prompt += f"Position details: entry price {position_info.get('price')}, amount {position_info.get('amount')}\n"
 
-    # --- Raw OHLCV data for indicator computation ---
-    if raw_candles:
+    # --- Multi-timeframe raw OHLCV and indicators ---
+    if multi_tf_raw_candles:
+        prompt += "\nMulti-timeframe raw OHLCV data (each candle: [timestamp, open, high, low, close, volume]):\n"
+        for tf in settings.OHLCV_TIMEFRAMES:
+            if tf in multi_tf_raw_candles:
+                candles = multi_tf_raw_candles[tf]
+                prompt += f"\n{tf} timeframe ({len(candles)} candles):\n{json.dumps(candles)}\n"
+        prompt += (
+            "Use the raw candles from all timeframes to assess short‑term momentum, support/resistance, "
+            "and overall trend. The lower timeframes (5m, 15m) are ideal for timing scalping entries and exits; "
+            "the higher timeframes (1h, 4h) show the larger trend.\n"
+        )
+    if multi_tf_indicators:
+        prompt += "\nComputed technical indicators per timeframe:\n"
+        for tf in settings.OHLCV_TIMEFRAMES:
+            if tf in multi_tf_indicators:
+                ind = multi_tf_indicators[tf]
+                lines = [f"[{tf}]"]
+                if ind.get('rsi') is not None:
+                    lines.append(f"  RSI={ind['rsi']:.2f}")
+                if ind.get('macd') is not None:
+                    lines.append(f"  MACD={ind['macd']:.4f} Signal={ind['macd_signal']:.4f} Hist={ind['macd_hist']:.4f}")
+                if ind.get('bb_upper') is not None:
+                    lines.append(f"  BB Upper={ind['bb_upper']:.4f} Middle={ind['bb_middle']:.4f} Lower={ind['bb_lower']:.4f}")
+                if ind.get('ema_9') is not None:
+                    lines.append(f"  EMA9={ind['ema_9']:.4f} EMA21={ind['ema_21']:.4f}")
+                if ind.get('stochastic_k') is not None:
+                    lines.append(f"  Stoch %K={ind['stochastic_k']:.2f} %D={ind['stochastic_d']:.2f}")
+                if ind.get('adx') is not None:
+                    lines.append(f"  ADX={ind['adx']:.2f} +DI={ind['plus_di']:.2f} -DI={ind['minus_di']:.2f}")
+                if ind.get('obv') is not None:
+                    lines.append(f"  OBV={ind['obv']:.2f}")
+                if ind.get('mfi') is not None:
+                    lines.append(f"  MFI={ind['mfi']:.2f}")
+                if ind.get('cci') is not None:
+                    lines.append(f"  CCI={ind['cci']:.2f}")
+                if ind.get('williams_r') is not None:
+                    lines.append(f"  Williams %R={ind['williams_r']:.2f}")
+                prompt += "\n".join(lines) + "\n"
+        prompt += (
+            "Use these indicators across timeframes to confirm signals. "
+            "For scalping, focus on 5m/15m RSI, MACD, and Bollinger Bands for entry timing, "
+            "while ensuring the 1h/4h trend supports the direction.\n"
+        )
+    elif raw_candles:
         prompt += f"\nRaw OHLCV data for {assigned_timeframe} timeframe (each candle: [timestamp, open, high, low, close, volume]):\n{json.dumps(raw_candles)}\n"
         prompt += (
             "The technical indicators (RSI, MACD, Bollinger Bands, EMA) have already been computed for you from this data. "
