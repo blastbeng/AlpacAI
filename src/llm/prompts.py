@@ -228,6 +228,26 @@ def compute_williams_r(
     return wr
 
 
+def compute_vwap(candles: List[List]) -> Optional[float]:
+    """Compute Volume Weighted Average Price from OHLCV candles.
+
+    Uses typical price = (high + low + close) / 3.
+    Returns None if no volume data.
+    """
+    if not candles:
+        return None
+    total_volume = 0.0
+    total_value = 0.0
+    for c in candles:
+        high, low, close, volume = c[2], c[3], c[4], c[5]
+        typical_price = (high + low + close) / 3.0
+        total_value += typical_price * volume
+        total_volume += volume
+    if total_volume == 0:
+        return None
+    return total_value / total_volume
+
+
 def compute_macd(
     closes: List[float], fast: int = 12, slow: int = 26, signal: int = 9
 ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
@@ -713,6 +733,8 @@ def build_strategy_prompt(
     scalping_feasibility_score: Optional[float] = None,
     fear_greed_index: Optional[Dict[str, Any]] = None,
     relative_strength_btc: Optional[Dict[str, Any]] = None,
+    vwap: Optional[float] = None,
+    vwap_multi_tf: Optional[Dict[str, float]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -787,6 +809,22 @@ Maximum coins to trade: {max_coins}
             f"24h relative performance={rel_str}\n"
             "A positive relative performance means this coin is outperforming BTC, which may indicate strong momentum. "
             "Use this to adjust your confidence and position size.\n"
+        )
+
+    if vwap is not None:
+        prompt += f"\nVWAP ({assigned_timeframe or 'current'}): {vwap:.6f}\n"
+        prompt += (
+            "VWAP (Volume Weighted Average Price) is the average price weighted by volume. "
+            "It acts as a fair value benchmark: price above VWAP suggests bullish sentiment, "
+            "price below VWAP suggests bearish sentiment. Use it as a dynamic support/resistance level. "
+            "A break above VWAP with volume can confirm an uptrend; a rejection at VWAP may signal a reversal.\n"
+        )
+    if vwap_multi_tf:
+        prompt += f"VWAP across timeframes: {json.dumps(vwap_multi_tf)}\n"
+        prompt += (
+            "Compare VWAP across timeframes: if the price is above VWAP on all timeframes, "
+            "the trend is strongly bullish. Divergences (e.g., above on 5m but below on 1h) "
+            "may indicate a short‑term bounce within a larger downtrend.\n"
         )
 
     # --- Volatility, order book imbalance, and position P&L context ---

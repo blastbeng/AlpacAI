@@ -29,6 +29,7 @@ from src.llm.prompts import (
     compute_mfi,
     compute_cci,
     compute_williams_r,
+    compute_vwap,
     _format_news_for_prompt,
 )
 try:
@@ -1616,6 +1617,15 @@ class TradingEngine:
                         cci = ind.get('cci')
                         williams_r = ind.get('williams_r')
 
+            # Compute VWAP for each timeframe
+            vwap_multi_tf: Dict[str, float] = {}
+            for tf in settings.OHLCV_TIMEFRAMES:
+                if tf in multi_tf_raw_candles:
+                    tf_vwap = compute_vwap(multi_tf_raw_candles[tf])
+                    if tf_vwap is not None:
+                        vwap_multi_tf[tf] = tf_vwap
+            vwap = vwap_multi_tf.get(assigned_tf) if assigned_tf else None
+
             # --- Market regime classification ---
             market_regime = "unknown"
             if adx is not None and atr is not None and atr > 0:
@@ -1879,6 +1889,8 @@ class TradingEngine:
                 scalping_feasibility_score=scalping_score,
                 fear_greed_index=fear_greed,
                 relative_strength_btc=rel_strength_btc,
+                vwap=vwap,
+                vwap_multi_tf=vwap_multi_tf,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
