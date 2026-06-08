@@ -1068,8 +1068,6 @@ class TradingEngine:
                         logger.info(f"LLM set coin re-evaluation interval to {new_interval}s")
                     else:
                         logger.warning(f"Invalid coin_revaluation_interval_seconds: {new_interval}")
-                    # Fallback: use the length of the deduped list, capped at the engine's max
-                    self.effective_max_coins = min(len(deduped), self.effective_max_coins)
 
                 self.current_coins = deduped[: self.effective_max_coins]
 
