@@ -1942,8 +1942,6 @@ class TradingEngine:
                                     f"🔸 Partial TP [{i}] {symbol}: sold {sell_amount:.6f} @ {order['price']:.4f} | "
                                     f"P&L: {realized_pnl:+.4f} ({pnl_pct:+.2f}%) | Remaining: {pos['amount']:.6f}"
                                 )
-                            # After a partial fill, break to re‑evaluate on next cycle
-                            break
                 else:
                     # Single partial TP (existing logic, unchanged)
                     partial_tp_pct = pos.get("partial_take_profit_pct")
