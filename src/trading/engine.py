@@ -35,6 +35,7 @@ from src.llm.prompts import (
     compute_parabolic_sar,
     compute_keltner_channels,
     compute_pivot_points,
+    compute_donchian_channels,
     _format_news_for_prompt,
 )
 try:
@@ -1176,6 +1177,7 @@ class TradingEngine:
                         ind['cci'] = compute_cci(highs, lows, closes)
                         ind['williams_r'] = compute_williams_r(highs, lows, closes)
                         ind['ichimoku'] = compute_ichimoku(highs, lows, closes)
+                        ind['donchian_channels'] = compute_donchian_channels(highs, lows)
                         coin_indicators[sym][tf] = ind
 
         # Fetch historical OHLCV from database for longer-term trend analysis (up to 30 days)
@@ -1625,6 +1627,7 @@ class TradingEngine:
             ichimoku_tenkan = ind_cfg.get('ichimoku_tenkan', 9) if ind_cfg else 9
             ichimoku_kijun = ind_cfg.get('ichimoku_kijun', 26) if ind_cfg else 26
             ichimoku_senkou_b = ind_cfg.get('ichimoku_senkou_b', 52) if ind_cfg else 52
+            donchian_period = ind_cfg.get('donchian_period', 20) if ind_cfg else 20
 
             # Compute indicators for all timeframes
             multi_tf_indicators: Dict[str, Dict[str, Any]] = {}
@@ -1649,6 +1652,7 @@ class TradingEngine:
             cci = None
             williams_r = None
             ichimoku = None
+            donchian_channels = None
 
             for tf in settings.OHLCV_TIMEFRAMES:
                 if tf in ohlcv_data and ohlcv_data[tf]:
@@ -1687,6 +1691,7 @@ class TradingEngine:
                         ind['cci'] = compute_cci(highs, lows, closes, period=cci_period)
                         ind['williams_r'] = compute_williams_r(highs, lows, closes, period=willr_period)
                         ind['ichimoku'] = compute_ichimoku(highs, lows, closes, tenkan_period=ichimoku_tenkan, kijun_period=ichimoku_kijun, senkou_b_period=ichimoku_senkou_b)
+                        ind['donchian_channels'] = compute_donchian_channels(highs, lows, period=donchian_period)
                     multi_tf_indicators[tf] = ind
                     # Keep the assigned timeframe's indicators for backward compatibility
                     if tf == assigned_tf:
@@ -1710,6 +1715,7 @@ class TradingEngine:
                         cci = ind.get('cci')
                         williams_r = ind.get('williams_r')
                         ichimoku = ind.get('ichimoku')
+                        donchian_channels = ind.get('donchian_channels')
 
             # Compute Parabolic SAR for the assigned timeframe
             parabolic_sar = None
@@ -2075,6 +2081,7 @@ class TradingEngine:
                 parabolic_sar=parabolic_sar,
                 keltner_channels=keltner_channels,
                 pivot_points=pivot_points,
+                donchian_channels=donchian_channels,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
@@ -2143,6 +2150,8 @@ class TradingEngine:
                     ind_parts.append(f"WR={williams_r:.2f}")
                 if ichimoku is not None:
                     ind_parts.append(f"Ichi T={ichimoku['tenkan_sen']:.2f}/K={ichimoku['kijun_sen']:.2f}")
+                if donchian_channels is not None:
+                    ind_parts.append(f"Donch={donchian_channels['lower']:.2f}-{donchian_channels['upper']:.2f}")
                 indicator_str = " | ".join(ind_parts) if ind_parts else ""
                 sentiment_str = self._get_sentiment_str(symbol)
                 msg = f"{emoji} {symbol}: {validated.action} (confidence: {validated.confidence:.2f}) – {validated.reasoning}"
@@ -2174,6 +2183,7 @@ class TradingEngine:
                         "cci": cci,
                         "williams_r": williams_r,
                         "ichimoku": ichimoku,
+                        "donchian_channels": donchian_channels,
                     },
                     "backtest": getattr(validated, 'backtest_summary', None),
                     "strategy_type": signal.strategy_type,

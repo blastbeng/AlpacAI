@@ -419,6 +419,31 @@ def compute_pivot_points(high: float, low: float, close: float) -> Dict[str, flo
     }
 
 
+def compute_donchian_channels(
+    highs: List[float], lows: List[float], period: int = 20
+) -> Optional[Dict[str, float]]:
+    """Compute Donchian Channels (upper, middle, lower).
+
+    Upper = highest high over N periods
+    Lower = lowest low over N periods
+    Middle = (upper + lower) / 2
+
+    Returns dict with 'upper', 'middle', 'lower', or None if insufficient data.
+    """
+    if len(highs) < period or len(lows) < period:
+        return None
+
+    upper = max(highs[-period:])
+    lower = min(lows[-period:])
+    middle = (upper + lower) / 2.0
+
+    return {
+        "upper": round(upper, 8),
+        "middle": round(middle, 8),
+        "lower": round(lower, 8),
+    }
+
+
 def compute_macd(
     closes: List[float], fast: int = 12, slow: int = 26, signal: int = 9
 ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
@@ -537,6 +562,7 @@ You may optionally include an "indicator_config" object in your strategy JSON to
 - ichimoku_tenkan (int, default 9)
 - ichimoku_kijun (int, default 26)
 - ichimoku_senkou_b (int, default 52)
+- donchian_period (int, default 20)
 
 You may optionally include a "backtest_summary" field (string) when historical OHLCV data is provided. This should be a concise summary of your backtest analysis, e.g., "Simulated 5 trades over 30 days: 3 wins, 2 losses, net +2.3%". Include it only if you performed a backtest.
 
@@ -790,6 +816,9 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
                 if ind.get('ichimoku') is not None:
                     ich = ind['ichimoku']
                     lines.append(f"    Ichimoku: Tenkan={ich['tenkan_sen']:.4f} Kijun={ich['kijun_sen']:.4f} SpanA={ich['senkou_span_a']:.4f} SpanB={ich['senkou_span_b']:.4f} Cloud={ich['cloud_bottom']:.4f}-{ich['cloud_top']:.4f}")
+                if ind.get('donchian_channels') is not None:
+                    dc = ind['donchian_channels']
+                    lines.append(f"    Donchian: Upper={dc['upper']:.4f} Middle={dc['middle']:.4f} Lower={dc['lower']:.4f}")
             prompt += "\n".join(lines) + "\n"
     if market_trend:
         prompt += f"\nOverall market trend ({market_trend['symbol']}): 24h change {market_trend.get('change_24h')}%, last price {market_trend.get('last')}\n"
@@ -961,6 +990,7 @@ def build_strategy_prompt(
     parabolic_sar: Optional[float] = None,
     keltner_channels: Optional[Dict[str, float]] = None,
     pivot_points: Optional[Dict[str, float]] = None,
+    donchian_channels: Optional[Dict[str, float]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -1214,6 +1244,9 @@ Maximum coins to trade: {max_coins}
                 if ind.get('ichimoku') is not None:
                     ich = ind['ichimoku']
                     lines.append(f"  Ichimoku: Tenkan={ich['tenkan_sen']:.4f} Kijun={ich['kijun_sen']:.4f} SpanA={ich['senkou_span_a']:.4f} SpanB={ich['senkou_span_b']:.4f} Cloud={ich['cloud_bottom']:.4f}-{ich['cloud_top']:.4f}")
+                if ind.get('donchian_channels') is not None:
+                    dc = ind['donchian_channels']
+                    lines.append(f"  Donchian: Upper={dc['upper']:.4f} Middle={dc['middle']:.4f} Lower={dc['lower']:.4f}")
                 prompt += "\n".join(lines) + "\n"
         prompt += (
             "Use these indicators across timeframes to confirm signals. "
@@ -1351,6 +1384,23 @@ Maximum coins to trade: {max_coins}
             "R1 and R2 act as resistance; S1 and S2 act as support. "
             "Use these levels to set take‑profit targets (near R1/R2) and stop‑loss levels (below S1/S2). "
             "A break above R1 with volume can signal continuation; a rejection at R1 may be a selling opportunity.\n"
+        )
+    if donchian_channels:
+        prompt += (
+            f"\nDonchian Channels ({assigned_timeframe or 'default'}): "
+            f"Upper={donchian_channels['upper']:.6f}, "
+            f"Middle={donchian_channels['middle']:.6f}, "
+            f"Lower={donchian_channels['lower']:.6f}\n"
+        )
+        prompt += (
+            "Donchian Channels show the highest high and lowest low over the lookback period. "
+            "A breakout above the upper channel signals a new high (bullish breakout); "
+            "a break below the lower channel signals a new low (bearish breakout). "
+            "The channel width indicates volatility: wide = high volatility, narrow = low volatility (squeeze). "
+            "Use the middle line as a trend reference. "
+            "In a trending market, price tends to ride the channel boundary; "
+            "in a range, price oscillates between upper and lower. "
+            "Combine with ADX to confirm breakout strength: a narrow channel + rising ADX often precedes a strong move.\n"
         )
 
     # --- News section (detailed articles) ---
