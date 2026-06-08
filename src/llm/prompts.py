@@ -760,6 +760,14 @@ Maximum coins to trade: {max_coins}
             "- High volatility: reduce position size and widen stops.\n"
             "- Low volatility: you may tighten stops but beware of false breakouts.\n"
         )
+    if fear_greed_index:
+        prompt += (
+            f"\nCrypto Fear & Greed Index: {fear_greed_index['value']} "
+            f"({fear_greed_index['classification']})\n"
+            "This index reflects overall market sentiment (0 = Extreme Fear, 100 = Extreme Greed). "
+            "Use it to gauge the general mood: extreme fear may present buying opportunities, "
+            "extreme greed may signal a market top. Adjust your coin selection and risk parameters accordingly.\n"
+        )
 
     # --- Volatility, order book imbalance, and position P&L context ---
     if atr is not None:
