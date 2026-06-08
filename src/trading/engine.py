@@ -208,15 +208,9 @@ class TradingEngine:
                     available_pairs = await asyncio.to_thread(
                         get_available_pairs, self.exchange, self.base_currency
                     )
-                    tickers = await asyncio.to_thread(get_tickers, self.exchange, available_pairs[:50])
-                    sorted_by_vol = sorted(
-                        available_pairs[:50],
-                        key=lambda s: tickers.get(s, {}).get("quoteVolume", 0) or 0,
-                        reverse=True,
-                    )[:50]
-                    symbols_to_refresh.update(sorted_by_vol)
+                    symbols_to_refresh.update(available_pairs)
                 except Exception as e:
-                    logger.warning(f"Could not determine top-volume coins for news refresh: {e}")
+                    logger.warning(f"Could not get available pairs for news refresh: {e}")
 
                 for sym in symbols_to_refresh:
                     try:
@@ -226,6 +220,7 @@ class TradingEngine:
                             await asyncio.to_thread(store_news_articles, base_coin, articles)
                     except Exception as e:
                         logger.debug(f"News refresh failed for {sym}: {e}")
+                    await asyncio.sleep(0.2)
 
                 logger.debug(f"News cache refreshed for {len(symbols_to_refresh)} symbols in {time.time() - cycle_start:.2f}s")
             except Exception as e:

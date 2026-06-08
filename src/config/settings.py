@@ -94,7 +94,7 @@ class Settings(BaseSettings):
 
     # News
     NEWS_ENABLED: bool = False
-    NEWS_UPDATE_INTERVAL_MINUTES: int = 15
+    NEWS_UPDATE_INTERVAL_MINUTES: int = 60
 
     NEWS_API_KEY: Optional[str] = None       # for NewsAPI.org
     TWITTER_BEARER_TOKEN: Optional[str] = None
