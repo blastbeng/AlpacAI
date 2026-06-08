@@ -137,6 +137,10 @@ def validate_signal(
                 if min_depth is not None:
                     if not isinstance(min_depth, (int, float)) or min_depth <= 0:
                         return Signal(action="HOLD", confidence=0.0, reasoning=f"Invalid min_depth in level {i}")
+                max_time = level.get("max_time_seconds")
+                if max_time is not None:
+                    if not isinstance(max_time, (int, float)) or max_time <= 0:
+                        return Signal(action="HOLD", confidence=0.0, reasoning=f"Invalid max_time_seconds in level {i}")
                 if lvl_pct <= prev_pct:
                     return Signal(action="HOLD", confidence=0.0, reasoning=f"Levels must be in increasing take_profit_pct order")
                 if lvl_pct >= tp:
