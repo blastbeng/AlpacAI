@@ -397,6 +397,8 @@ You may also include the following optional parameters to fine-tune risk managem
 - "max_spread_pct": an optional positive number (e.g., 0.5 for 0.5%). If set, the bot will skip the trade if the current bid‑ask spread (as a percentage of mid price) exceeds this value. Use this to avoid illiquid coins.
 - "min_depth_at_take_profit": an optional positive number (in base currency, e.g., 0.5 for 0.5 BTC). If set, the bot will check the cumulative ask volume from the current mid price up to the take‑profit price. If that volume is less than this value, the trade will be skipped because the take‑profit may not fill without moving the price. Use this to ensure your scalp targets are reachable.
 - "min_confidence": an optional decimal between 0.0 and 1.0 (e.g., 0.6). If set, the bot will skip the trade if your confidence is below this threshold. Use this to enforce a minimum conviction level.
+
+You will also receive a summary of the most recent individual trades (last 20). Use this to gauge very short‑term momentum and whether the market is active enough for scalping. A high number of small trades with balanced buy/sell pressure and a tight price range suggests a liquid market suitable for capturing tiny percentages.
 - "news_sentiment_exit_threshold": an optional float between -1.0 and 1.0 (e.g., -0.5). If set, the bot will monitor the aggregate news sentiment for this coin. If the compound score drops below this threshold while the position is open, the position will be closed immediately. Use this to exit on strongly negative news.
 - "strategy_interval_seconds": an optional positive integer (e.g., 60, 120, 300). If set, the bot will re‑evaluate the strategy for this coin every N seconds instead of the default interval. Use shorter intervals (60‑120s) for scalping very small percentages, and longer intervals (300‑600s) for swing trades. If omitted, the global default applies.
 
@@ -645,6 +647,7 @@ def build_strategy_prompt(
     cycle_spent: Optional[float] = None,
     remaining_balance: Optional[float] = None,
     market_regime: Optional[str] = None,
+    recent_trades_data: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -767,6 +770,24 @@ Maximum coins to trade: {max_coins}
             "Use this depth profile to set take‑profit levels that are likely to be filled. "
             "If the ask volume at a certain distance is thin, a small take‑profit may be filled quickly. "
             "If it's thick, you may need a larger move or a smaller position.\n"
+        )
+    if recent_trades_data:
+        # Summarise last 20 trades: count buys vs sells, average size, price range
+        buys = [t for t in recent_trades_data if t.get('side') == 'buy']
+        sells = [t for t in recent_trades_data if t.get('side') == 'sell']
+        avg_buy_size = sum(t['amount'] for t in buys) / len(buys) if buys else 0
+        avg_sell_size = sum(t['amount'] for t in sells) / len(sells) if sells else 0
+        prices = [t['price'] for t in recent_trades_data]
+        price_range = (min(prices), max(prices)) if prices else (0, 0)
+        prompt += (
+            f"\nRecent trade activity (last {len(recent_trades_data)} trades):\n"
+            f"  Buys: {len(buys)}, avg size: {avg_buy_size:.4f}\n"
+            f"  Sells: {len(sells)}, avg size: {avg_sell_size:.4f}\n"
+            f"  Price range: {price_range[0]:.4f} - {price_range[1]:.4f}\n"
+        )
+        prompt += (
+            "Use this to assess micro‑momentum and liquidity. "
+            "A high frequency of small trades with tight spreads is ideal for scalping.\n"
         )
     if fee_rate is not None:
         prompt += f"Taker fee rate for this symbol: {fee_rate*100:.2f}%\n"

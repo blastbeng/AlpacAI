@@ -1130,6 +1130,14 @@ class TradingEngine:
         try:
             ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
             order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
+            # Fetch recent trades for micro-momentum and liquidity assessment
+            recent_trades_raw = []
+            try:
+                recent_trades_raw = await asyncio.to_thread(
+                    self.exchange.fetch_trades, symbol, limit=20
+                )
+            except Exception as e:
+                logger.debug(f"Could not fetch recent trades for {symbol}: {e}")
             balance = await asyncio.to_thread(self.trader.fetch_balance)
             base_balance = balance.get(self.base_currency, 0.0)
             if base_balance <= 0 or self.effective_max_coins == 0:
@@ -1437,6 +1445,7 @@ class TradingEngine:
                 cycle_spent=self._cycle_spent,
                 remaining_balance=remaining,
                 market_regime=market_regime,
+                recent_trades_data=recent_trades_raw,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
