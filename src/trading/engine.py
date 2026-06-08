@@ -1696,6 +1696,14 @@ class TradingEngine:
                         vwap_multi_tf[tf] = tf_vwap
             vwap = vwap_multi_tf.get(assigned_tf) if assigned_tf else None
 
+            # Compute ATR for each timeframe (volatility term structure)
+            atr_multi_tf: Dict[str, float] = {}
+            for tf in settings.OHLCV_TIMEFRAMES:
+                if tf in multi_tf_raw_candles:
+                    tf_atr = compute_atr(multi_tf_raw_candles[tf])
+                    if tf_atr > 0:
+                        atr_multi_tf[tf] = tf_atr
+
             # --- Market regime classification ---
             market_regime = "unknown"
             if adx is not None and atr is not None and atr > 0:
@@ -1942,6 +1950,7 @@ class TradingEngine:
                 ohlcv_data=ohlcv_data,
                 assigned_timeframe=assigned_tf,
                 atr=atr,
+                atr_multi_tf=atr_multi_tf,
                 rsi=rsi,
                 macd=macd,
                 macd_signal=macd_signal,
