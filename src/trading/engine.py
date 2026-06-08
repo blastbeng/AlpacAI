@@ -1957,6 +1957,15 @@ class TradingEngine:
                         lvl_pct = level["take_profit_pct"]
                         lvl_frac = level["fraction"]
                         entry_price = pos["price"]
+                        # Time‑based cancellation
+                        max_time = level.get("max_time_seconds")
+                        if max_time is not None:
+                            entry_ts = pos.get("timestamp", 0) / 1000.0
+                            if time.time() - entry_ts > max_time:
+                                logger.info(f"Partial TP level {i} for {symbol} expired (max {max_time}s). Cancelling.")
+                                triggered.append(i)
+                                pos["partial_tp_levels_triggered"] = triggered
+                                continue
                         if current_price >= entry_price * (1 + lvl_pct):
                             # Check minimum depth if specified
                             min_depth = level.get("min_depth")
