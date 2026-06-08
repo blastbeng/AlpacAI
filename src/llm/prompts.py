@@ -433,6 +433,7 @@ def build_coin_selection_prompt(
     coin_spreads: Optional[Dict[str, float]] = None,
     coin_depths: Optional[Dict[str, float]] = None,
     historical_ohlcv_summary: Optional[Dict[str, Dict[str, Any]]] = None,
+    correlation_matrix: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
@@ -540,6 +541,18 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
         prompt += "Prefer coins with spread < 0.2% and high depth for scalping very small percentages.\n"
     if ohlcv_summary:
         prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
+    if correlation_matrix:
+        # Trim to only include pairs that appear in the candidate list
+        trimmed = {}
+        for sym_a, row in correlation_matrix.items():
+            trimmed[sym_a] = {sym_b: v for sym_b, v in row.items()}
+        prompt += (
+            "\nPairwise correlation matrix (Pearson correlation of daily returns, range -1 to +1):\n"
+            f"{json.dumps(trimmed, indent=2)}\n"
+            "Use this to diversify your selection. Coins with correlation > 0.7 move very similarly – "
+            "avoid selecting too many highly correlated coins, as they concentrate risk. "
+            "Prefer coins with low or negative correlation to your existing selections to spread risk.\n"
+        )
     if historical_ohlcv_summary:
         prompt += (
             "\nHistorical OHLCV summary from database (up to 30 days, price change %, high, low, volume, candle count):\n"

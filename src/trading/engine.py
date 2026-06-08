@@ -1148,6 +1148,48 @@ class TradingEngine:
         # Recompute per-coin budget with the effective max
         per_coin_budget = base_balance / self.effective_max_coins
 
+        # Compute pairwise correlation matrix from OHLCV close prices
+        correlation_matrix: Dict[str, Dict[str, float]] = {}
+        if ohlcv_data and settings.OHLCV_TIMEFRAMES:
+            primary_tf = settings.OHLCV_TIMEFRAMES[0]
+            close_series: Dict[str, List[float]] = {}
+            for sym in sorted_by_vol:
+                if sym in ohlcv_data and primary_tf in ohlcv_data[sym]:
+                    candles = ohlcv_data[sym][primary_tf]
+                    if len(candles) >= 12:
+                        close_series[sym] = [c[4] for c in candles]
+            # Compute percentage returns
+            returns_series: Dict[str, List[float]] = {}
+            for sym, closes in close_series.items():
+                returns = [(closes[i] - closes[i - 1]) / closes[i - 1]
+                           for i in range(1, len(closes)) if closes[i - 1] != 0]
+                if len(returns) >= 10:
+                    returns_series[sym] = returns
+            # Pairwise Pearson correlation
+            corr_symbols = list(returns_series.keys())
+            for sym_a in corr_symbols:
+                correlation_matrix[sym_a] = {}
+                for sym_b in corr_symbols:
+                    if sym_a == sym_b:
+                        correlation_matrix[sym_a][sym_b] = 1.0
+                    elif sym_b in correlation_matrix and sym_a in correlation_matrix[sym_b]:
+                        correlation_matrix[sym_a][sym_b] = correlation_matrix[sym_b][sym_a]
+                    else:
+                        ret_a = returns_series[sym_a]
+                        ret_b = returns_series[sym_b]
+                        min_len = min(len(ret_a), len(ret_b))
+                        if min_len < 2:
+                            continue
+                        a = ret_a[-min_len:]
+                        b = ret_b[-min_len:]
+                        mean_a = sum(a) / min_len
+                        mean_b = sum(b) / min_len
+                        cov = sum((a[k] - mean_a) * (b[k] - mean_b) for k in range(min_len)) / min_len
+                        std_a = (sum((x - mean_a) ** 2 for x in a) / min_len) ** 0.5
+                        std_b = (sum((x - mean_b) ** 2 for x in b) / min_len) ** 0.5
+                        if std_a > 0 and std_b > 0:
+                            correlation_matrix[sym_a][sym_b] = round(cov / (std_a * std_b), 3)
+
         perf = self._compute_performance_metrics()
         prompt = build_coin_selection_prompt(
             available_pairs=sample_pairs,
@@ -1168,6 +1210,7 @@ class TradingEngine:
             coin_spreads=coin_spreads,
             coin_depths=coin_depths,
             historical_ohlcv_summary=historical_ohlcv_summary,
+            correlation_matrix=correlation_matrix,
         )
         try:
             response = await asyncio.wait_for(
