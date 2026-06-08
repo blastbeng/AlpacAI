@@ -177,6 +177,12 @@ def validate_signal(
             msp = params["max_slippage_pct"]
             if not isinstance(msp, (int, float)) or msp <= 0:
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid max_slippage_pct")
+        if "max_unrealized_loss_pct" in params:
+            mul = params["max_unrealized_loss_pct"]
+            if not isinstance(mul, (int, float)) or not (0 < mul < 1.0):
+                return Signal(action="HOLD", confidence=0.0, reasoning="Invalid max_unrealized_loss_pct")
+            if sl is not None and mul >= sl:
+                return Signal(action="HOLD", confidence=0.0, reasoning="max_unrealized_loss_pct must be less than stop_loss_pct")
         if "min_confidence" in params:
             mc = params["min_confidence"]
             if not isinstance(mc, (int, float)) or not (0.0 <= mc <= 1.0):

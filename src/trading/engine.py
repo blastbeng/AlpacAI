@@ -384,6 +384,8 @@ class TradingEngine:
                     pos["cooldown_after_loss_seconds"] = old["cooldown_after_loss_seconds"]
                 if "news_sentiment_exit_threshold" in old:
                     pos["news_sentiment_exit_threshold"] = old["news_sentiment_exit_threshold"]
+                if "max_unrealized_loss_pct" in old:
+                    pos["max_unrealized_loss_pct"] = old["max_unrealized_loss_pct"]
                 if "timeframe" in old:
                     pos["timeframe"] = old["timeframe"]
         # Re-apply force_close for positions still missing risk parameters
@@ -2151,6 +2153,23 @@ class TradingEngine:
                     except Exception as e:
                         logger.debug(f"News sentiment check failed for {symbol}: {e}")
 
+                # --- Soft stop: max unrealized loss ---
+                max_ul_pct = pos.get("max_unrealized_loss_pct")
+                if max_ul_pct is not None and max_ul_pct > 0:
+                    entry_price = pos["price"]
+                    if current_price <= entry_price * (1 - max_ul_pct):
+                        logger.info(f"Max unrealized loss reached for {symbol} ({max_ul_pct:.2%}). Closing position.")
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                f"📉 Soft stop triggered for {symbol} at {current_price:.4f} (max loss {max_ul_pct:.2%})"
+                            )
+                        await self._execute_signal(
+                            symbol,
+                            Signal(action="SELL", confidence=1.0, reasoning="Max unrealized loss"),
+                            exit_reason="max_unrealized_loss"
+                        )
+                        continue
+
                 # Time‑based exit (LLM‑defined max hold time)
                 max_hold = pos.get("max_hold_time_seconds")
                 if max_hold is not None and max_hold > 0:
@@ -2359,6 +2378,7 @@ class TradingEngine:
                         self.positions[symbol]["partial_tp_triggered"] = False
                     self.positions[symbol]["cooldown_after_loss_seconds"] = params["cooldown_after_loss_seconds"]
                     self.positions[symbol]["news_sentiment_exit_threshold"] = params.get("news_sentiment_exit_threshold")
+                    self.positions[symbol]["max_unrealized_loss_pct"] = params.get("max_unrealized_loss_pct")
                     custom_interval = params.get("strategy_interval_seconds")
                     if custom_interval is not None:
                         self._strategy_intervals[symbol] = custom_interval
@@ -2393,6 +2413,7 @@ class TradingEngine:
                         "partial_tp_triggered": False if not params.get("partial_take_profit_levels") else None,
                         "cooldown_after_loss_seconds": params["cooldown_after_loss_seconds"],
                         "news_sentiment_exit_threshold": params.get("news_sentiment_exit_threshold"),
+                        "max_unrealized_loss_pct": params.get("max_unrealized_loss_pct"),
                         "timeframe": timeframe,
                         "indicator_config": signal.indicator_config,
                     }
