@@ -675,6 +675,7 @@ def build_coin_selection_prompt(
     btc_dominance: Optional[float] = None,
     total_market_cap: Optional[Dict[str, Any]] = None,
     altcoin_season: Optional[Dict[str, Any]] = None,
+    top_opportunities: Optional[List[Dict[str, Any]]] = None,
     trading_paused: Optional[bool] = None,
 ) -> str:
     """Build a prompt to ask the LLM which coins to trade."""
@@ -759,19 +760,23 @@ Return a JSON object with two fields:
 You may optionally include "coin_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the coin list.
 
 Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "ETH/USDT", "timeframe": "15m"}}], "max_coins": 2, "coin_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
+    # --- Enhanced pause/resume guidance ---
     if trading_paused:
         prompt += (
-            "\n**Trading is currently PAUSED.** "
-            "If market conditions have improved (e.g., positive sentiment, strong momentum, low risk), "
-            "you may resume trading by setting `\"pause_trading\": false` in your response. "
-            "Only do this if you see clear opportunities; otherwise leave it omitted to stay paused. "
+            "\n**Trading is currently PAUSED.**\n"
+            "You may resume trading by setting `\"pause_trading\": false` if you see clear profit opportunities.\n"
+            "Do NOT resume just because market conditions have improved slightly; only resume if you identify specific "
+            "coins with strong setups (high scalping scores, positive sentiment, solid technicals) that are likely to be profitable.\n"
             "If you keep trading paused, include a `\"pause_reason\"` field explaining why.\n"
         )
     else:
         prompt += (
-            "\n**Trading is currently ACTIVE.** "
-            "You may pause trading by setting `\"pause_trading\": true` if conditions warrant "
-            "(e.g., high losses, poor market breadth, extreme fear).\n"
+            "\n**Trading is currently ACTIVE.**\n"
+            "You may pause trading by setting `\"pause_trading\": true` if conditions warrant.\n"
+            "However, do NOT pause solely because of a bad market index (e.g., high fear, low breadth). "
+            "First, check the **Top Profit Opportunities** section below. If there are coins with high scalping scores (>0.7), "
+            "strong positive sentiment, and clear technical signals, you may still trade them profitably even in a down market.\n"
+            "Only pause if NO such opportunities exist, or if the account is in significant drawdown with no high‑confidence setups.\n"
         )
     if coin_scores:
         prompt += "\nScalping suitability scores (0-1, higher = better for quick small profits):\n"
@@ -781,6 +786,22 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
         prompt += (
             "Prioritise coins with higher scores, but use your own judgement. "
             "The score combines volume, volatility, spread, and momentum.\n"
+        )
+    # --- Top profit opportunities summary ---
+    if top_opportunities:
+        prompt += "\n**Top Profit Opportunities** (best candidates for immediate trades):\n"
+        for opp in top_opportunities:
+            sent_str = ""
+            if opp.get("sentiment") is not None:
+                sent_str = f", sentiment={opp['sentiment']:.2f}"
+            prompt += (
+                f"  {opp['symbol']}: score={opp['score']:.3f}, "
+                f"change_24h={opp['change_24h']}%{sent_str}\n"
+            )
+        prompt += (
+            "These are the coins with the highest scalping suitability scores. "
+            "Even if the overall market looks bad, one or more of these may still offer a profitable scalp. "
+            "Use this list to decide whether to pause or to trade a reduced number of coins.\n"
         )
     if coin_spreads or coin_depths:
         prompt += "\nOrder book metrics for top coins (lower spread & higher depth = better for scalping):\n"
@@ -977,6 +998,24 @@ Use this historical data to select coins that have been profitable in the past, 
         "max_hold_time_seconds, cooldown_after_loss_seconds, and all optional parameters. Make sure they are appropriate for "
         "the current market conditions, your confidence, and the account's risk profile.\n"
     )
+    # --- Account P&L context ---
+    if performance:
+        daily_pnl = performance.get("equity_curve", {}).get("daily_pnl", 0.0)
+        total_pnl = performance.get("equity_curve", {}).get("total_pnl", 0.0)
+        prompt += (
+            f"\n**Account P&L**: Today's realized P&L = {daily_pnl:.4f} {base_currency}, "
+            f"Total realized P&L = {total_pnl:.4f} {base_currency}.\n"
+        )
+        if total_pnl < 0:
+            prompt += (
+                "Your account is currently in a loss. Be more conservative: prefer to pause unless you find "
+                "exceptional opportunities. If you do trade, reduce position sizes and tighten stops.\n"
+            )
+        else:
+            prompt += (
+                "Your account is in profit. You may take calculated risks, but do not be reckless. "
+                "Only trade if you see clear setups.\n"
+            )
     return prompt
 
 def build_strategy_prompt(
