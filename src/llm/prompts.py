@@ -780,13 +780,14 @@ Select between 0 and {max_coins} coins to trade. If market conditions are extrem
 
 Each symbol can only appear once in your selection. Choose the single best timeframe for each coin based on the multi-timeframe OHLCV data.
 
-Return a JSON object with two fields:
+Return a JSON object with the following fields:
 - "coins": a JSON array of objects, each with "symbol" and "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h").
 - "max_coins": an integer between 0 and {max_coins} indicating how many coins you actually want to trade. Set to 0 to pause trading. This must equal the length of the "coins" array.
+- "reasoning": a short string (max 200 characters) explaining why you selected these specific coins and timeframes. This will be shown to the user, so make it informative.
 
 You may optionally include "coin_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the coin list.
 
-Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "ETH/USDT", "timeframe": "15m"}}], "max_coins": 2, "coin_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
+Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "ETH/USDT", "timeframe": "15m"}}], "max_coins": 2, "reasoning": "BTC shows strong uptrend on 1h with high volume; ETH has bullish MACD crossover on 15m.", "coin_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
     # --- Enhanced pause/resume guidance ---
     if trading_paused:
         prompt += (
