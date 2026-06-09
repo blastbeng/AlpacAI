@@ -963,7 +963,8 @@ class TradingEngine:
                     for coin_entry in self.current_coins:
                         symbol = coin_entry["symbol"]
                         if symbol in self.positions:
-                            interval = self._strategy_intervals.get(symbol, STRATEGY_INTERVAL)
+                            default_interval = self._timeframe_to_seconds(coin_entry["timeframe"])
+                            interval = self._strategy_intervals.get(symbol, default_interval)
                             last_eval = self._last_strategy_eval.get(symbol, 0)
                             next_times.append(last_eval + interval)
                     if next_times:
