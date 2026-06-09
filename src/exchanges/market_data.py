@@ -16,13 +16,22 @@ def get_available_pairs(exchange: ccxt.Exchange, base_currency: str) -> List[str
 def get_tickers(exchange: ccxt.Exchange, symbols: Optional[List[str]] = None) -> Dict[str, Any]:
     """Fetch tickers for given symbols. If symbols is None, fetch all.
 
-    For KuCoin and other exchanges that may 404 on bulk fetch_tickers,
-    falls back to fetching each ticker individually.
+    For KuCoin, always fetch individually to avoid 404 on bulk endpoint.
+    For other exchanges, try bulk first and fall back to individual on failure.
     """
     params = {}
     if exchange.id == 'kucoin':
         params['type'] = 'spot'
     if symbols:
+        # KuCoin workaround: skip bulk fetch_tickers which 404s
+        if exchange.id == 'kucoin':
+            tickers = {}
+            for sym in symbols:
+                try:
+                    tickers[sym] = exchange.fetch_ticker(sym, params=params)
+                except Exception as e:
+                    logger.warning("Failed to fetch ticker for %s: %s", sym, e)
+            return tickers
         try:
             return exchange.fetch_tickers(symbols, params=params)
         except Exception as e:
