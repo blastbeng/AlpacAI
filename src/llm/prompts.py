@@ -1057,6 +1057,7 @@ def build_strategy_prompt(
     estimated_slippage_pct: Optional[float] = None,
     atr_percentile: Optional[float] = None,
     market_impact_score: Optional[float] = None,
+    trading_paused: bool = False,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     prompt = f"""Symbol: {symbol}
@@ -1626,7 +1627,15 @@ You must decide whether to actually execute this trade right now. Output a boole
 - Set `"execute": false` if you believe the trade should be skipped – for example, if the risk/reward is insufficient, the market is too choppy, or there is no clear edge. The engine will honour this and not place the trade.
 The `action`, `confidence`, and all other fields must still be provided as before, but the trade will only be executed when `execute` is true.
 
-Return a JSON object as specified."""
+Return a JSON object as specified.
+"""
+    if trading_paused:
+        prompt += (
+            "\n**Trading is currently PAUSED.** You may ONLY output SELL or HOLD actions. "
+            "Do NOT output BUY under any circumstances. "
+            "If you hold this coin, decide whether to continue holding (HOLD) or exit (SELL) "
+            "based on current market conditions, risk parameters, and profit/loss status.\n"
+        )
     # Add OHLCV summary if available
     if ohlcv_data:
         ohlcv_summary = {}

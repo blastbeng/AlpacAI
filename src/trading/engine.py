@@ -894,8 +894,33 @@ class TradingEngine:
 
                 paused = await asyncio.to_thread(self.redis.get, "trading:paused")
                 if paused:
-                    logger.info("Trading is paused. Skipping cycle.")
-                    await asyncio.sleep(STRATEGY_INTERVAL)
+                    logger.info("Trading is paused. Only managing open positions.")
+                    await self._reconcile_positions()
+                    now = time.time()
+                    for coin_entry in self.current_coins:
+                        symbol = coin_entry["symbol"]
+                        if symbol in self.positions:
+                            interval = self._strategy_intervals.get(symbol, STRATEGY_INTERVAL)
+                            last_eval = self._last_strategy_eval.get(symbol, 0)
+                            if now - last_eval >= interval:
+                                await self._process_coin(coin_entry, trading_paused=True)
+                                self._last_strategy_eval[symbol] = now
+                    await self._check_risk_management()
+                    await self._save_state()
+                    # Sleep until next evaluation for any position coin
+                    next_times = []
+                    for coin_entry in self.current_coins:
+                        symbol = coin_entry["symbol"]
+                        if symbol in self.positions:
+                            interval = self._strategy_intervals.get(symbol, STRATEGY_INTERVAL)
+                            last_eval = self._last_strategy_eval.get(symbol, 0)
+                            next_times.append(last_eval + interval)
+                    if next_times:
+                        earliest = min(next_times)
+                        sleep_seconds = max(1.0, earliest - now)
+                    else:
+                        sleep_seconds = STRATEGY_INTERVAL
+                    await asyncio.sleep(sleep_seconds)
                     continue
 
                 # Periodic state debug log
@@ -1572,7 +1597,7 @@ class TradingEngine:
 
         await asyncio.to_thread(self.redis.set, last_key, now)
 
-    async def _process_coin(self, coin_entry: Dict[str, str]):
+    async def _process_coin(self, coin_entry: Dict[str, str], trading_paused: bool = False):
         """Fetch market data, get LLM strategy, validate, and execute."""
         symbol = coin_entry["symbol"]
         assigned_tf = coin_entry["timeframe"]
@@ -1599,6 +1624,11 @@ class TradingEngine:
                             }
                         )
                     return
+
+        # If trading is paused and we have no open position, skip entirely
+        if trading_paused and symbol not in self.positions:
+            logger.debug(f"Skipping {symbol}: trading paused and no open position.")
+            return
 
         try:
             ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
@@ -2228,6 +2258,7 @@ class TradingEngine:
                 estimated_slippage_pct=estimated_slippage_pct,
                 atr_percentile=atr_percentile,
                 market_impact_score=market_impact_score,
+                trading_paused=trading_paused,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             try:
@@ -2560,7 +2591,15 @@ class TradingEngine:
                 return
 
             if validated.action != "HOLD":
-                await self._execute_signal(symbol, validated, timeframe=assigned_tf, atr=atr, spread_pct=spread_pct)
+                if trading_paused and validated.action == "BUY":
+                    logger.info(f"Ignoring BUY signal for {symbol}: trading is paused.")
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"⏸️ Ignoring BUY {symbol}: trading paused.",
+                            summary={"symbol": symbol, "action": "SKIP", "reason": "Trading paused"}
+                        )
+                else:
+                    await self._execute_signal(symbol, validated, timeframe=assigned_tf, atr=atr, spread_pct=spread_pct)
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}", exc_info=True)
             if self.notifier:
@@ -3169,6 +3208,11 @@ class TradingEngine:
         balance = await asyncio.to_thread(self.trader.fetch_balance)
 
         if signal.action == "BUY":
+            # Safety: never buy when trading is paused
+            paused = await asyncio.to_thread(self.redis.get, "trading:paused")
+            if paused:
+                logger.info(f"Ignoring BUY {symbol}: trading is paused (safety check).")
+                return
             # Extract known parameters from the LLM's strategy_params (if any)
             params = signal.strategy_params or {}
 
