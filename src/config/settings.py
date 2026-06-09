@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     # Trading mode
     TRADING_MODE: str = "paper"   # "paper" or "live"
 
+    # Risk management check interval (seconds) – stop-loss/take-profit checks
+    RISK_CHECK_INTERVAL_SECONDS: int = 15
+
     # Base currency
     BASE_CURRENCY: str = "USDT"
 

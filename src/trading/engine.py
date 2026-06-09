@@ -294,6 +294,17 @@ class TradingEngine:
         except Exception as e:
             logger.debug(f"News fetch/store failed for {symbol}: {e}")
 
+    async def _risk_management_loop(self):
+        """Periodically check stop-loss, take-profit, and other risk management rules at a fast interval."""
+        # Initial delay to let the engine settle
+        await asyncio.sleep(10)
+        while True:
+            try:
+                await self._save_state()
+            except Exception as e:
+                logger.error(f"Risk management loop error: {e}", exc_info=True)
+            await asyncio.sleep(settings.RISK_CHECK_INTERVAL_SECONDS)
+
     async def _refresh_current_coins_news_fast(self):
         """Fast news refresh loop – only for the coins currently tracked by the engine."""
         if not settings.NEWS_ENABLED:
@@ -939,7 +950,6 @@ class TradingEngine:
                             if now - last_eval >= interval:
                                 await self._process_coin(coin_entry, trading_paused=True)
                                 self._last_strategy_eval[symbol] = now
-                    await self._check_risk_management()
                     await self._save_state()
                     # Sleep until next evaluation for any position coin
                     next_times = []
