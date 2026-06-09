@@ -538,6 +538,8 @@ You may also request to pause or resume trading by including the optional boolea
 **If you set `pause_trading`, you MUST also include a `"pause_reason"` field (a short string) explaining why you are pausing or resuming trading.** This reason will be shown to the user.
 The bot will honour your pause/resume decision at the next coin evaluation cycle. Use this to protect capital during bad markets and to re‑enter when conditions improve.
 
+If trading is currently paused and you decide to keep it paused (by omitting `pause_trading` or setting it to true), you should also include a `pause_reason` explaining why you are maintaining the pause.
+
 You may also set a global coin re-evaluation interval by including the optional field `"coin_revaluation_interval_seconds"` in your coin selection JSON. This controls how often the bot re-evaluates the entire coin list. Set a shorter interval (e.g., 120-300s) for fast scalping, or a longer interval (e.g., 900-1800s) for slower markets. Minimum 60 seconds. If omitted, the previous value (or default 900s) is kept.
 
 You will receive recent news headlines with sentiment scores for each coin. **Sentiment is a primary factor in coin selection.** Use this information to gauge market sentiment and potential catalysts. Prefer coins with strong positive sentiment; avoid coins with negative sentiment unless technicals are exceptionally bullish.
@@ -762,7 +764,8 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h"}}, {{"symbol": "E
             "\n**Trading is currently PAUSED.** "
             "If market conditions have improved (e.g., positive sentiment, strong momentum, low risk), "
             "you may resume trading by setting `\"pause_trading\": false` in your response. "
-            "Only do this if you see clear opportunities; otherwise leave it omitted to stay paused.\n"
+            "Only do this if you see clear opportunities; otherwise leave it omitted to stay paused. "
+            "If you keep trading paused, include a `\"pause_reason\"` field explaining why.\n"
         )
     else:
         prompt += (

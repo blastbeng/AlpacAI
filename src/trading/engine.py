@@ -1531,6 +1531,20 @@ class TradingEngine:
                     else:
                         logger.warning(f"Invalid pause_trading value: {pause_trading}")
 
+                # If trading is currently paused and the LLM did not resume, notify the user with the reason (if any)
+                if trading_paused_bool and pause_trading is not False:
+                    # Only send if we didn't already send a pause notification this cycle (i.e., pause_trading was not True)
+                    if pause_trading is not True:
+                        if self.notifier:
+                            reason_text = f" – {pause_reason}" if pause_reason else ""
+                            await self.notifier.send_notification(
+                                f"⏸️ Trading remains paused by LLM decision{reason_text}",
+                                summary={
+                                    "action": "INFO",
+                                    "reason": f"LLM maintains pause: {pause_reason}" if pause_reason else "LLM maintains pause"
+                                }
+                            )
+
                 self.current_coins = deduped[: self.effective_max_coins]
 
                 # If LLM explicitly chose zero coins, respect that and don't fall back to volume-based selection
