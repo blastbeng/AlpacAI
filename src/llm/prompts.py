@@ -545,6 +545,8 @@ If trading is currently paused and you decide to keep it paused (by omitting `pa
 
 You may also set a global coin re-evaluation interval by including the optional field `"coin_revaluation_interval_seconds"` in your coin selection JSON. This controls how often the bot re-evaluates the entire coin list. Set a shorter interval (e.g., 120-300s) for fast scalping, or a longer interval (e.g., 900-1800s) for slower markets. Minimum 60 seconds. If omitted, the previous value (or default 900s) is kept.
 
+You may also include an optional `"global_risk_multiplier"` (float between 0.0 and 1.0). If set, all position sizes for the next cycle will be multiplied by this factor. Use this to reduce overall exposure when you are cautious but still see some opportunities – for example, set 0.5 to trade with half the normal size. Set 1.0 (or omit) for full exposure. This allows you to stay in the market while lowering risk, instead of pausing completely.
+
 You will receive recent news headlines with sentiment scores for each coin. **Sentiment is a primary factor in coin selection.** Use this information to gauge market sentiment and potential catalysts. Prefer coins with strong positive sentiment; avoid coins with negative sentiment unless technicals are exceptionally bullish.
 - Strong positive sentiment may justify higher confidence, larger position sizes, and longer max hold times.
 - Strong negative sentiment should make you more cautious: reduce position size, tighten stops, shorten max hold time, or avoid the coin entirely.
@@ -1728,4 +1730,24 @@ Use this data to decide whether to BUY, SELL, or HOLD. If the coin has a poor wi
             "the average unless you have a specific reason.\n"
         )
         prompt += perf_text
+        daily_pnl = equity.get("daily_pnl", 0.0)
+        total_pnl = equity.get("total_pnl", 0.0)
+        consecutive_losses = equity.get("consecutive_losses", 0)
+        if daily_pnl is not None:
+            prompt += f"Today's realized P&L: {daily_pnl:.4f} {base_currency}\n"
+        if consecutive_losses > 0:
+            prompt += f"⚠️ You have {consecutive_losses} consecutive losing trades. Consider reducing risk or skipping this trade.\n"
+        prompt += (
+            f"\n**Account P&L**: Total realized P&L = {total_pnl:.4f} {base_currency}.\n"
+        )
+        if total_pnl < 0:
+            prompt += (
+                "Your account is currently in a loss. Be more conservative: prefer to HOLD unless you find "
+                "exceptional opportunities. If you do trade, reduce position sizes and tighten stops.\n"
+            )
+        else:
+            prompt += (
+                "Your account is in profit. You may take calculated risks, but do not be reckless. "
+                "Only trade if you see clear setups.\n"
+            )
     return prompt

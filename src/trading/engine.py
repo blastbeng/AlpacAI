@@ -1590,6 +1590,17 @@ class TradingEngine:
                     else:
                         logger.warning(f"Invalid pause_duration_seconds: {pause_duration}")
 
+                # Optional: LLM can set a global risk multiplier to scale all position sizes
+                global_risk_mult = parsed.get("global_risk_multiplier")
+                if global_risk_mult is not None:
+                    if isinstance(global_risk_mult, (int, float)) and 0.0 <= global_risk_mult <= 1.0:
+                        await asyncio.to_thread(
+                            self.redis.setex, "trading:global_risk_multiplier", 3600, str(global_risk_mult)
+                        )
+                        logger.info(f"LLM set global risk multiplier: {global_risk_mult}")
+                    else:
+                        logger.warning(f"Invalid global_risk_multiplier: {global_risk_mult}")
+
                 # If trading is currently paused and the LLM did not resume, notify the user with the reason (if any)
                 if trading_paused_bool and pause_trading is not False:
                     # Only send if we didn't already send a pause notification this cycle (i.e., pause_trading was not True)
