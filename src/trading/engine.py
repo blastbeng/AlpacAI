@@ -911,6 +911,7 @@ class TradingEngine:
         asyncio.create_task(self._refresh_current_coins_news_fast())
         # Start background market data download task
         asyncio.create_task(self._download_market_data_loop())
+        asyncio.create_task(self._risk_management_loop())
         while True:
             try:
                 await self._reconcile_positions()
