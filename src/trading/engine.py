@@ -1564,19 +1564,23 @@ class TradingEngine:
                                     }
                                 )
                         else:
-                            await asyncio.to_thread(self.redis.delete, "trading:paused")
-                            await asyncio.to_thread(self.redis.delete, "trading:pause_start")
-                            await asyncio.to_thread(self.redis.delete, "trading:pause_duration")
-                            logger.info("LLM requested to resume trading.")
-                            if self.notifier:
-                                reason_text = f" – {pause_reason}" if pause_reason else ""
-                                await self.notifier.send_notification(
-                                    f"▶️ Trading resumed by LLM decision{reason_text}",
-                                    summary={
-                                        "action": "INFO",
-                                        "reason": f"LLM resume request: {pause_reason}" if pause_reason else "LLM resume request"
-                                    }
-                                )
+                            if trading_paused_bool:
+                                await asyncio.to_thread(self.redis.delete, "trading:paused")
+                                await asyncio.to_thread(self.redis.delete, "trading:pause_start")
+                                await asyncio.to_thread(self.redis.delete, "trading:pause_duration")
+                                logger.info("LLM requested to resume trading.")
+                                if self.notifier:
+                                    reason_text = f" – {pause_reason}" if pause_reason else ""
+                                    await self.notifier.send_notification(
+                                        f"▶️ Trading resumed by LLM decision{reason_text}",
+                                        summary={
+                                            "action": "INFO",
+                                            "reason": f"LLM resume request: {pause_reason}" if pause_reason else "LLM resume request"
+                                        }
+                                    )
+                            else:
+                                # Trading was already active; no need to resume, just log.
+                                logger.info("LLM confirmed trading should remain active.")
                     else:
                         logger.warning(f"Invalid pause_trading value: {pause_trading}")
 
