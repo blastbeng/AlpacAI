@@ -51,7 +51,7 @@ from src.database import load_trading_state, save_trading_state, delete_trading_
 logger = logging.getLogger(__name__)
 
 COIN_REVALUATION_INTERVAL = 900  # seconds (15 minutes)
-STRATEGY_INTERVAL = 600           # seconds (10 minutes)
+DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no coins (10 minutes)
 
 
 class TradingEngine:
@@ -386,6 +386,10 @@ class TradingEngine:
         amount = int(match.group(1))
         unit = match.group(2)
         return amount * units.get(unit, 3_600_000)
+
+    def _timeframe_to_seconds(self, timeframe: str) -> int:
+        """Convert a timeframe string (e.g., '5m', '1h') to seconds."""
+        return self._timeframe_to_ms(timeframe) // 1000
 
     async def _backfill_ohlcv(self, symbol: str, timeframe: str, start_ms: int, end_ms: int):
         """Fetch and store all missing OHLCV candles between start_ms and end_ms."""
@@ -947,7 +951,8 @@ class TradingEngine:
                     for coin_entry in self.current_coins:
                         symbol = coin_entry["symbol"]
                         if symbol in self.positions:
-                            interval = self._strategy_intervals.get(symbol, STRATEGY_INTERVAL)
+                            default_interval = self._timeframe_to_seconds(coin_entry["timeframe"])
+                            interval = self._strategy_intervals.get(symbol, default_interval)
                             last_eval = self._last_strategy_eval.get(symbol, 0)
                             if now - last_eval >= interval:
                                 await self._process_coin(coin_entry, trading_paused=True)
@@ -965,7 +970,7 @@ class TradingEngine:
                         earliest = min(next_times)
                         sleep_seconds = max(1.0, earliest - now)
                     else:
-                        sleep_seconds = STRATEGY_INTERVAL
+                        sleep_seconds = DEFAULT_STRATEGY_INTERVAL
                     await asyncio.sleep(sleep_seconds)
                     continue
 
@@ -987,7 +992,8 @@ class TradingEngine:
                 now = time.time()
                 for coin_entry in self.current_coins:
                     symbol = coin_entry["symbol"]
-                    interval = self._strategy_intervals.get(symbol, STRATEGY_INTERVAL)
+                    default_interval = self._timeframe_to_seconds(coin_entry["timeframe"])
+                    interval = self._strategy_intervals.get(symbol, default_interval)
                     last_eval = self._last_strategy_eval.get(symbol, 0)
                     if now - last_eval >= interval:
                         await self._process_coin(coin_entry)
@@ -1000,14 +1006,15 @@ class TradingEngine:
             next_times = []
             for coin_entry in self.current_coins:
                 symbol = coin_entry["symbol"]
-                interval = self._strategy_intervals.get(symbol, STRATEGY_INTERVAL)
+                default_interval = self._timeframe_to_seconds(coin_entry["timeframe"])
+                interval = self._strategy_intervals.get(symbol, default_interval)
                 last_eval = self._last_strategy_eval.get(symbol, 0)
                 next_times.append(last_eval + interval)
             if next_times:
                 earliest = min(next_times)
                 sleep_seconds = max(1.0, earliest - now)
             else:
-                sleep_seconds = STRATEGY_INTERVAL
+                sleep_seconds = DEFAULT_STRATEGY_INTERVAL
             logger.debug(f"Sleeping for {sleep_seconds:.1f}s until next evaluation.")
             await asyncio.sleep(sleep_seconds)
 
