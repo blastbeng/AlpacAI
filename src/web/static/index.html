@@ -91,6 +91,13 @@
             border: 1px solid var(--border);
         }
 
+        .status-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
         .status-dot {
             width: 8px;
             height: 8px;
@@ -267,13 +274,15 @@
                 🌙
             </button>
         </div>
-        <div class="status-badge">
-            <span class="status-dot" id="status-dot"></span>
-            <span id="status-text">Connecting...</span>
-        </div>
-        <div class="status-badge" id="trading-status-badge" style="margin-left: 12px;">
-            <span class="status-dot" id="trading-dot"></span>
-            <span id="trading-status-text">Trading: ...</span>
+        <div class="status-group">
+            <div class="status-badge">
+                <span class="status-dot" id="status-dot"></span>
+                <span id="status-text">Connecting...</span>
+            </div>
+            <div class="status-badge" id="trading-status-badge">
+                <span class="status-dot" id="trading-dot"></span>
+                <span id="trading-status-text">Trading: ...</span>
+            </div>
         </div>
         <span id="model-badge" style="background: #a371f7; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; margin-left: 8px;">...</span>
     </header>
