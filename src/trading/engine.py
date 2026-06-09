@@ -1581,6 +1581,18 @@ class TradingEngine:
                 # Optional: LLM can request to pause/resume trading
                 pause_trading = parsed.get("pause_trading")
                 pause_reason = parsed.get("pause_reason", "")
+
+                # Normalise string booleans from the LLM (e.g. "false" → False)
+                if isinstance(pause_trading, str):
+                    low = pause_trading.strip().lower()
+                    if low in ("true", "1"):
+                        pause_trading = True
+                    elif low in ("false", "0"):
+                        pause_trading = False
+                    else:
+                        logger.warning(f"Unrecognised pause_trading string: {pause_trading}")
+                        pause_trading = None
+
                 if pause_trading is not None:
                     if isinstance(pause_trading, bool):
                         if pause_trading:
