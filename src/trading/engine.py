@@ -895,7 +895,8 @@ class TradingEngine:
                 paused = await asyncio.to_thread(self.redis.get, "trading:paused")
                 if paused:
                     logger.info("Trading is paused. Only managing open positions.")
-                    await self._reconcile_positions()
+                    # Allow the LLM to re-evaluate coins – it may resume trading here
+                    await self._reevaluate_coins()
                     now = time.time()
                     for coin_entry in self.current_coins:
                         symbol = coin_entry["symbol"]
