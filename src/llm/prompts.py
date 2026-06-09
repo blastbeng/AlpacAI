@@ -518,8 +518,8 @@ Key principles:
   - In high‑volatility environments (ATR percentile > 80%), use a larger multiplier (2.5–4.0) to avoid being shaken out.
   - In low‑volatility environments (ATR percentile < 20%), you may use a tighter multiplier (1.0–1.5) but beware of sudden expansions.
   - The engine will compute the stop distance as `stop_loss_atr_multiple × ATR` and convert it to a percentage of the current price automatically.
-- You may still use a fixed percentage stop (`"stop_loss_method": "fixed"`) if you have a strong reason, but ensure the percentage is at least **1.5× the ATR%** (ATR / price) unless you are intentionally scalping a very tight range.
-- Always set a stop that gives the trade enough room to breathe while limiting risk. There is no hardcoded minimum – you decide what is appropriate.
+- **If you use a fixed percentage stop (`"stop_loss_method": "fixed"`), you MUST ensure the percentage is at least 1.5× the ATR% (ATR / current price).** A fixed stop that is smaller than the typical noise will almost certainly be hit, resulting in a loss. If the ATR% is high, a fixed 2% stop is far too tight – use ATR‑based stops instead.
+- **Always set a stop that gives the trade enough room to breathe while limiting risk.** There is no hardcoded minimum – you decide what is appropriate, but stops that are too tight are the #1 cause of losing trades.
 - Set a take-profit that you believe is achievable given the current trend, volatility, and order‑book depth. The reward:risk ratio is entirely your decision; you may accept lower ratios if the probability of success is high, or demand higher ratios in uncertain markets.
 - **CRITICAL – READ THIS TWICE:** `take_profit_pct` MUST be strictly greater than `stop_loss_pct`.  
   If you accidentally set `take_profit_pct ≤ stop_loss_pct`, the entire trade will be rejected and the bot will do nothing.  
@@ -1721,11 +1721,11 @@ The bot will NOT use any default values. If you omit any required parameter, the
 You are trading spot only (no shorting). Only output SELL if you currently hold the coin.
 
 **Execution Decision:**
-Instead of a binary execute flag, use the optional `"min_confidence"` parameter to control whether the trade is executed.
+- **There is NO separate "execute flag".** The only mechanism to control whether a trade is taken is the `"min_confidence"` parameter.
 - Set `"min_confidence"` to a value between 0.0 and 1.0 (e.g., 0.6). The bot will skip the trade if your confidence is below this threshold.
 - If you omit `"min_confidence"`, the trade will be executed regardless of confidence (as long as all other parameters are valid).
-- Use this to enforce a minimum conviction level. For example, set `"min_confidence": 0.7` to only take high‑conviction trades.
-- You may also set `"min_confidence"` to 0.0 to effectively disable the filter.
+- **IMPORTANT: Do NOT output HOLD with the reason "LLM execute flag false".** That concept no longer exists. If you are not confident enough to trade, output HOLD with a meaningful reason (e.g., "Insufficient conviction", "Unfavorable risk/reward", "No clear edge"). Use `min_confidence` to filter trades, not a separate flag.
+- You may set `"min_confidence"` to 0.0 to effectively disable the filter.
 
 Return a JSON object as specified.
 """
