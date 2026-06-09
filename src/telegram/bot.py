@@ -360,26 +360,26 @@ class TelegramBot:
             await update.message.reply_text("⚠️ Could not retrieve market status.", reply_markup=self.keyboard)
             return
 
-        msg = "<b>📈 Market Status</b>\n\n"
+        msg = "<b>🌐 Market Status</b>\n\n"
         if data.get("fear_greed"):
             fg = data["fear_greed"]
-            msg += f"<b>Fear & Greed:</b> {fg['value']} ({fg['classification']})\n"
+            msg += f"<b>😨 Fear & Greed:</b> {fg['value']} ({fg['classification']})\n"
         if data.get("market_breadth"):
             mb = data["market_breadth"]
-            msg += f"<b>Market Breadth:</b> {mb['positive_pct']}% positive ({mb['positive_count']}/{mb['total_count']})\n"
+            msg += f"<b>📊 Market Breadth:</b> {mb['positive_pct']}% positive ({mb['positive_count']}/{mb['total_count']})\n"
         if data.get("btc_dominance") is not None:
-            msg += f"<b>BTC Dominance:</b> {data['btc_dominance']:.2f}%\n"
+            msg += f"<b>₿ BTC Dominance:</b> {data['btc_dominance']:.2f}%\n"
         if data.get("global_market"):
             gm = data["global_market"]
             if gm.get("total_market_cap_usd"):
-                msg += f"<b>Total Market Cap:</b> ${gm['total_market_cap_usd'] / 1e9:.2f}B"
+                msg += f"<b>💰 Total Market Cap:</b> ${gm['total_market_cap_usd'] / 1e9:.2f}B"
                 if gm.get("market_cap_change_24h_usd") is not None:
                     change = gm["market_cap_change_24h_usd"]
                     msg += f" ({change:+.2f}%)"
                 msg += "\n"
         if data.get("altcoin_season"):
             alt = data["altcoin_season"]
-            msg += f"<b>Altcoin Season:</b> {alt['value']} ({alt['description']})\n"
+            msg += f"<b>🚀 Altcoin Season:</b> {alt['value']} ({alt['description']})\n"
         await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
 
     async def cmd_news(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
