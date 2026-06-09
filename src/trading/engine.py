@@ -932,13 +932,17 @@ class TradingEngine:
                             pause_duration = int(pause_duration_raw)
                             if time.time() - pause_start >= pause_duration:
                                 logger.info("Pause duration elapsed – auto-resuming trading.")
+                                stored_reason_raw = await asyncio.to_thread(self.redis.get, "trading:pause_reason")
+                                stored_reason = stored_reason_raw.decode() if isinstance(stored_reason_raw, bytes) else (stored_reason_raw or "")
                                 await asyncio.to_thread(self.redis.delete, "trading:paused")
                                 await asyncio.to_thread(self.redis.delete, "trading:pause_start")
                                 await asyncio.to_thread(self.redis.delete, "trading:pause_duration")
+                                await asyncio.to_thread(self.redis.delete, "trading:pause_reason")
                                 if self.notifier:
+                                    reason_text = f" (was paused: {stored_reason})" if stored_reason else ""
                                     await self.notifier.send_notification(
-                                        "▶️ Trading auto-resumed after pause duration elapsed.",
-                                        summary={"action": "INFO", "reason": "Pause duration elapsed"}
+                                        f"▶️ Trading auto-resumed after pause duration elapsed.{reason_text}",
+                                        summary={"action": "INFO", "reason": f"Pause duration elapsed{reason_text}"}
                                     )
                                 paused = False  # continue to normal processing below
                         except (ValueError, TypeError):
@@ -1575,6 +1579,8 @@ class TradingEngine:
                         if pause_trading:
                             await asyncio.to_thread(self.redis.set, "trading:paused", "1")
                             await asyncio.to_thread(self.redis.set, "trading:pause_start", str(time.time()))
+                            if pause_reason:
+                                await asyncio.to_thread(self.redis.set, "trading:pause_reason", pause_reason)
                             logger.info("LLM requested to pause trading.")
                             if self.notifier:
                                 reason_text = f" – {pause_reason}" if pause_reason else ""
@@ -1590,6 +1596,7 @@ class TradingEngine:
                                 await asyncio.to_thread(self.redis.delete, "trading:paused")
                                 await asyncio.to_thread(self.redis.delete, "trading:pause_start")
                                 await asyncio.to_thread(self.redis.delete, "trading:pause_duration")
+                                await asyncio.to_thread(self.redis.delete, "trading:pause_reason")
                                 logger.info("LLM requested to resume trading.")
                                 if self.notifier:
                                     reason_text = f" – {pause_reason}" if pause_reason else ""
@@ -1611,7 +1618,7 @@ class TradingEngine:
                 if pause_duration is not None:
                     if isinstance(pause_duration, (int, float)) and pause_duration > 0:
                         await asyncio.to_thread(
-                            self.redis.setex, "trading:pause_duration", int(pause_duration), str(int(pause_duration))
+                            self.redis.setex, "trading:pause_duration", 7 * 24 * 3600, str(int(pause_duration))
                         )
                         logger.info(f"LLM set pause duration: {pause_duration}s")
                     else:
@@ -1633,12 +1640,17 @@ class TradingEngine:
                     # Only send if we didn't already send a pause notification this cycle (i.e., pause_trading was not True)
                     if pause_trading is not True:
                         if self.notifier:
-                            reason_text = f" – {pause_reason}" if pause_reason else ""
+                            # Use the LLM-provided reason if available, otherwise fall back to the stored reason
+                            display_reason = pause_reason
+                            if not display_reason:
+                                stored_reason_raw = await asyncio.to_thread(self.redis.get, "trading:pause_reason")
+                                display_reason = stored_reason_raw.decode() if isinstance(stored_reason_raw, bytes) else (stored_reason_raw or "")
+                            reason_text = f" – {display_reason}" if display_reason else ""
                             await self.notifier.send_notification(
                                 f"⏸️ Trading remains paused by LLM decision{reason_text}",
                                 summary={
                                     "action": "INFO",
-                                    "reason": f"LLM maintains pause: {pause_reason}" if pause_reason else "LLM maintains pause"
+                                    "reason": f"LLM maintains pause: {display_reason}" if display_reason else "LLM maintains pause"
                                 }
                             )
                 # If trading is currently active and the LLM decided to keep it active, notify with reason
@@ -2842,6 +2854,34 @@ class TradingEngine:
     def get_performance_summary(self) -> Dict[str, Any]:
         """Return performance summary grouped by coin and timeframe from trade_history table."""
         return get_performance()
+
+    def get_pause_status(self) -> Dict[str, Any]:
+        """Return the current trading pause status, reason, and remaining duration."""
+        paused_raw = self.redis.get("trading:paused")
+        is_paused = paused_raw is not None and paused_raw == b"1"
+
+        reason_raw = self.redis.get("trading:pause_reason")
+        reason = reason_raw.decode() if isinstance(reason_raw, bytes) else (reason_raw or "")
+
+        remaining_seconds = None
+        if is_paused:
+            pause_start_raw = self.redis.get("trading:pause_start")
+            pause_duration_raw = self.redis.get("trading:pause_duration")
+            if pause_start_raw and pause_duration_raw:
+                try:
+                    pause_start = float(pause_start_raw)
+                    pause_duration = int(pause_duration_raw)
+                    elapsed = time.time() - pause_start
+                    remaining = pause_duration - elapsed
+                    remaining_seconds = max(0, remaining) if remaining > 0 else None
+                except (ValueError, TypeError):
+                    pass
+
+        return {
+            "is_paused": is_paused,
+            "reason": reason,
+            "remaining_seconds": remaining_seconds,
+        }
 
     def get_risk_metrics(self) -> Dict[str, Any]:
         """Return current risk/exposure metrics."""
