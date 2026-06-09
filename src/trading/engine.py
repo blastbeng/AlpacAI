@@ -50,7 +50,7 @@ from src.database import load_trading_state, save_trading_state, delete_trading_
 
 logger = logging.getLogger(__name__)
 
-COIN_REVALUATION_INTERVAL = 900  # seconds (15 minutes)
+COIN_REVALUATION_INTERVAL = 3600  # seconds (1 hour)
 DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no coins (10 minutes)
 
 
@@ -1016,6 +1016,8 @@ class TradingEngine:
                 sleep_seconds = max(1.0, earliest - now)
             else:
                 sleep_seconds = DEFAULT_STRATEGY_INTERVAL
+            # Ensure the loop wakes up at least every hour to check pause/resume
+            sleep_seconds = min(sleep_seconds, 3600)
             logger.debug(f"Sleeping for {sleep_seconds:.1f}s until next evaluation.")
             await asyncio.sleep(sleep_seconds)
 
