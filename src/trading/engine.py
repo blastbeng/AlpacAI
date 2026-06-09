@@ -1387,6 +1387,18 @@ class TradingEngine:
         }
         self._market_breadth = market_breadth
 
+        # Store market status in Redis for the web dashboard
+        market_status = {
+            "fear_greed": fear_greed,
+            "global_market": global_market,
+            "altcoin_season": altcoin_season,
+            "market_breadth": market_breadth,
+            "btc_dominance": global_market.get("btc_dominance") if global_market else None,
+            "total_market_cap": global_market,
+            "timestamp": time.time(),
+        }
+        await asyncio.to_thread(self.redis.setex, "market:status", 3600, json.dumps(market_status))
+
         # Check if trading is currently paused
         trading_paused_raw = await asyncio.to_thread(self.redis.get, "trading:paused")
         trading_paused_bool = trading_paused_raw is not None and trading_paused_raw == b"1"
