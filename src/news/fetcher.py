@@ -20,6 +20,24 @@ _sentiment_analyzer = SentimentIntensityAnalyzer()
 # Cache for RSS feed content: {url: (timestamp, feed_content)}
 _rss_cache = {}
 _rss_cache_lock = threading.Lock()
+_rss_cache_last_cleanup = 0.0
+
+
+def _cleanup_rss_cache():
+    """Remove RSS cache entries older than 10 minutes."""
+    global _rss_cache_last_cleanup
+    now = time.time()
+    # Throttle: only run cleanup once per 60 seconds
+    if now - _rss_cache_last_cleanup < 60:
+        return
+    with _rss_cache_lock:
+        expired = [
+            url for url, (ts, _) in _rss_cache.items()
+            if now - ts > 600  # 10 minutes
+        ]
+        for url in expired:
+            del _rss_cache[url]
+    _rss_cache_last_cleanup = now
 
 
 class RateLimiter:
@@ -895,6 +913,7 @@ def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
 
 def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
     """Fetch news from configured RSS feeds, filtering for symbol mentions."""
+    _cleanup_rss_cache()
     articles = []
     for feed_url in settings.RSS_FEEDS:
         try:
