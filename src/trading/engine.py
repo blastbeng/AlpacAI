@@ -3142,6 +3142,67 @@ class TradingEngine:
                                 pos["partial_tp_levels_triggered"] = triggered
                                 continue
                         if current_price >= entry_price * (1 + lvl_pct):
+                            # --- Depth check with optional timeout ---
+                            min_depth = level.get("min_depth")
+                            if min_depth is not None and min_depth > 0:
+                                try:
+                                    ob = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
+                                except Exception as e:
+                                    logger.warning(f"Could not fetch order book for depth check on {symbol}: {e}")
+                                    ob = None
+                                if ob:
+                                    asks = ob.get('asks', [])
+                                    tp_price = entry_price * (1 + lvl_pct)
+                                    cum_vol = 0.0
+                                    for ask in asks:
+                                        if ask[0] <= tp_price:
+                                            cum_vol += ask[1]
+                                        else:
+                                            break
+                                    if cum_vol < min_depth:
+                                        depth_timeout = level.get("depth_timeout_seconds")
+                                        if depth_timeout is not None and depth_timeout > 0:
+                                            now_ts = time.time()
+                                            wait_start = pos.setdefault("partial_tp_depth_wait_start", {}).get(i)
+                                            if wait_start is None:
+                                                pos["partial_tp_depth_wait_start"][i] = now_ts
+                                                logger.info(
+                                                    f"Partial TP level {i} for {symbol}: depth {cum_vol:.4f} < {min_depth:.4f}, "
+                                                    f"waiting up to {depth_timeout}s"
+                                                )
+                                                continue
+                                            else:
+                                                elapsed = now_ts - wait_start
+                                                if elapsed < depth_timeout:
+                                                    logger.debug(
+                                                        f"Partial TP level {i} for {symbol}: still waiting for depth "
+                                                        f"({elapsed:.1f}s / {depth_timeout}s)"
+                                                    )
+                                                    continue
+                                                else:
+                                                    logger.info(
+                                                        f"Partial TP level {i} for {symbol}: depth timeout expired "
+                                                        f"({depth_timeout}s). Cancelling level."
+                                                    )
+                                                    triggered.append(i)
+                                                    pos["partial_tp_levels_triggered"] = triggered
+                                                    if "partial_tp_depth_wait_start" in pos:
+                                                        pos["partial_tp_depth_wait_start"].pop(i, None)
+                                                    continue
+                                        else:
+                                            logger.info(
+                                                f"Partial TP level {i} for {symbol}: depth {cum_vol:.4f} < {min_depth:.4f} "
+                                                f"and no depth_timeout_seconds set. Cancelling level."
+                                            )
+                                            triggered.append(i)
+                                            pos["partial_tp_levels_triggered"] = triggered
+                                            continue
+                                else:
+                                    continue
+                            # Clear any depth wait state for this level
+                            if "partial_tp_depth_wait_start" in pos:
+                                pos["partial_tp_depth_wait_start"].pop(i, None)
+
                             sell_amount = original_amount * lvl_frac
                             # Ensure we don't sell more than current position
                             sell_amount = min(sell_amount, pos["amount"])
@@ -3239,6 +3300,10 @@ class TradingEngine:
                                 )
                             if symbol in self.positions:
                                 await self._sweep_dust(symbol)
+                        else:
+                            # Price dropped below TP level – reset depth wait timer
+                            if "partial_tp_depth_wait_start" in pos:
+                                pos["partial_tp_depth_wait_start"].pop(i, None)
                 else:
                     # Single partial TP (existing logic, unchanged)
                     partial_tp_pct = pos.get("partial_take_profit_pct")
@@ -3718,6 +3783,7 @@ class TradingEngine:
                     if partial_levels:
                         self.positions[symbol]["partial_take_profit_levels"] = partial_levels
                         self.positions[symbol]["partial_tp_levels_triggered"] = []
+                        self.positions[symbol]["partial_tp_depth_wait_start"] = {}
                         # Clear single-level fields to avoid confusion
                         self.positions[symbol]["partial_take_profit_pct"] = None
                         self.positions[symbol]["partial_take_profit_fraction"] = None
@@ -3757,6 +3823,7 @@ class TradingEngine:
                         "lock_profit_level_pct": params.get("lock_profit_level_pct"),
                         "partial_take_profit_levels": params.get("partial_take_profit_levels"),
                         "partial_tp_levels_triggered": [],
+                        "partial_tp_depth_wait_start": {},
                         "original_amount": net_base,
                         "partial_take_profit_pct": params.get("partial_take_profit_pct") if not params.get("partial_take_profit_levels") else None,
                         "partial_take_profit_fraction": params.get("partial_take_profit_fraction") if not params.get("partial_take_profit_levels") else None,
