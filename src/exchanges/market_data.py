@@ -37,6 +37,7 @@ def get_tickers(exchange: ccxt.Exchange, symbols: Optional[List[str]] = None) ->
                     tickers[sym] = exchange.fetch_ticker(sym, params=params)
                 except Exception as e:
                     logger.warning("Failed to fetch ticker for %s: %s", sym, e)
+                time.sleep(0.2)
             return tickers
         try:
             return exchange.fetch_tickers(symbols, params=params)
@@ -52,6 +53,7 @@ def get_tickers(exchange: ccxt.Exchange, symbols: Optional[List[str]] = None) ->
                     tickers[sym] = exchange.fetch_ticker(sym, params=params)
                 except Exception as inner_e:
                     logger.warning("Failed to fetch ticker for %s: %s", sym, inner_e)
+                time.sleep(0.2)
             return tickers
     else:
         try:
