@@ -14,6 +14,8 @@ class WebSocketManager:
         self.order_books: Dict[str, Dict[str, Any]] = {}
         self._order_book_tasks: Dict[str, asyncio.Task] = {}
         self._ticker_tasks: Dict[str, asyncio.Task] = {}
+        self.trades: Dict[str, List[Dict[str, Any]]] = {}
+        self._trade_tasks: Dict[str, asyncio.Task] = {}
         self._use_batch_tickers = True  # will be set to False if batch not supported
         self._running = False
         self._task: Optional[asyncio.Task] = None
@@ -33,6 +35,7 @@ class WebSocketManager:
         # Clear cached data to avoid stale prices
         self.tickers.clear()
         self.order_books.clear()
+        self.trades.clear()
         # Re-create the pro exchange
         from src.exchanges.factory import get_pro_exchange
         self.exchange = get_pro_exchange()
@@ -65,6 +68,24 @@ class WebSocketManager:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, max_backoff)
 
+    async def _watch_trades(self, symbol: str):
+        """Continuously watch trades for a single symbol."""
+        backoff = 1
+        max_backoff = 30
+        while self._running and symbol in self.symbols:
+            try:
+                trades = await self.exchange.watch_trades(symbol)
+                # Keep only the last 50 trades to limit memory
+                self.trades[symbol] = trades[-50:]
+                backoff = 1
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Trade watch error for {symbol}: {e}", exc_info=True)
+                await self._reconnect()
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)
+
     async def stop(self):
         """Stop the watch loop and close the connection."""
         self._running = False
@@ -85,6 +106,11 @@ class WebSocketManager:
             task.cancel()
         await asyncio.gather(*self._ticker_tasks.values(), return_exceptions=True)
         self._ticker_tasks.clear()
+        # Cancel all trade watch tasks
+        for task in self._trade_tasks.values():
+            task.cancel()
+        await asyncio.gather(*self._trade_tasks.values(), return_exceptions=True)
+        self._trade_tasks.clear()
         await self.exchange.close()
 
     async def _watch_loop(self):
@@ -133,6 +159,10 @@ class WebSocketManager:
     def get_order_book(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Return the latest order book for a symbol, or None if not available."""
         return self.order_books.get(symbol)
+
+    def get_trades(self, symbol: str) -> List[Dict[str, Any]]:
+        """Return the latest trades for a symbol, or empty list if not available."""
+        return self.trades.get(symbol, [])
 
     async def _watch_order_book(self, symbol: str):
         """Continuously watch the order book for a single symbol."""
@@ -184,6 +214,17 @@ class WebSocketManager:
                 if sym not in self._ticker_tasks:
                     task = asyncio.create_task(self._watch_ticker(sym))
                     self._ticker_tasks[sym] = task
+
+        # Manage trade watchers
+        for sym in removed:
+            task = self._trade_tasks.pop(sym, None)
+            if task:
+                task.cancel()
+            self.trades.pop(sym, None)
+        for sym in added:
+            if sym not in self._trade_tasks:
+                task = asyncio.create_task(self._watch_trades(sym))
+                self._trade_tasks[sym] = task
 
         self.symbols = new_symbols
         logger.info(f"WebSocket subscriptions updated: {len(self.symbols)} symbols")

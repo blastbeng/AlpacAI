@@ -1839,13 +1839,14 @@ class TradingEngine:
             if order_book is None:
                 order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
             # Fetch recent trades for micro-momentum and liquidity assessment
-            recent_trades_raw = []
-            try:
-                recent_trades_raw = await asyncio.to_thread(
-                    self.exchange.fetch_trades, symbol, limit=20
-                )
-            except Exception as e:
-                logger.debug(f"Could not fetch recent trades for {symbol}: {e}")
+            recent_trades_raw = self.ws_manager.get_trades(symbol)
+            if not recent_trades_raw:
+                try:
+                    recent_trades_raw = await asyncio.to_thread(
+                        self.exchange.fetch_trades, symbol, limit=20
+                    )
+                except Exception as e:
+                    logger.debug(f"Could not fetch recent trades for {symbol}: {e}")
 
             # Compute Cumulative Volume Delta (CVD) from recent trades
             cvd = None
@@ -3581,7 +3582,9 @@ class TradingEngine:
                 total_value = quote_balance
                 for sym, pos in self.positions.items():
                     try:
-                        t = await asyncio.to_thread(self.exchange.fetch_ticker, sym)
+                        t = self.ws_manager.get_ticker(sym)
+                        if t is None:
+                            t = await asyncio.to_thread(self.exchange.fetch_ticker, sym)
                         total_value += pos['amount'] * t['last']
                     except Exception:
                         pass
@@ -4074,7 +4077,9 @@ class TradingEngine:
             return
 
         try:
-            ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+            ticker = self.ws_manager.get_ticker(symbol)
+            if ticker is None:
+                ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
             price = ticker["last"]
         except Exception as e:
             logger.warning(f"Dust sweep: could not fetch price for {symbol}: {e}")
