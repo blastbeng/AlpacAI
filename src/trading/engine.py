@@ -4216,6 +4216,16 @@ class TradingEngine:
                 gross_amount = pos["amount"]
             else:
                 gross_amount = balance.get(base, 0.0)
+
+            # Guard against overselling: cap sell amount to actual balance
+            actual_base_balance = balance.get(base, 0.0)
+            if pos and gross_amount > actual_base_balance:
+                logger.warning(
+                    f"Tracked position amount {gross_amount} exceeds actual balance "
+                    f"{actual_base_balance} for {symbol}. Capping sell amount to actual balance."
+                )
+                gross_amount = actual_base_balance
+
             if gross_amount <= 0:
                 logger.info(f"No {base} to sell for {symbol}")
                 if self.notifier:
