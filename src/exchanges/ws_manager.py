@@ -35,26 +35,50 @@ class WebSocketManager:
                 await self.exchange.close()
             except Exception:
                 pass
-            # Clear cached data to avoid stale prices
+
+            # 1. Cancel all existing watch tasks EXCEPT the current task and the main loop task
+            current_task = asyncio.current_task()
+            all_watch_tasks = (
+                list(self._order_book_tasks.values())
+                + list(self._ticker_tasks.values())
+                + list(self._trade_tasks.values())
+            )
+            for task in all_watch_tasks:
+                if task is not current_task and task is not self._task:
+                    task.cancel()
+
+            # 2. Clear cached data and task dictionaries
             self.tickers.clear()
             self.order_books.clear()
             self.trades.clear()
-            # Reset batch ticker flag so we can retry watch_tickers on the new connection
+            self._order_book_tasks.clear()
+            self._ticker_tasks.clear()
+            self._trade_tasks.clear()
+
+            # 3. Reset batch flag – we will try batch again on the new connection
             self._use_batch_tickers = True
-            # Re-create the pro exchange
+
+            # 4. Re-create the pro exchange
             from src.exchanges.factory import get_pro_exchange
             self.exchange = get_pro_exchange()
-            # If using per-symbol tickers, restart those tasks
-            if not self._use_batch_tickers:
-                for sym in list(self._ticker_tasks.keys()):
-                    task = self._ticker_tasks.pop(sym)
-                    task.cancel()
-                for sym in self.symbols:
-                    task = asyncio.create_task(self._watch_ticker(sym))
-                    self._ticker_tasks[sym] = task
-            # Small delay to let the new connection stabilise
+
+            # 5. Small delay to let the new connection stabilise
             await asyncio.sleep(1)
-            # Order book tasks will automatically reconnect on next iteration
+
+            # 6. Restart order book and trade tasks for all current symbols
+            for sym in self.symbols:
+                self._order_book_tasks[sym] = asyncio.create_task(self._watch_order_book(sym))
+                self._trade_tasks[sym] = asyncio.create_task(self._watch_trades(sym))
+
+            # 7. If we already know batch isn't supported, start per-symbol ticker tasks
+            if not self._use_batch_tickers:
+                for sym in self.symbols:
+                    self._ticker_tasks[sym] = asyncio.create_task(self._watch_ticker(sym))
+
+            # 8. Cancel the calling watch task so it doesn't keep running alongside the new one
+            if current_task is not None and current_task is not self._task:
+                current_task.cancel()
+
             logger.info("WebSocket reconnection complete.")
 
     async def _watch_ticker(self, symbol: str):
@@ -135,6 +159,11 @@ class WebSocketManager:
             try:
                 tickers = await self.exchange.watch_tickers(list(self.symbols))
                 backoff = 1  # reset on success
+                # If we are using batch tickers, cancel any leftover per-symbol ticker tasks
+                if self._use_batch_tickers and self._ticker_tasks:
+                    for task in self._ticker_tasks.values():
+                        task.cancel()
+                    self._ticker_tasks.clear()
                 for symbol, ticker in tickers.items():
                     self.tickers[symbol] = ticker
                     await self._ticker_queue.put((symbol, ticker))
