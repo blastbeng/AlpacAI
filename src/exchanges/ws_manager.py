@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from typing import Dict, List, Optional, Any
+import ccxt
 import ccxt.pro as ccxt_pro
 
 logger = logging.getLogger(__name__)
@@ -139,7 +140,7 @@ class WebSocketManager:
                     await self._ticker_queue.put((symbol, ticker))
             except asyncio.CancelledError:
                 break
-            except (ccxt_pro.NotSupported, ccxt_pro.BadSymbol):
+            except (ccxt.NotSupported, ccxt.BadSymbol):
                 logger.warning("watch_tickers not supported, falling back to per-symbol watch_ticker")
                 self._use_batch_tickers = False
                 # Start per-symbol tasks for current symbols
