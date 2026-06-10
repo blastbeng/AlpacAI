@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # Market data download interval (seconds)
     MARKET_DATA_REFRESH_SECONDS: int = 300
 
+    # OHLCV download staggering
+    OHLCV_DOWNLOAD_COIN_DELAY_SECONDS: float = 2.0
+
     @field_validator("OHLCV_TIMEFRAMES")
     @classmethod
     def validate_ohlcv_timeframes(cls, v: list[str]) -> list[str]:

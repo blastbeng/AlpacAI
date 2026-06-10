@@ -486,6 +486,7 @@ class TradingEngine:
                 await self._fill_gaps(symbol, tf)
             except Exception as e:
                 logger.error(f"Initial backfill failed for {symbol} {tf}: {e}")
+            await asyncio.sleep(0.2)
         logger.info(f"Immediate backfill complete for {symbol}")
 
     async def _download_market_data_loop(self):
@@ -509,8 +510,10 @@ class TradingEngine:
                                 await self._fill_gaps(symbol, tf)
                             except Exception as e:
                                 logger.warning(f"Market data download failed for {symbol} {tf}: {e}")
-                        # Small delay between coins to avoid rate limits
-                        await asyncio.sleep(0.5)
+                            # Tiny delay between timeframes for the same coin
+                            await asyncio.sleep(0.1)
+                        # Configurable delay between coins to avoid rate limits
+                        await asyncio.sleep(settings.OHLCV_DOWNLOAD_COIN_DELAY_SECONDS)
                     logger.info("Market data download cycle complete.")
             except Exception as e:
                 logger.error(f"Market data download loop error: {e}", exc_info=True)
