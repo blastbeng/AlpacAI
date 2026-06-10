@@ -304,7 +304,7 @@ class TelegramBot:
         if "/" in coin:
             coin = coin.split("/")[0]
 
-        articles = get_news_for_symbol(coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+        articles = await asyncio.to_thread(get_news_for_symbol, coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
         if not articles:
             await update.message.reply_text(f"No recent news for {coin}.", reply_markup=self.keyboard)
             return
@@ -397,7 +397,7 @@ class TelegramBot:
             for entry in coins:
                 symbol = entry["symbol"]
                 base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-                articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+                articles = await asyncio.to_thread(get_news_for_symbol, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
                 if not articles:
                     summary = "No recent news."
                 else:
@@ -444,7 +444,7 @@ class TelegramBot:
             for entry in coins:
                 symbol = entry["symbol"]
                 base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-                articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+                articles = await asyncio.to_thread(get_news_for_symbol, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
                 msg += f"<b>{symbol}</b>: {len(articles)} articles\n"
             await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
         except Exception as e:
