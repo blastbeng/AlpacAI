@@ -98,10 +98,18 @@ class TradingEngine:
         self._coin_first_seen: Dict[str, float] = {}  # symbol -> timestamp when first added
         self._market_breadth: Optional[Dict[str, Any]] = None
         self._risk_lock = asyncio.Lock()
+        self._running = True
 
     def set_notifier(self, notifier):
         """Attach a notification service (e.g., TelegramBot)."""
         self.notifier = notifier
+
+    async def stop(self):
+        """Gracefully stop the engine and all background tasks."""
+        logger.info("Stopping trading engine...")
+        self._running = False
+        await self.ws_manager.stop()
+        logger.info("Trading engine stopped.")
 
     def _get_sentiment_str(self, symbol: str) -> str:
         """Get a short news sentiment string for notifications, including an LLM summary."""
@@ -302,7 +310,7 @@ class TradingEngine:
     async def _risk_management_loop(self):
         """Check stop-loss, take-profit, and other risk rules on every ticker update."""
         await asyncio.sleep(5)  # initial delay
-        while True:
+        while self._running:
             try:
                 if self.ws_manager.healthy:
                     update = await self.ws_manager.wait_for_update(timeout=5.0)
@@ -319,7 +327,7 @@ class TradingEngine:
         if not settings.NEWS_ENABLED:
             return
         # Fetch immediately on startup, then periodically
-        while True:
+        while self._running:
             try:
                 symbols = [entry["symbol"] for entry in self.current_coins]
                 if symbols:
@@ -341,7 +349,7 @@ class TradingEngine:
             logger.warning("News module not available; skipping background news refresh.")
             return
 
-        while True:
+        while self._running:
             try:
                 cycle_start = time.time()
                 # Slow refresh: all available pairs EXCEPT the coins already handled by the fast loop
@@ -500,7 +508,7 @@ class TradingEngine:
         """Periodically download and store OHLCV data for tracked coins, with gap detection."""
         # Initial delay to let the engine settle
         await asyncio.sleep(30)
-        while True:
+        while self._running:
             try:
                 if not self.current_coins:
                     logger.debug("No coins tracked; skipping market data download.")
@@ -853,7 +861,7 @@ class TradingEngine:
         # Start background market data download task
         asyncio.create_task(self._download_market_data_loop())
         asyncio.create_task(self._risk_management_loop())
-        while True:
+        while self._running:
             try:
                 await self._reconcile_positions()
 

@@ -70,9 +70,38 @@ async def main():
         await telegram_bot.start()
         await telegram_bot.send_notification("🤖 Bengobot started! Use the buttons below to control me.")
 
-    asyncio.create_task(engine.run())
+    # Graceful shutdown handling
+    shutdown_event = asyncio.Event()
 
-    # Wait for the server to finish (it runs forever)
+    def _signal_handler():
+        logging.info("Shutdown signal received.")
+        shutdown_event.set()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, _signal_handler)
+        except NotImplementedError:
+            # Windows doesn't support add_signal_handler
+            signal.signal(sig, lambda s, f: _signal_handler())
+
+    # Start the engine as a background task
+    engine_task = asyncio.create_task(engine.run())
+
+    # Wait for shutdown signal
+    await shutdown_event.wait()
+    logging.info("Shutting down...")
+
+    # Stop the engine
+    await engine.stop()
+    engine_task.cancel()
+    try:
+        await engine_task
+    except asyncio.CancelledError:
+        pass
+
+    # Stop the server
+    server.should_exit = True
     await server_task
 
 if __name__ == "__main__":
