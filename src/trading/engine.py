@@ -1884,6 +1884,14 @@ class TradingEngine:
                             current_source = await asyncio.to_thread(self.redis.get, "trading:pause_source")
                             if current_source and current_source.decode() == "manual":
                                 logger.info("LLM pause request ignored because trading is manually paused.")
+                                if self.notifier:
+                                    await self.notifier.send_notification(
+                                        "⏸️ LLM requested to pause trading, but trading is already manually paused.",
+                                        summary={
+                                            "action": "PAUSE",
+                                            "reason": "LLM pause request ignored (manual pause active)",
+                                        }
+                                    )
                             else:
                                 await asyncio.to_thread(self.redis.set, "trading:paused", "1")
                                 await asyncio.to_thread(self.redis.set, "trading:pause_source", "llm")
@@ -1897,6 +1905,14 @@ class TradingEngine:
                             current_source = await asyncio.to_thread(self.redis.get, "trading:pause_source")
                             if current_source and current_source.decode() != "llm":
                                 logger.info("LLM resume request ignored because pause was not initiated by LLM.")
+                                if self.notifier:
+                                    await self.notifier.send_notification(
+                                        "▶️ LLM requested to resume trading, but the pause was not initiated by the LLM.",
+                                        summary={
+                                            "action": "RESUME",
+                                            "reason": "LLM resume request ignored (manual pause active)",
+                                        }
+                                    )
                             else:
                                 if trading_paused_bool:
                                     # Check minimum LLM pause duration
