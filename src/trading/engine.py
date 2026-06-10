@@ -300,15 +300,16 @@ class TradingEngine:
             logger.debug(f"News fetch/store failed for {symbol}: {e}")
 
     async def _risk_management_loop(self):
-        """Check stop-loss, take-profit, and other risk rules every 5 seconds."""
+        """Check stop-loss, take-profit, and other risk rules on every ticker update."""
         await asyncio.sleep(5)  # initial delay
         while True:
             try:
+                # Wait for a new ticker update (or timeout after 5s to still run checks)
+                update = await self.ws_manager.wait_for_update(timeout=5.0)
                 await self._check_risk_management()
                 await self._save_state()
             except Exception as e:
                 logger.error(f"Risk management loop error: {e}", exc_info=True)
-            await asyncio.sleep(5)
 
     async def _refresh_current_coins_news_fast(self):
         """Fast news refresh loop – only for the coins currently tracked by the engine."""

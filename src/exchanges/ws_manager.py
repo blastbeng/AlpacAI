@@ -54,3 +54,10 @@ class WebSocketManager:
         if new_symbols != self.symbols:
             self.symbols = new_symbols
             logger.info(f"WebSocket subscriptions updated: {len(self.symbols)} symbols")
+
+    async def wait_for_update(self, timeout: float = 5.0) -> Optional[tuple]:
+        """Wait for the next ticker update, or return None after timeout."""
+        try:
+            return await asyncio.wait_for(self._ticker_queue.get(), timeout=timeout)
+        except asyncio.TimeoutError:
+            return None
