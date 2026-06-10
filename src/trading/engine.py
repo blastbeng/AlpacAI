@@ -56,6 +56,8 @@ logger = logging.getLogger(__name__)
 
 COIN_REVALUATION_INTERVAL = 900  # seconds (15 minutes)
 DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no coins (10 minutes)
+MIN_COIN_REVALUATION_INTERVAL = 300  # seconds (5 minutes) – prevents rapid toggling
+MIN_LLM_PAUSE_DURATION = 300  # seconds – LLM cannot resume before this
 
 
 class TradingEngine:
@@ -1682,8 +1684,9 @@ class TradingEngine:
                 new_interval = parsed.get("coin_revaluation_interval_seconds")
                 if new_interval is not None:
                     if isinstance(new_interval, (int, float)) and new_interval >= 60:
-                        self._coin_revaluation_interval = new_interval
-                        logger.info(f"LLM set coin re-evaluation interval to {new_interval}s")
+                        clamped = max(new_interval, MIN_COIN_REVALUATION_INTERVAL)
+                        self._coin_revaluation_interval = clamped
+                        logger.info(f"LLM set coin re-evaluation interval to {clamped}s (requested {new_interval}s)")
                     else:
                         logger.warning(f"Invalid coin_revaluation_interval_seconds: {new_interval}")
 
@@ -1702,11 +1705,13 @@ class TradingEngine:
                         logger.warning(f"Unrecognised pause_trading string: {pause_trading}")
                         pause_trading = None
 
+                skip_resume = False
                 if pause_trading is not None:
                     if isinstance(pause_trading, bool):
                         if pause_trading:
                             await asyncio.to_thread(self.redis.set, "trading:paused", "1")
                             await asyncio.to_thread(self.redis.set, "trading:pause_start", str(time.time()))
+                            await asyncio.to_thread(self.redis.set, "trading:llm_pause_time", str(time.time()))
                             if pause_reason:
                                 await asyncio.to_thread(self.redis.set, "trading:pause_reason", pause_reason)
                             logger.info("LLM requested to pause trading.")
@@ -1721,20 +1726,43 @@ class TradingEngine:
                                 )
                         else:
                             if trading_paused_bool:
-                                await asyncio.to_thread(self.redis.delete, "trading:paused")
-                                await asyncio.to_thread(self.redis.delete, "trading:pause_start")
-                                await asyncio.to_thread(self.redis.delete, "trading:pause_duration")
-                                await asyncio.to_thread(self.redis.delete, "trading:pause_reason")
-                                logger.info("LLM requested to resume trading.")
-                                if self.notifier:
-                                    reason_text = f" – {pause_reason}" if pause_reason else ""
-                                    await self.notifier.send_notification(
-                                        f"▶️ Trading resumed by LLM decision{reason_text}",
-                                        summary={
-                                            "action": "INFO",
-                                            "reason": f"LLM resume request: {pause_reason}" if pause_reason else "LLM resume request"
-                                        }
-                                    )
+                                # Check if the pause was LLM-initiated and still within the minimum duration
+                                llm_pause_time_raw = await asyncio.to_thread(self.redis.get, "trading:llm_pause_time")
+                                if llm_pause_time_raw:
+                                    try:
+                                        llm_pause_time = float(llm_pause_time_raw)
+                                        if time.time() - llm_pause_time < MIN_LLM_PAUSE_DURATION:
+                                            logger.info(
+                                                f"Ignoring LLM resume request: minimum pause duration "
+                                                f"({MIN_LLM_PAUSE_DURATION}s) not yet elapsed."
+                                            )
+                                            skip_resume = True
+                                            if self.notifier:
+                                                await self.notifier.send_notification(
+                                                    f"⏸️ LLM resume request ignored: minimum pause duration ({MIN_LLM_PAUSE_DURATION}s) not yet elapsed.",
+                                                    summary={
+                                                        "action": "INFO",
+                                                        "reason": f"LLM resume blocked by minimum pause duration ({MIN_LLM_PAUSE_DURATION}s)",
+                                                    }
+                                                )
+                                    except (ValueError, TypeError):
+                                        pass
+                                if not skip_resume:
+                                    await asyncio.to_thread(self.redis.delete, "trading:paused")
+                                    await asyncio.to_thread(self.redis.delete, "trading:pause_start")
+                                    await asyncio.to_thread(self.redis.delete, "trading:pause_duration")
+                                    await asyncio.to_thread(self.redis.delete, "trading:pause_reason")
+                                    await asyncio.to_thread(self.redis.delete, "trading:llm_pause_time")
+                                    logger.info("LLM requested to resume trading.")
+                                    if self.notifier:
+                                        reason_text = f" – {pause_reason}" if pause_reason else ""
+                                        await self.notifier.send_notification(
+                                            f"▶️ Trading resumed by LLM decision{reason_text}",
+                                            summary={
+                                                "action": "INFO",
+                                                "reason": f"LLM resume request: {pause_reason}" if pause_reason else "LLM resume request"
+                                            }
+                                        )
                             else:
                                 # Trading was already active; no need to resume, just log.
                                 logger.info("LLM confirmed trading should remain active.")
