@@ -723,7 +723,9 @@ class TradingEngine:
                 # External sell detected
                 sold_amount = recorded_amount - actual_balance
                 try:
-                    ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                    ticker = self.ws_manager.get_ticker(symbol)
+                    if ticker is None:
+                        ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
                     current_price = ticker['last']
                 except Exception:
                     current_price = pos.get("price", 0.0)  # fallback to entry price
@@ -2867,7 +2869,9 @@ class TradingEngine:
         open_value = 0.0
         for sym, pos in self.positions.items():
             try:
-                ticker = self.exchange.fetch_ticker(sym)
+                ticker = self.ws_manager.get_ticker(sym)
+                if ticker is None:
+                    ticker = self.exchange.fetch_ticker(sym)
                 price = ticker['last']
                 open_value += pos['amount'] * price
             except Exception:
@@ -2920,7 +2924,9 @@ class TradingEngine:
         open_trades = []
         for symbol, pos in self.positions.items():
             try:
-                ticker = self.exchange.fetch_ticker(symbol)
+                ticker = self.ws_manager.get_ticker(symbol)
+                if ticker is None:
+                    ticker = self.exchange.fetch_ticker(symbol)
                 current_price = ticker['last']
             except Exception:
                 current_price = pos['price']  # fallback to entry price
@@ -2997,7 +3003,9 @@ class TradingEngine:
         total_stop_risk = 0.0
         for pos in self.positions.values():
             try:
-                ticker = self.exchange.fetch_ticker(pos['symbol'])
+                ticker = self.ws_manager.get_ticker(pos['symbol'])
+                if ticker is None:
+                    ticker = self.exchange.fetch_ticker(pos['symbol'])
                 price = ticker['last'] if ticker and ticker.get('last') else 0.0
                 pos_value = pos['amount'] * price
                 exposure += pos_value
@@ -3562,7 +3570,9 @@ class TradingEngine:
             stop_method = params.get("stop_loss_method", "fixed")
             if stop_method == "atr_multiple" and atr is not None and atr > 0:
                 atr_mult = params["stop_loss_atr_multiple"]
-                ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                ticker = self.ws_manager.get_ticker(symbol)
+                if ticker is None:
+                    ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
                 current_price = ticker['last']
                 sl_pct = (atr_mult * atr) / current_price
                 logger.info(f"ATR-based stop: ATR={atr}, multiplier={atr_mult}, stop_loss_pct={sl_pct:.4%}")
@@ -3715,7 +3725,9 @@ class TradingEngine:
 
             # Check minimum order size and adjust upward if needed
             try:
-                ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                ticker = self.ws_manager.get_ticker(symbol)
+                if ticker is None:
+                    ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
                 price = ticker['last']
                 base_amount = amount / price
                 market = self.exchange.markets.get(symbol, {})
@@ -3935,7 +3947,9 @@ class TradingEngine:
 
             # Check minimum sell size
             try:
-                ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                ticker = self.ws_manager.get_ticker(symbol)
+                if ticker is None:
+                    ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
                 price = ticker['last']
                 market = self.exchange.markets.get(symbol, {})
                 limits = market.get('limits', {})
