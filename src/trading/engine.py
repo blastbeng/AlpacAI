@@ -1968,6 +1968,7 @@ class TradingEngine:
                                     for key in pause_keys:
                                         await asyncio.to_thread(self.redis.delete, key)
                                     logger.info("LLM requested to resume trading.")
+                                    self._reeval_trigger.set()
                     else:
                         logger.warning(f"Invalid pause_trading value: {pause_trading}")
 
