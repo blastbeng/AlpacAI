@@ -114,6 +114,7 @@ class TradingEngine:
         self._coin_first_seen: Dict[str, float] = {}  # symbol -> timestamp when first added
         self._market_breadth: Optional[Dict[str, Any]] = None
         self._risk_lock = asyncio.Lock()
+        self._coin_reeval_lock = asyncio.Lock()
         self._running = True
         self._last_state_save = 0
 
@@ -1223,6 +1224,10 @@ class TradingEngine:
 
     async def _reevaluate_coins(self):
         """Use LLM to select which coins to trade."""
+        async with self._coin_reeval_lock:
+            return await self._reevaluate_coins_impl()
+
+    async def _reevaluate_coins_impl(self):
         # Reset per-cycle spending tracker so new buys are not blocked by prior cycle spending
         self._cycle_spent = 0.0
 
