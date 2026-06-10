@@ -737,6 +737,7 @@ def build_strategy_prompt(
     volume_trend: Optional[float] = None,
     ichimoku: Optional[Dict[str, Optional[float]]] = None,
     market_breadth: Optional[Dict[str, Any]] = None,
+    full_market_breadth: Optional[Dict[str, Any]] = None,
     depth_trend: Optional[float] = None,
     parabolic_sar: Optional[float] = None,
     keltner_channels: Optional[Dict[str, float]] = None,
@@ -1193,6 +1194,16 @@ Maximum coins to trade: {max_coins}
             f"candidate coins have a positive 24h change ({market_breadth['positive_count']} positive).\n"
             "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
             "Use this to gauge overall market participation and adjust your coin selection and risk parameters accordingly.\n"
+        )
+    if full_market_breadth:
+        prompt += (
+            f"\nFull market breadth (all available pairs): {full_market_breadth['positive_pct']}% of "
+            f"{full_market_breadth['total_count']} pairs have a positive 24h change "
+            f"({full_market_breadth['positive_count']} positive).\n"
+            "This is a broader measure than the candidate‑only breadth. "
+            "Use it to confirm the overall market health. "
+            "If the full breadth is very low (<25%) while the candidate breadth is moderate, "
+            "the market may be more fragile than it appears – consider reducing risk or skipping the trade.\n"
         )
     if btc_dominance is not None:
         prompt += f"\nBitcoin dominance: {btc_dominance:.2f}%\n"

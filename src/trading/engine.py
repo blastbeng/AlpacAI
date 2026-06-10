@@ -2601,6 +2601,15 @@ class TradingEngine:
             fear_greed = await self._get_fear_greed_index()
             global_market = await self._fetch_global_market_data()
             altcoin_season = await self._fetch_altcoin_season_index()
+
+            # Fetch full market breadth from Redis (computed by background task)
+            full_market_breadth = None
+            try:
+                full_breadth_raw = await asyncio.to_thread(self.redis.get, "market:breadth:full")
+                if full_breadth_raw:
+                    full_market_breadth = json.loads(full_breadth_raw)
+            except Exception:
+                pass
             # Current trading session
             now_utc = datetime.now(timezone.utc)
             utc_hour = now_utc.hour
@@ -2691,6 +2700,7 @@ class TradingEngine:
                 volume_trend=volume_trend_val,
                 ichimoku=ichimoku,
                 market_breadth=getattr(self, '_market_breadth', None),
+                full_market_breadth=full_market_breadth,
                 depth_trend=depth_trend,
                 parabolic_sar=parabolic_sar,
                 keltner_channels=keltner_channels,
@@ -2777,6 +2787,7 @@ class TradingEngine:
                 "sentiment_trend": sentiment_trend_val,
                 "volume_trend": volume_trend_val,
                 "market_breadth": getattr(self, '_market_breadth', None),
+                "full_market_breadth": full_market_breadth,
                 "depth_trend": depth_trend,
                 "parabolic_sar": parabolic_sar,
                 "keltner_channels": keltner_channels,
