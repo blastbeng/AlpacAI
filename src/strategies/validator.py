@@ -51,6 +51,20 @@ def validate_signal(
             if not isinstance(sl, (int, float)) or not (0 < sl < 1.0):
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid stop_loss_pct")
 
+        # Enforce minimum fixed stop-loss relative to ATR (if ATR and price are available)
+        if stop_method == "fixed" and atr is not None and price is not None and price > 0 and atr > 0:
+            atr_pct = atr / price
+            min_sl = 1.5 * atr_pct
+            if sl < min_sl:
+                return Signal(
+                    action="HOLD",
+                    confidence=0.0,
+                    reasoning=(
+                        f"Fixed stop-loss too tight: must be at least 1.5x ATR "
+                        f"(ATR%={atr_pct:.4%}, stop_loss_pct={sl:.4%})"
+                    )
+                )
+
         # The rest of the required parameters remain unchanged
         required = ["take_profit_pct", "trailing_stop", "position_size_fraction", "max_hold_time_seconds"]
         for key in required:
