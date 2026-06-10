@@ -100,6 +100,16 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o"
 
+    # LLM temperature (applies to both providers)
+    LLM_TEMPERATURE: float = 0.1
+
+    @field_validator("LLM_TEMPERATURE")
+    @classmethod
+    def validate_llm_temperature(cls, v: float) -> float:
+        if not (0.0 <= v <= 2.0):
+            raise ValueError("LLM_TEMPERATURE must be between 0.0 and 2.0")
+        return v
+
     # Redis
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379

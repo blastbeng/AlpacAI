@@ -23,6 +23,7 @@ def get_ollama_response(prompt: str, system_prompt: str = "") -> str:
         "model": settings.OLLAMA_MODEL,
         "messages": messages,
         "stream": False,
+        "temperature": settings.LLM_TEMPERATURE,
     }
 
     try:
@@ -50,6 +51,7 @@ def get_openai_response(prompt: str, system_prompt: str = "") -> str:
     payload = {
         "model": settings.OPENAI_MODEL,
         "messages": messages,
+        "temperature": settings.LLM_TEMPERATURE,
     }
 
     try:
