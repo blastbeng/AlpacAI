@@ -126,6 +126,10 @@ class TelegramBot:
         await asyncio.to_thread(self.redis.delete, "trading:pause_duration")
         await asyncio.to_thread(self.redis.delete, "trading:pause_reason")
         await asyncio.to_thread(self.redis.delete, "trading:llm_pause_time")
+        await self.send_notification(
+            "⏸️ Trading paused manually.",
+            summary={"action": "PAUSE", "reason": "Manual pause"}
+        )
         await update.message.reply_text("Trading paused.", reply_markup=self.keyboard)
 
     async def cmd_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,6 +146,10 @@ class TelegramBot:
         ]
         for key in keys:
             await asyncio.to_thread(self.redis.delete, key)
+        await self.send_notification(
+            "▶️ Trading resumed manually.",
+            summary={"action": "RESUME", "reason": "Manual resume"}
+        )
         await update.message.reply_text("Trading resumed.", reply_markup=self.keyboard)
 
     async def cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -624,7 +632,10 @@ class TelegramBot:
         # --- Verbosity filter ---
         verbosity = settings.NOTIFICATION_VERBOSITY
         should_send = True
-        if verbosity != "all":
+        # Always send pause/resume notifications, regardless of verbosity
+        if summary and summary.get("action") in ("PAUSE", "RESUME"):
+            should_send = True
+        elif verbosity != "all":
             if summary is None:
                 should_send = False
             else:

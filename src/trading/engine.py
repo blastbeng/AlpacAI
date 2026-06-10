@@ -211,7 +211,7 @@ class TradingEngine:
                                         reason_text = f" (was paused: {stored_reason})" if stored_reason else ""
                                         await self.notifier.send_notification(
                                             f"▶️ Trading auto-resumed after pause duration elapsed.{reason_text}",
-                                            summary={"action": "INFO", "reason": f"Pause duration elapsed{reason_text}"}
+                                            summary={"action": "RESUME", "reason": f"Pause duration elapsed{reason_text}"}
                                         )
                             except (ValueError, TypeError):
                                 pass  # ignore malformed values
@@ -1972,7 +1972,7 @@ class TradingEngine:
                             await self.notifier.send_notification(
                                 f"⏸️ Trading paused by LLM decision{reason_text}",
                                 summary={
-                                    "action": "INFO",
+                                    "action": "PAUSE",
                                     "reason": f"LLM pause request: {display_reason}" if display_reason else "LLM pause request"
                                 }
                             )
@@ -1981,7 +1981,7 @@ class TradingEngine:
                             await self.notifier.send_notification(
                                 f"▶️ Trading resumed by LLM decision{reason_text}",
                                 summary={
-                                    "action": "INFO",
+                                    "action": "RESUME",
                                     "reason": f"LLM resume request: {display_reason}" if display_reason else "LLM resume request"
                                 }
                             )
