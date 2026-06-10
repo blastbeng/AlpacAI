@@ -2743,7 +2743,9 @@ class TradingEngine:
                     total_value = quote_balance
                     for sym, pos in self.positions.items():
                         try:
-                            t = await asyncio.to_thread(self.exchange.fetch_ticker, sym)
+                            t = self.ws_manager.get_ticker(sym)
+                            if t is None:
+                                t = await asyncio.to_thread(self.exchange.fetch_ticker, sym)
                             total_value += pos['amount'] * t['last']
                         except Exception:
                             pass

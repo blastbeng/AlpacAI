@@ -19,6 +19,7 @@ class WebSocketManager:
         self._use_batch_tickers = True  # will be set to False if batch not supported
         self._running = False
         self._task: Optional[asyncio.Task] = None
+        self._reconnect_lock = asyncio.Lock()
 
     async def start(self):
         """Start the WebSocket watch loop."""
