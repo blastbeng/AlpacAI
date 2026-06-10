@@ -304,8 +304,11 @@ class TradingEngine:
         await asyncio.sleep(5)  # initial delay
         while True:
             try:
-                # Wait for a new ticker update (or timeout after 5s to still run checks)
-                update = await self.ws_manager.wait_for_update(timeout=5.0)
+                if self.ws_manager.healthy:
+                    update = await self.ws_manager.wait_for_update(timeout=5.0)
+                else:
+                    # WebSocket down – fall back to polling
+                    await asyncio.sleep(5)
                 await self._check_risk_management()
                 await self._save_state()
             except Exception as e:
@@ -3075,7 +3078,14 @@ class TradingEngine:
 
                 ticker = self.ws_manager.get_ticker(symbol)
                 if ticker is None:
-                    continue  # no real-time data yet, skip this check
+                    if not self.ws_manager.healthy:
+                        # Fallback to REST when WebSocket is down
+                        try:
+                            ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                        except Exception:
+                            continue
+                    else:
+                        continue  # no real-time data yet, skip this check
                 current_price = ticker['last']
 
 

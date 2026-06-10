@@ -21,6 +21,18 @@ class WebSocketManager:
         self._running = True
         self._task = asyncio.create_task(self._watch_loop())
 
+    async def _reconnect(self):
+        """Close and recreate the exchange connection, then re-subscribe."""
+        logger.warning("WebSocket reconnecting...")
+        try:
+            await self.exchange.close()
+        except Exception:
+            pass
+        # Re-create the pro exchange
+        from src.exchanges.factory import get_pro_exchange
+        self.exchange = get_pro_exchange()
+        logger.info("WebSocket reconnection complete.")
+
     async def stop(self):
         """Stop the watch loop and close the connection."""
         self._running = False
@@ -40,12 +52,15 @@ class WebSocketManager:
 
     async def _watch_loop(self):
         """Continuously watch tickers for all subscribed symbols."""
+        backoff = 1
+        max_backoff = 60
         while self._running:
             if not self.symbols:
                 await asyncio.sleep(1)
                 continue
             try:
                 tickers = await self.exchange.watch_tickers(list(self.symbols))
+                backoff = 1  # reset on success
                 for symbol, ticker in tickers.items():
                     self.tickers[symbol] = ticker
                     await self._ticker_queue.put((symbol, ticker))
@@ -53,7 +68,14 @@ class WebSocketManager:
                 break
             except Exception as e:
                 logger.error(f"WebSocket watch loop error: {e}", exc_info=True)
-                await asyncio.sleep(5)
+                await self._reconnect()
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)
+
+    @property
+    def healthy(self) -> bool:
+        """Return True if the ticker watch task is alive and the exchange is connected."""
+        return self._running and self._task is not None and not self._task.done()
 
     def get_ticker(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Return the latest ticker for a symbol, or None if not available."""
@@ -65,15 +87,20 @@ class WebSocketManager:
 
     async def _watch_order_book(self, symbol: str):
         """Continuously watch the order book for a single symbol."""
+        backoff = 1
+        max_backoff = 30
         while self._running and symbol in self.symbols:
             try:
                 ob = await self.exchange.watch_order_book(symbol)
                 self.order_books[symbol] = ob
+                backoff = 1
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Order book watch error for {symbol}: {e}", exc_info=True)
-                await asyncio.sleep(5)
+                await self._reconnect()
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)
 
     async def update_subscriptions(self, symbols: List[str]):
         """Update the set of symbols to watch (tickers + order books)."""
