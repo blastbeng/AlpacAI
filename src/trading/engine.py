@@ -46,7 +46,7 @@ from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm, LLMStrategy
 from src.strategies.validator import validate_signal
 from src.utils.redis_client import get_redis_client
-from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade, get_performance, store_news_articles, get_aggregate_sentiment_from_db, get_news_for_symbol, get_ohlcv, get_latest_ohlcv_timestamp, insert_ohlcv_batch
+from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade, get_performance, store_news_articles, get_aggregate_sentiment_from_db, get_news_for_symbol, get_ohlcv, get_latest_ohlcv_timestamp, insert_ohlcv_batch, save_paper_balances, load_paper_balances
 
 logger = logging.getLogger(__name__)
 
@@ -518,114 +518,24 @@ class TradingEngine:
             await asyncio.sleep(settings.MARKET_DATA_REFRESH_SECONDS)
 
     def _restore_paper_state(self):
-        """Replay trade history to restore paper simulator balances and positions with cost basis."""
-        old_positions = self.positions.copy()  # preserve LLM-set risk params
-        # Reset simulator to initial state
-        self.trader.balances = {self.base_currency: self.initial_balance}
-        self.trader.trades = []
-        positions = {}
-        for trade in self.trade_history:
-            symbol = trade['symbol']
-            side = trade['side']
-            amount = trade['amount']
-            price = trade['price']
-            cost = trade['cost']
-            fee = trade.get('fee', {})
-            fee_cost = float(fee.get('cost', 0) or 0)
-            fee_currency = fee.get('currency', '')
-            base, quote = symbol.split('/')
+        """Load paper balances directly from the database instead of replaying trades."""
+        # Load persisted balances
+        saved_balances = load_paper_balances()
+        if saved_balances:
+            self.trader.balances = saved_balances
+            logger.info("Loaded paper balances from database: %s", saved_balances)
+        else:
+            # First run – initialise with the configured initial balance
+            self.trader.balances = {self.base_currency: self.initial_balance}
+            logger.info("No saved paper balances; initialising with %.2f %s",
+                        self.initial_balance, self.base_currency)
 
-            if side == 'buy':
-                # Update balances
-                self.trader.balances[quote] = self.trader.balances.get(quote, 0) - cost
-                net_base = amount - (fee_cost if fee_currency == base else 0.0)
-                cost_basis = cost + (fee_cost if fee_currency == quote else 0.0)
-                self.trader.balances[base] = self.trader.balances.get(base, 0) + net_base
+        # Populate the simulator's trade list so the web dashboard can show history
+        self.trader.trades = list(self.trade_history)
 
-                # Update position
-                if symbol in positions:
-                    pos = positions[symbol]
-                    pos['cost_basis'] += cost_basis
-                    pos['net_base'] += net_base
-                    pos['amount'] += net_base
-                    pos['price'] = pos['cost_basis'] / pos['net_base'] if pos['net_base'] else price
-                else:
-                    entry_price = cost_basis / net_base if net_base else price
-                    positions[symbol] = {
-                        'symbol': symbol,
-                        'side': 'buy',
-                        'amount': net_base,
-                        'price': entry_price,
-                        'cost_basis': cost_basis,
-                        'net_base': net_base,
-                        'timestamp': trade['timestamp'],
-                        # stop_loss and take_profit will be set by the LLM later
-                        'stop_loss': None,
-                        'take_profit': None,
-                    }
-            elif side == 'sell':
-                # Update balances
-                self.trader.balances[base] = self.trader.balances.get(base, 0) - amount
-                net_quote = cost - (fee_cost if fee_currency == quote else 0.0)
-                self.trader.balances[quote] = self.trader.balances.get(quote, 0) + net_quote
-                # Remove position
-                positions.pop(symbol, None)
-
-            self.trader.trades.append(trade)
-
-        # Merge saved risk parameters from old positions (LLM-defined)
-        for sym, pos in positions.items():
-            if sym in old_positions:
-                old = old_positions[sym]
-                # Only override if the old position had explicit risk params (from LLM)
-                if "stop_loss" in old:
-                    pos["stop_loss"] = old["stop_loss"]
-                if "take_profit" in old:
-                    pos["take_profit"] = old["take_profit"]
-                if "trailing_stop" in old:
-                    pos["trailing_stop"] = old["trailing_stop"]
-                if "trailing_stop_distance_pct" in old:
-                    pos["trailing_stop_distance_pct"] = old["trailing_stop_distance_pct"]
-                if "max_hold_time_seconds" in old:
-                    pos["max_hold_time_seconds"] = old["max_hold_time_seconds"]
-                if "trailing_stop_activation_pct" in old:
-                    pos["trailing_stop_activation_pct"] = old["trailing_stop_activation_pct"]
-                if "trailing_take_profit" in old:
-                    pos["trailing_take_profit"] = old["trailing_take_profit"]
-                if "trailing_take_profit_distance_pct" in old:
-                    pos["trailing_take_profit_distance_pct"] = old["trailing_take_profit_distance_pct"]
-                if "breakeven_activation_pct" in old:
-                    pos["breakeven_activation_pct"] = old["breakeven_activation_pct"]
-                if "lock_profit_activation_pct" in old:
-                    pos["lock_profit_activation_pct"] = old["lock_profit_activation_pct"]
-                if "lock_profit_level_pct" in old:
-                    pos["lock_profit_level_pct"] = old["lock_profit_level_pct"]
-                if "partial_take_profit_pct" in old:
-                    pos["partial_take_profit_pct"] = old["partial_take_profit_pct"]
-                if "partial_take_profit_fraction" in old:
-                    pos["partial_take_profit_fraction"] = old["partial_take_profit_fraction"]
-                if "partial_tp_triggered" in old:
-                    pos["partial_tp_triggered"] = old["partial_tp_triggered"]
-                if "partial_take_profit_levels" in old:
-                    pos["partial_take_profit_levels"] = old["partial_take_profit_levels"]
-                if "partial_tp_levels_triggered" in old:
-                    pos["partial_tp_levels_triggered"] = old["partial_tp_levels_triggered"]
-                if "original_amount" in old:
-                    pos["original_amount"] = old["original_amount"]
-                if "cooldown_after_loss_seconds" in old:
-                    pos["cooldown_after_loss_seconds"] = old["cooldown_after_loss_seconds"]
-                if "news_sentiment_exit_threshold" in old:
-                    pos["news_sentiment_exit_threshold"] = old["news_sentiment_exit_threshold"]
-                if "max_unrealized_loss_pct" in old:
-                    pos["max_unrealized_loss_pct"] = old["max_unrealized_loss_pct"]
-                if "timeframe" in old:
-                    pos["timeframe"] = old["timeframe"]
-        # Re-apply force_close for positions still missing risk parameters
-        for sym, pos in positions.items():
-            if "stop_loss" not in pos or "take_profit" not in pos:
-                pos["_force_close"] = True
-        self.positions = positions
-        logger.info("Restored paper trading state from %d historical trades", len(self.trade_history))
+        # Positions are already loaded by _load_state() – nothing more to do.
+        logger.info("Paper state restored: %d positions, %d trades",
+                     len(self.positions), len(self.trade_history))
 
     def _ensure_cost_basis(self):
         """If positions lack cost_basis, compute it from amount and price (backward compat)."""
@@ -916,6 +826,9 @@ class TradingEngine:
         # Keep only the last 1000 trades to avoid unbounded growth
         self.trade_history = self.trade_history[-1000:]
         await asyncio.to_thread(save_trading_state, "trade_history", self.trade_history)
+        # Also persist paper balances if in paper mode
+        if settings.TRADING_MODE == "paper":
+            await asyncio.to_thread(save_paper_balances, self.trader.balances)
         logger.debug("Saved trading state: %d coins, %d positions, %d trades",
                      len(self.current_coins), len(self.positions), len(self.trade_history))
 
@@ -3343,6 +3256,9 @@ class TradingEngine:
 
                             pos["partial_tp_triggered"] = True
 
+                            if settings.TRADING_MODE == "paper":
+                                await asyncio.to_thread(save_paper_balances, self.trader.balances)
+
                             if pos.get("stop_loss") is not None and pos["stop_loss"] < entry_price:
                                 pos["stop_loss"] = entry_price
                                 logger.debug(f"Stop moved to breakeven after partial TP for {symbol}")
@@ -3802,6 +3718,9 @@ class TradingEngine:
                 order["timeframe"] = timeframe
                 self.trade_history.append(order)
                 await asyncio.to_thread(insert_trade, order)
+                # Persist paper balances immediately
+                if settings.TRADING_MODE == "paper":
+                    await asyncio.to_thread(save_paper_balances, self.trader.balances)
                 await self._save_state()
                 if self.notifier:
                     buy_msg = f"🟢 BUY {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
@@ -3933,6 +3852,9 @@ class TradingEngine:
                 self._last_strategy_eval.pop(symbol, None)
                 self.trade_history.append(order)
                 await asyncio.to_thread(insert_trade, order)
+                # Persist paper balances immediately
+                if settings.TRADING_MODE == "paper":
+                    await asyncio.to_thread(save_paper_balances, self.trader.balances)
                 await self._save_state()
                 if self.notifier:
                     # Human-readable labels for common exit reasons
@@ -4016,5 +3938,7 @@ class TradingEngine:
         try:
             order = await asyncio.to_thread(self.trader.create_market_sell_order, symbol, balance)
             logger.info(f"Dust sweep: sold {balance} {base} from {symbol} – order {order.get('id')}")
+            if settings.TRADING_MODE == "paper":
+                await asyncio.to_thread(save_paper_balances, self.trader.balances)
         except Exception as e:
             logger.error(f"Dust sweep failed for {symbol}: {e}")

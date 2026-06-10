@@ -193,6 +193,34 @@ def delete_trading_state(key: str):
     conn.close()
 
 
+# ---------- Paper balance helpers ----------
+
+def save_paper_balances(balances: Dict[str, float]):
+    """Persist the paper simulator's balances dict."""
+    conn = get_connection()
+    conn.execute(
+        "INSERT OR REPLACE INTO trading_state (key, value) VALUES (?, ?)",
+        ("paper_balances", json.dumps(balances))
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_paper_balances() -> Dict[str, float]:
+    """Load the paper simulator's balances dict. Returns empty dict if not found."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT value FROM trading_state WHERE key = 'paper_balances'"
+    ).fetchone()
+    conn.close()
+    if row:
+        try:
+            return json.loads(row["value"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return {}
+
+
 # ---------- Telegram state helpers ----------
 
 def get_telegram_chat_id() -> Optional[int]:
