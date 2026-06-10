@@ -2083,23 +2083,20 @@ class TradingEngine:
                     if tf_atr > 0:
                         atr_multi_tf[tf] = tf_atr
 
-            # --- Market regime classification ---
-            market_regime = "unknown"
-            if adx is not None and atr is not None and atr > 0:
-                current_price = ticker['last']
-                if current_price > 0:
-                    if adx > 25:
-                        market_regime = "trending"
-                    else:
-                        market_regime = "ranging"
-                    # Volatility: ATR as % of price
-                    atr_pct = (atr / current_price) * 100
-                    if atr_pct > 5.0:
-                        market_regime += " (high volatility)"
-                    elif atr_pct < 1.0:
-                        market_regime += " (low volatility)"
-                    else:
-                        market_regime += " (normal volatility)"
+            # --- Market regime classification (enhanced) ---
+            market_regime = self._classify_market_regime(
+                adx=adx,
+                plus_di=plus_di,
+                minus_di=minus_di,
+                ema_9=ema_9,
+                ema_21=ema_21,
+                bb_upper=bb_upper,
+                bb_lower=bb_lower,
+                bb_middle=bb_middle,
+                atr=atr,
+                atr_percentile=atr_percentile,
+                current_price=ticker['last'],
+            )
 
             # Extract raw candles for the assigned timeframe (from multi-timeframe data)
             raw_candles = multi_tf_raw_candles.get(assigned_tf)

@@ -1268,10 +1268,15 @@ Maximum coins to trade: {max_coins}
         prompt += f"\nMarket regime: {market_regime}\n"
         prompt += (
             "Use this regime to adjust your strategy:\n"
-            "- Trending: use wider stops (to avoid being shaken out) and larger position sizes if trend is strong.\n"
-            "- Ranging: use tighter stops and smaller positions; prefer mean‑reversion strategies.\n"
-            "- High volatility: reduce position size and widen stops.\n"
-            "- Low volatility: you may tighten stops but beware of false breakouts.\n"
+            "- 'strong uptrend/downtrend': trend is clear and powerful. Use wider stops to avoid shakeouts, "
+            "larger position sizes, and trail stops generously.\n"
+            "- 'moderate uptrend/downtrend': trend exists but may weaken. Use normal stops and position sizes.\n"
+            "- 'ranging': no clear direction. Prefer mean‑reversion strategies, tighter stops, smaller positions.\n"
+            "- 'high volatility': expect large swings. Reduce position size, widen stops, and consider ATR‑based stops.\n"
+            "- 'low volatility': quiet market. Tight stops are acceptable but beware of sudden breakout (squeeze).\n"
+            "- 'squeeze': Bollinger Bands are very narrow – a large move is likely imminent. Wait for breakout confirmation.\n"
+            "- 'expansion': bands are wide – trend may be strong but also prone to reversals.\n"
+            "- MA bias (bullish/bearish) indicates short‑term momentum when ADX is weak.\n"
         )
     if fear_greed_index:
         prompt += (
