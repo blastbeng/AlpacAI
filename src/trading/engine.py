@@ -734,6 +734,96 @@ class TradingEngine:
             },
         }
 
+    @staticmethod
+    def _classify_market_regime(
+        adx: Optional[float],
+        plus_di: Optional[float],
+        minus_di: Optional[float],
+        ema_9: Optional[float],
+        ema_21: Optional[float],
+        bb_upper: Optional[float],
+        bb_lower: Optional[float],
+        bb_middle: Optional[float],
+        atr: Optional[float],
+        atr_percentile: Optional[float],
+        current_price: float,
+    ) -> str:
+        """Classify market regime using multiple indicators."""
+        if current_price <= 0:
+            return "unknown"
+
+        # --- Trend direction and strength ---
+        trend_dir = "neutral"
+        trend_strength = "weak"
+        if adx is not None and plus_di is not None and minus_di is not None:
+            if adx > 40:
+                trend_strength = "strong"
+            elif adx > 25:
+                trend_strength = "moderate"
+            else:
+                trend_strength = "weak"
+
+            if plus_di > minus_di:
+                trend_dir = "uptrend"
+            elif minus_di > plus_di:
+                trend_dir = "downtrend"
+            else:
+                trend_dir = "neutral"
+
+        # --- Moving average alignment ---
+        ma_alignment = "neutral"
+        if ema_9 is not None and ema_21 is not None:
+            if ema_9 > ema_21:
+                ma_alignment = "bullish"
+            else:
+                ma_alignment = "bearish"
+
+        # --- Volatility state ---
+        volatility = "normal"
+        if atr is not None and current_price > 0:
+            atr_pct = (atr / current_price) * 100
+            if atr_percentile is not None:
+                if atr_percentile > 80:
+                    volatility = "high"
+                elif atr_percentile < 20:
+                    volatility = "low"
+                else:
+                    volatility = "normal"
+            else:
+                # Fallback to simple thresholds
+                if atr_pct > 5.0:
+                    volatility = "high"
+                elif atr_pct < 1.0:
+                    volatility = "low"
+
+        # --- Bollinger Band squeeze/expansion ---
+        bb_state = ""
+        if bb_upper is not None and bb_lower is not None and bb_middle is not None and bb_middle > 0:
+            bb_width = (bb_upper - bb_lower) / bb_middle
+            if bb_width < 0.02:   # very narrow bands
+                bb_state = " squeeze"
+            elif bb_width > 0.08: # wide bands
+                bb_state = " expansion"
+
+        # --- Compose final regime string ---
+        if trend_strength in ("strong", "moderate") and trend_dir != "neutral":
+            regime = f"{trend_strength} {trend_dir}"
+        else:
+            regime = "ranging"
+
+        # Add volatility
+        regime += f", {volatility} volatility"
+
+        # Add Bollinger state if meaningful
+        if bb_state:
+            regime += bb_state
+
+        # Add MA alignment if it conflicts with ADX trend (e.g., weak trend but bullish MA)
+        if trend_strength == "weak" and ma_alignment != "neutral":
+            regime += f" ({ma_alignment} MA bias)"
+
+        return regime
+
     async def _reconcile_positions(self):
         """Detect and handle external changes: delisted coins, externally sold positions."""
         # --- Delisted coins ---
