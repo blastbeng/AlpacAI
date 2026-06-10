@@ -110,6 +110,16 @@ class Settings(BaseSettings):
             raise ValueError("LLM_TEMPERATURE must be between 0.0 and 2.0")
         return v
 
+    # LLM timeout (seconds) for HTTP requests
+    LLM_TIMEOUT: float = 300.0
+
+    @field_validator("LLM_TIMEOUT")
+    @classmethod
+    def validate_llm_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("LLM_TIMEOUT must be positive")
+        return v
+
     # Redis
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
