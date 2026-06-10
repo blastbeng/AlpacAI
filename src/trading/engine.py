@@ -3101,7 +3101,7 @@ class TradingEngine:
 
             # Log and notify the decision
             logger.info(f"Decision for {symbol}: {validated.action} (confidence: {validated.confidence:.2f})")
-            if self.notifier:
+            if self.notifier and not (trading_paused and validated.action == "BUY"):
                 emoji = {"BUY": "🟢", "SELL": "🔴", "HOLD": "⏸️"}.get(validated.action, "❓")
                 # Build a short indicator summary
                 ind_parts = []
@@ -3379,11 +3379,6 @@ class TradingEngine:
             if validated.action != "HOLD":
                 if trading_paused and validated.action == "BUY":
                     logger.info(f"Ignoring BUY signal for {symbol}: trading is paused.")
-                    if self.notifier:
-                        await self.notifier.send_notification(
-                            f"⏸️ Ignoring BUY {symbol}: trading paused.",
-                            summary={"symbol": symbol, "action": "SKIP", "reason": "Trading paused"}
-                        )
                 else:
                     await self._execute_signal(symbol, validated, timeframe=assigned_tf, atr=atr, spread_pct=spread_pct, order_book=order_book)
         except Exception as e:
