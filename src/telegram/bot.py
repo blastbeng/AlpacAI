@@ -132,12 +132,9 @@ class TelegramBot:
         if not self._is_authorized(update):
             return
         try:
-            def get_status():
-                coins = self.engine.current_coins
-                positions = self.engine.positions
-                balance = self.engine.trader.fetch_balance()
-                return coins, positions, balance
-            coins, positions, balance = await asyncio.to_thread(get_status)
+            coins = self.engine.current_coins
+            positions = self.engine.positions
+            balance = await asyncio.to_thread(self.engine.trader.fetch_balance)
         except Exception as e:
             logger.error(f"Failed to get status: {e}", exc_info=True)
             await update.message.reply_text("⚠️ Could not retrieve status.", reply_markup=self.keyboard)
