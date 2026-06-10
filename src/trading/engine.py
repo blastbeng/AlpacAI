@@ -15,7 +15,7 @@ from src.exchanges.ws_manager import WebSocketManager
 from src.exchanges.market_data import get_available_pairs, get_tickers, get_order_book, get_multi_timeframe_ohlcv
 from src.trading.paper_simulator import PaperSimulator
 from src.trading.live_trader import LiveTrader
-from src.llm.cache import get_cached_llm_response
+from src.llm.cache import get_cached_llm_response, compute_market_hash
 from src.llm.prompts import (
     SYSTEM_PROMPT,
     build_coin_selection_prompt,
@@ -1442,11 +1442,51 @@ class TradingEngine:
             coin_tenure=coin_tenure,
             coin_max_tenure=coin_max_tenure,
         )
+        # Build a market snapshot dict for caching
+        market_snapshot = {
+            "available_pairs": sample_pairs,
+            "tickers": tickers,
+            "market_limits": market_limits,
+            "ohlcv_data": ohlcv_data,
+            "news_sentiment": news_sentiment,
+            "coin_indicators": coin_indicators,
+            "performance": perf,
+            "fear_greed": fear_greed,
+            "global_market": global_market,
+            "altcoin_season": altcoin_season,
+            "session_info": session_info,
+            "market_breadth": market_breadth,
+            "btc_dominance": global_market.get("btc_dominance") if global_market else None,
+            "total_market_cap": global_market if global_market else None,
+            "trading_paused": trading_paused_bool,
+            "open_positions": self.positions,
+            "coin_tenure": coin_tenure,
+            "coin_max_tenure": coin_max_tenure,
+            "base_balance": base_balance,
+            "per_coin_budget": per_coin_budget,
+            "max_coins": self.effective_max_coins,
+            "current_coins": self.current_coins,
+            "coin_scores": coin_scores,
+            "coin_spreads": coin_spreads,
+            "coin_depths": coin_depths,
+            "historical_ohlcv_summary": historical_ohlcv_summary,
+            "correlation_matrix": correlation_matrix,
+            "relative_strength_btc": relative_strength_btc,
+            "sentiment_trend": sentiment_trend,
+            "volume_trends": volume_trends,
+        }
+        market_hash = compute_market_hash(market_snapshot)
         parsed = {}
         try:
             response = await asyncio.wait_for(
-                asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 300),
-                timeout=60.0
+                asyncio.to_thread(
+                    get_cached_llm_response,
+                    prompt,
+                    SYSTEM_PROMPT,
+                    300,
+                    market_hash=market_hash,
+                ),
+                timeout=60.0,
             )
         except asyncio.TimeoutError:
             logger.warning("LLM coin selection timed out. Falling back to volume-based selection.")
@@ -2460,10 +2500,101 @@ class TradingEngine:
                 trading_paused=trading_paused,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
+            # Build a market snapshot dict for caching (per-coin)
+            market_snapshot = {
+                "symbol": symbol,
+                "ticker": ticker,
+                "order_book": order_book,
+                "balance": balance,
+                "open_positions": open_positions,
+                "per_coin_budget": per_coin_budget,
+                "max_coins": self.effective_max_coins,
+                "performance": perf,
+                "ohlcv_data": ohlcv_data,
+                "assigned_timeframe": assigned_tf,
+                "atr": atr,
+                "atr_multi_tf": atr_multi_tf,
+                "rsi": rsi,
+                "macd": macd,
+                "macd_signal": macd_signal,
+                "macd_hist": macd_hist,
+                "bb_upper": bb_upper,
+                "bb_middle": bb_middle,
+                "bb_lower": bb_lower,
+                "ema_9": ema_9,
+                "ema_21": ema_21,
+                "stochastic_k": stochastic_k,
+                "stochastic_d": stochastic_d,
+                "adx": adx,
+                "plus_di": plus_di,
+                "minus_di": minus_di,
+                "obv": obv,
+                "mfi": mfi,
+                "cci": cci,
+                "williams_r": williams_r,
+                "ichimoku": ichimoku,
+                "donchian_channels": donchian_channels,
+                "order_book_imbalance": order_book_imbalance,
+                "spread_pct": spread_pct,
+                "bid_wall_volume": bid_wall_volume,
+                "ask_wall_volume": ask_wall_volume,
+                "order_book_pressure": order_book_pressure,
+                "depth_imbalances": depth_imbalances,
+                "order_book_slope": order_book_slope,
+                "mid_price_bias": mid_price_bias,
+                "depth_profile": depth_profile,
+                "fee_rate": fee_rate,
+                "drawdown_pct": perf.get("equity_curve", {}).get("drawdown_pct"),
+                "raw_candles": raw_candles,
+                "recent_trades": recent_trades_summary,
+                "historical_ohlcv": historical_ohlcv,
+                "min_order_amount": min_order_amount,
+                "min_order_cost": min_order_cost,
+                "all_coins": self.current_coins,
+                "past_trades": past_trades,
+                "aggregate_sentiment": aggregate_sentiment,
+                "cycle_spent": self._cycle_spent,
+                "remaining_balance": remaining,
+                "market_regime": market_regime,
+                "recent_trades_data": recent_trades_raw,
+                "multi_tf_raw_candles": multi_tf_raw_candles,
+                "multi_tf_indicators": multi_tf_indicators,
+                "scalping_feasibility_score": scalping_score,
+                "fear_greed_index": fear_greed,
+                "relative_strength_btc": rel_strength_btc,
+                "vwap": vwap,
+                "vwap_multi_tf": vwap_multi_tf,
+                "session_info": session_info,
+                "sentiment_trend": sentiment_trend_val,
+                "volume_trend": volume_trend_val,
+                "market_breadth": getattr(self, '_market_breadth', None),
+                "depth_trend": depth_trend,
+                "parabolic_sar": parabolic_sar,
+                "keltner_channels": keltner_channels,
+                "pivot_points": pivot_points,
+                "btc_dominance": global_market.get("btc_dominance") if global_market else None,
+                "total_market_cap": global_market if global_market else None,
+                "altcoin_season": altcoin_season,
+                "cvd": cvd,
+                "cvd_normalized": cvd_normalized,
+                "order_book_pressure_trend": order_book_pressure_trend,
+                "estimated_slippage_pct": estimated_slippage_pct,
+                "atr_percentile": atr_percentile,
+                "market_impact_score": market_impact_score,
+                "global_risk_multiplier": global_risk_mult,
+                "trading_paused": trading_paused,
+            }
+            market_hash = compute_market_hash(market_snapshot)
             try:
                 response = await asyncio.wait_for(
-                    asyncio.to_thread(get_cached_llm_response, prompt, SYSTEM_PROMPT, 60),
-                    timeout=120.0
+                    asyncio.to_thread(
+                        get_cached_llm_response,
+                        prompt,
+                        SYSTEM_PROMPT,
+                        60,
+                        market_hash=market_hash,
+                    ),
+                    timeout=120.0,
                 )
             except asyncio.TimeoutError:
                 logger.warning(f"LLM strategy call timed out for {symbol}. Skipping this cycle.")
