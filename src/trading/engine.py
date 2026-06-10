@@ -932,6 +932,7 @@ class TradingEngine:
                 if self.ws_manager.healthy:
                     update = await self.ws_manager.wait_for_update(timeout=1.0)
                 else:
+                    logger.warning("WebSocket manager unhealthy – falling back to REST polling.")
                     await asyncio.sleep(1.0)
 
                 # Process any coin whose evaluation interval has elapsed

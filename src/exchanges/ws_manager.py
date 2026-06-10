@@ -38,6 +38,8 @@ class WebSocketManager:
             self.tickers.clear()
             self.order_books.clear()
             self.trades.clear()
+            # Reset batch ticker flag so we can retry watch_tickers on the new connection
+            self._use_batch_tickers = True
             # Re-create the pro exchange
             from src.exchanges.factory import get_pro_exchange
             self.exchange = get_pro_exchange()
@@ -49,6 +51,8 @@ class WebSocketManager:
                 for sym in self.symbols:
                     task = asyncio.create_task(self._watch_ticker(sym))
                     self._ticker_tasks[sym] = task
+            # Small delay to let the new connection stabilise
+            await asyncio.sleep(1)
             # Order book tasks will automatically reconnect on next iteration
             logger.info("WebSocket reconnection complete.")
 
