@@ -11,11 +11,21 @@ def parse_llm_response(response_text: str) -> Signal:
     """
     try:
         # Try to extract JSON from a markdown code block first
-        json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
+        json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', response_text, re.DOTALL)
         if json_match:
             data = json.loads(json_match.group(1))
         else:
-            data = json.loads(response_text)
+            try:
+                data = json.loads(response_text)
+            except json.JSONDecodeError:
+                # Fallback: try to extract the first JSON object from the text
+                start = response_text.find('{')
+                end = response_text.rfind('}')
+                if start != -1 and end != -1 and end > start:
+                    json_str = response_text[start:end+1]
+                    data = json.loads(json_str)
+                else:
+                    raise ValueError("No JSON object found in LLM response")
 
         action = data.get("action", "HOLD").upper()
         if action not in ("BUY", "SELL", "HOLD"):
