@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     COIN_SELECTION_MAX_PAIRS: int = 100          # max pairs to include in the LLM prompt
     COIN_SELECTION_MIN_SENTIMENT: float = -1.0   # minimum aggregate sentiment compound to consider a coin (-1.0 = no filter)
 
+    # Limit coin selection to top N by 24h volume (reduces noise)
+    COIN_SELECTION_TOP_VOLUME_LIMIT: int = 30
+
     @field_validator("TRADING_MODE")
     @classmethod
     def validate_trading_mode(cls, v: str) -> str:
@@ -37,6 +40,13 @@ class Settings(BaseSettings):
     def validate_max_coins(cls, v: int) -> int:
         if v < 1:
             raise ValueError("MAX_COINS must be at least 1")
+        return v
+
+    @field_validator("COIN_SELECTION_TOP_VOLUME_LIMIT")
+    @classmethod
+    def validate_top_volume_limit(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("COIN_SELECTION_TOP_VOLUME_LIMIT must be at least 1")
         return v
 
     # OHLCV timeframes for multi-timeframe analysis

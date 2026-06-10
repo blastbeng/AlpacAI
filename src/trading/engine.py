@@ -344,7 +344,17 @@ class TradingEngine:
                     available_pairs = await asyncio.to_thread(
                         get_available_pairs, self.exchange, self.base_currency
                     )
-                    symbols_to_refresh = set(available_pairs) - current_symbols
+                    # Fetch tickers for a subset to determine top volume coins
+                    # (limit to 200 to avoid excessive API calls)
+                    sample_for_vol = available_pairs[:200]
+                    tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_for_vol)
+                    def _vol(sym):
+                        t = tickers.get(sym, {})
+                        return t.get('quoteVolume', 0) or 0
+                    top_volume_pairs = sorted(sample_for_vol, key=_vol, reverse=True)[
+                        :settings.COIN_SELECTION_TOP_VOLUME_LIMIT
+                    ]
+                    symbols_to_refresh = set(top_volume_pairs) - current_symbols
                 except Exception as e:
                     logger.warning(f"Could not get available pairs for news refresh: {e}")
 
@@ -1090,9 +1100,15 @@ class TradingEngine:
 
         tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_pairs)
 
-        # --- Fetch order books for top coins to compute real spread/depth for scalping score ---
+        # --- Limit candidate pool to top N by 24h volume ---
+        def _volume(sym):
+            t = tickers.get(sym, {})
+            return t.get('quoteVolume', 0) or 0
+        sample_pairs = sorted(sample_pairs, key=_volume, reverse=True)[:settings.COIN_SELECTION_TOP_VOLUME_LIMIT]
+
+        # --- Fetch order books for these top coins to compute real spread/depth for scalping score ---
         top_n_for_ob = min(20, len(sample_pairs))
-        top_by_vol = sorted(sample_pairs, key=lambda s: tickers.get(s, {}).get('quoteVolume', 0) or 0, reverse=True)[:top_n_for_ob]
+        top_by_vol = sample_pairs[:top_n_for_ob]  # already sorted by volume
         coin_spreads: Dict[str, float] = {}
         coin_depths: Dict[str, float] = {}
         for sym in top_by_vol:
@@ -1228,11 +1244,8 @@ class TradingEngine:
                         "relative_24h_pct": round(rel_perf, 2) if rel_perf is not None else None,
                     }
 
-        # Determine top coins by volume for OHLCV fetch (limit to 20 to avoid rate limits)
-        def _volume(sym):
-            t = tickers.get(sym, {})
-            return t.get('quoteVolume', 0) or 0
-        sorted_by_vol = sorted(sample_pairs, key=_volume, reverse=True)[:20]
+        # Use the already volume‑sorted sample_pairs for OHLCV fetch (limit to 20 to avoid rate limits)
+        sorted_by_vol = sample_pairs[:20]
 
         # Fetch multi-timeframe OHLCV for these coins
         ohlcv_data = {}
