@@ -2685,6 +2685,39 @@ class TradingEngine:
                         )
                     return
 
+            # --- Pre-check partial TP depth at order placement ---
+            partial_levels = params.get("partial_take_profit_levels")
+            if partial_levels:
+                for i, level in enumerate(partial_levels):
+                    min_depth = level.get("min_depth")
+                    if min_depth is not None and min_depth > 0:
+                        lvl_pct = level["take_profit_pct"]
+                        tp_price = current_price * (1 + lvl_pct)
+                        asks = order_book.get('asks', [])
+                        cum_vol = 0.0
+                        for ask in asks:
+                            if ask[0] <= tp_price:
+                                cum_vol += ask[1]
+                            else:
+                                break
+                        if cum_vol < min_depth:
+                            logger.info(
+                                f"Skipping BUY {symbol}: partial TP level {i} depth {cum_vol:.4f} "
+                                f"below required {min_depth:.4f} at price {tp_price:.4f}"
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⚠️ Skipping BUY {symbol}: insufficient depth for partial TP level {i}",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "SKIP",
+                                        "reason": f"Insufficient depth for partial TP level {i}",
+                                        "depth": cum_vol,
+                                        "min_depth": min_depth,
+                                    }
+                                )
+                            return
+
             # --- LLM‑controlled max slippage for market buy ---
             max_slippage = params.get("max_slippage_pct")
             if max_slippage is not None and max_slippage > 0 and validated.action == "BUY":
@@ -3028,13 +3061,6 @@ class TradingEngine:
                 ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
                 current_price = ticker['last']
 
-                # Fetch order book if needed for partial TP depth checks
-                partial_levels_for_depth = pos.get("partial_take_profit_levels")
-                need_order_book = partial_levels_for_depth and any(level.get("min_depth") is not None for level in partial_levels_for_depth)
-                if need_order_book:
-                    order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 5)
-                else:
-                    order_book = None
 
                 # Trailing stop update (only if enabled)
                 if pos.get("trailing_stop") and pos.get("trailing_stop_distance_pct"):
@@ -3116,24 +3142,6 @@ class TradingEngine:
                                 pos["partial_tp_levels_triggered"] = triggered
                                 continue
                         if current_price >= entry_price * (1 + lvl_pct):
-                            # Check minimum depth if specified
-                            min_depth = level.get("min_depth")
-                            if min_depth is not None and order_book is not None:
-                                tp_price = entry_price * (1 + lvl_pct)
-                                asks = order_book.get('asks', [])
-                                cum_vol = 0.0
-                                for ask in asks:
-                                    if ask[0] <= tp_price:
-                                        cum_vol += ask[1]
-                                    else:
-                                        break
-                                if cum_vol < min_depth:
-                                    logger.info(
-                                        f"Partial TP level {i} for {symbol}: insufficient depth "
-                                        f"({cum_vol:.4f} < {min_depth:.4f}), skipping this cycle."
-                                    )
-                                    # Do not mark as triggered; will re-check next cycle
-                                    continue
                             sell_amount = original_amount * lvl_frac
                             # Ensure we don't sell more than current position
                             sell_amount = min(sell_amount, pos["amount"])
