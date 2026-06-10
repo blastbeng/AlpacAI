@@ -146,6 +146,7 @@ class TelegramBot:
         ]
         for key in keys:
             await asyncio.to_thread(self.redis.delete, key)
+        self.engine.trigger_coin_reevaluation()
         await self.send_notification(
             "▶️ Trading resumed manually.",
             summary={"action": "RESUME", "reason": "Manual resume"}

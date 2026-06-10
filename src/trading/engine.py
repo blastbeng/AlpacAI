@@ -115,6 +115,7 @@ class TradingEngine:
         self._market_breadth: Optional[Dict[str, Any]] = None
         self._risk_lock = asyncio.Lock()
         self._coin_reeval_lock = asyncio.Lock()
+        self._reeval_trigger = asyncio.Event()
         self._running = True
         self._last_state_save = 0
 
@@ -130,6 +131,10 @@ class TradingEngine:
     def set_notifier(self, notifier):
         """Attach a notification service (e.g., TelegramBot)."""
         self.notifier = notifier
+
+    def trigger_coin_reevaluation(self):
+        """Signal the periodic reevaluate loop to run immediately."""
+        self._reeval_trigger.set()
 
     async def stop(self):
         """Gracefully stop the engine and all background tasks."""
@@ -177,7 +182,11 @@ class TradingEngine:
                 logger.error(f"Coin re-evaluation error: {e}", exc_info=True)
             finally:
                 self._reevaluate_running = False
-            await asyncio.sleep(self._coin_revaluation_interval)
+            try:
+                await asyncio.wait_for(self._reeval_trigger.wait(), timeout=self._coin_revaluation_interval)
+            except asyncio.TimeoutError:
+                pass
+            self._reeval_trigger.clear()
 
     async def _periodic_pause_check(self):
         """Check and handle auto-resume from pause (only for LLM-initiated pauses)."""
@@ -214,6 +223,7 @@ class TradingEngine:
                                     ]
                                     for key in pause_keys:
                                         await asyncio.to_thread(self.redis.delete, key)
+                                    self._reeval_trigger.set()
                                     if self.notifier:
                                         reason_text = f" (was paused: {stored_reason})" if stored_reason else ""
                                         await self.notifier.send_notification(
@@ -2239,6 +2249,7 @@ class TradingEngine:
                 for key in pause_keys:
                     await asyncio.to_thread(self.redis.delete, key)
                 logger.info("LLM decided to resume trading.")
+                self._reeval_trigger.set()
                 if self.notifier:
                     reason_text = f" – {reason}" if reason else ""
                     await self.notifier.send_notification(
