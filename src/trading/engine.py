@@ -1839,7 +1839,9 @@ class TradingEngine:
                     }
             except Exception:
                 pass
-            order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
+            order_book = self.ws_manager.get_order_book(symbol)
+            if order_book is None:
+                order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
             # Fetch recent trades for micro-momentum and liquidity assessment
             recent_trades_raw = []
             try:
@@ -3161,7 +3163,9 @@ class TradingEngine:
                             min_depth = level.get("min_depth")
                             if min_depth is not None and min_depth > 0:
                                 try:
-                                    ob = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
+                                    ob = self.ws_manager.get_order_book(symbol)
+                                    if ob is None:
+                                        ob = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
                                 except Exception as e:
                                     logger.warning(f"Could not fetch order book for depth check on {symbol}: {e}")
                                     ob = None
