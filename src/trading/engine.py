@@ -20,6 +20,9 @@ from src.llm.prompts import (
     SYSTEM_PROMPT,
     build_coin_selection_prompt,
     build_strategy_prompt,
+    _format_news_for_prompt,
+)
+from src.indicators import (
     compute_atr,
     compute_rsi,
     compute_macd,
@@ -37,7 +40,7 @@ from src.llm.prompts import (
     compute_keltner_channels,
     compute_pivot_points,
     compute_donchian_channels,
-    _format_news_for_prompt,
+    compute_all_indicators,
 )
 try:
     from src.news.fetcher import discover_trending_coins
@@ -1282,38 +1285,8 @@ class TradingEngine:
             for tf in settings.OHLCV_TIMEFRAMES:
                 if tf in tf_data and tf_data[tf]:
                     candles = tf_data[tf]
-                    if len(candles) >= 26:
-                        closes = [c[4] for c in candles]
-                        highs = [c[2] for c in candles]
-                        lows = [c[3] for c in candles]
-                        volumes = [c[5] for c in candles]
-                        ind = {}
-                        ind['rsi'] = compute_rsi(closes)
-                        macd_val, macd_sig, macd_hist = compute_macd(closes)
-                        ind['macd'] = macd_val
-                        ind['macd_signal'] = macd_sig
-                        ind['macd_hist'] = macd_hist
-                        bb_upper, bb_middle, bb_lower = compute_bollinger_bands(closes)
-                        ind['bb_upper'] = bb_upper
-                        ind['bb_middle'] = bb_middle
-                        ind['bb_lower'] = bb_lower
-                        ema_9_list = compute_ema(closes, 9)
-                        ema_21_list = compute_ema(closes, 21)
-                        ind['ema_9'] = ema_9_list[-1] if ema_9_list else None
-                        ind['ema_21'] = ema_21_list[-1] if ema_21_list else None
-                        stochastic_k, stochastic_d = compute_stochastic(highs, lows, closes)
-                        ind['stochastic_k'] = stochastic_k
-                        ind['stochastic_d'] = stochastic_d
-                        adx_val, plus_di, minus_di = compute_adx(highs, lows, closes)
-                        ind['adx'] = adx_val
-                        ind['plus_di'] = plus_di
-                        ind['minus_di'] = minus_di
-                        ind['obv'] = compute_obv(closes, volumes)
-                        ind['mfi'] = compute_mfi(highs, lows, closes, volumes)
-                        ind['cci'] = compute_cci(highs, lows, closes)
-                        ind['williams_r'] = compute_williams_r(highs, lows, closes)
-                        ind['ichimoku'] = compute_ichimoku(highs, lows, closes)
-                        ind['donchian_channels'] = compute_donchian_channels(highs, lows)
+                    ind = compute_all_indicators(candles)
+                    if ind:
                         coin_indicators[sym][tf] = ind
 
         # Fetch historical OHLCV from database for longer-term trend analysis (up to 30 days)
@@ -2018,26 +1991,8 @@ class TradingEngine:
             perf = self._compute_performance_metrics()
 
             # --- Compute additional metrics for the LLM ---
-            # Get indicator config for this coin (LLM-defined)
+            # Build indicator config from position or defaults
             ind_cfg = self.positions.get(symbol, {}).get('indicator_config') if symbol in self.positions else None
-            rsi_period = ind_cfg.get('rsi_period', 14) if ind_cfg else 14
-            macd_fast = ind_cfg.get('macd_fast', 12) if ind_cfg else 12
-            macd_slow = ind_cfg.get('macd_slow', 26) if ind_cfg else 26
-            macd_signal_period = ind_cfg.get('macd_signal', 9) if ind_cfg else 9
-            bb_period = ind_cfg.get('bb_period', 20) if ind_cfg else 20
-            bb_std = ind_cfg.get('bb_std', 2.0) if ind_cfg else 2.0
-            ema_fast = ind_cfg.get('ema_fast', 9) if ind_cfg else 9
-            ema_slow = ind_cfg.get('ema_slow', 21) if ind_cfg else 21
-            stoch_k_period = ind_cfg.get('stoch_k_period', 14) if ind_cfg else 14
-            stoch_d_period = ind_cfg.get('stoch_d_period', 3) if ind_cfg else 3
-            adx_period = ind_cfg.get('adx_period', 14) if ind_cfg else 14
-            mfi_period = ind_cfg.get('mfi_period', 14) if ind_cfg else 14
-            cci_period = ind_cfg.get('cci_period', 20) if ind_cfg else 20
-            willr_period = ind_cfg.get('willr_period', 14) if ind_cfg else 14
-            ichimoku_tenkan = ind_cfg.get('ichimoku_tenkan', 9) if ind_cfg else 9
-            ichimoku_kijun = ind_cfg.get('ichimoku_kijun', 26) if ind_cfg else 26
-            ichimoku_senkou_b = ind_cfg.get('ichimoku_senkou_b', 52) if ind_cfg else 52
-            donchian_period = ind_cfg.get('donchian_period', 20) if ind_cfg else 20
 
             # Compute indicators for all timeframes
             multi_tf_indicators: Dict[str, Dict[str, Any]] = {}
@@ -2068,42 +2023,8 @@ class TradingEngine:
                 if tf in ohlcv_data and ohlcv_data[tf]:
                     candles = ohlcv_data[tf]
                     multi_tf_raw_candles[tf] = candles
-                    ind = {}
-                    if len(candles) >= 2:
-                        ind['atr'] = compute_atr(candles)
-                    if len(candles) >= 26:
-                        closes = [c[4] for c in candles]
-                        highs = [c[2] for c in candles]
-                        lows = [c[3] for c in candles]
-                        volumes = [c[5] for c in candles]
-                        ind['rsi'] = compute_rsi(closes, period=rsi_period)
-                        macd_val, macd_sig, macd_hist_val = compute_macd(closes, fast=macd_fast, slow=macd_slow, signal=macd_signal_period)
-                        ind['macd'] = macd_val
-                        ind['macd_signal'] = macd_sig
-                        ind['macd_hist'] = macd_hist_val
-                        bb_upper_val, bb_middle_val, bb_lower_val = compute_bollinger_bands(closes, period=bb_period, std_dev=bb_std)
-                        ind['bb_upper'] = bb_upper_val
-                        ind['bb_middle'] = bb_middle_val
-                        ind['bb_lower'] = bb_lower_val
-                        ema_9_list = compute_ema(closes, ema_fast)
-                        ema_21_list = compute_ema(closes, ema_slow)
-                        ind['ema_9'] = ema_9_list[-1] if ema_9_list else None
-                        ind['ema_21'] = ema_21_list[-1] if ema_21_list else None
-                        stoch_k, stoch_d = compute_stochastic(highs, lows, closes, period=stoch_k_period, smooth_k=stoch_d_period)
-                        ind['stochastic_k'] = stoch_k
-                        ind['stochastic_d'] = stoch_d
-                        adx_val, plus_di_val, minus_di_val = compute_adx(highs, lows, closes, period=adx_period)
-                        ind['adx'] = adx_val
-                        ind['plus_di'] = plus_di_val
-                        ind['minus_di'] = minus_di_val
-                        ind['obv'] = compute_obv(closes, volumes)
-                        ind['mfi'] = compute_mfi(highs, lows, closes, volumes, period=mfi_period)
-                        ind['cci'] = compute_cci(highs, lows, closes, period=cci_period)
-                        ind['williams_r'] = compute_williams_r(highs, lows, closes, period=willr_period)
-                        ind['ichimoku'] = compute_ichimoku(highs, lows, closes, tenkan_period=ichimoku_tenkan, kijun_period=ichimoku_kijun, senkou_b_period=ichimoku_senkou_b)
-                        ind['donchian_channels'] = compute_donchian_channels(highs, lows, period=donchian_period)
+                    ind = compute_all_indicators(candles, config=ind_cfg)
                     multi_tf_indicators[tf] = ind
-                    # Keep the assigned timeframe's indicators for backward compatibility
                     if tf == assigned_tf:
                         atr = ind.get('atr')
                         rsi = ind.get('rsi')
