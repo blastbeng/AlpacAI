@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     # OHLCV download staggering
     OHLCV_DOWNLOAD_COIN_DELAY_SECONDS: float = 2.0
 
+    # Maximum number of OHLCV candles to insert in a single backfill call.
+    # Prevents memory exhaustion and timeouts when backfilling large ranges.
+    BACKFILL_MAX_CANDLES_PER_CALL: int = 5000
+
     @field_validator("OHLCV_TIMEFRAMES")
     @classmethod
     def validate_ohlcv_timeframes(cls, v: list[str]) -> list[str]:

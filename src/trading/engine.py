@@ -529,7 +529,7 @@ class TradingEngine:
         """Convert a timeframe string (e.g., '5m', '1h') to seconds."""
         return self._timeframe_to_ms(timeframe) // 1000
 
-    async def _backfill_ohlcv(self, symbol: str, timeframe: str, start_ms: int, end_ms: int):
+    async def _backfill_ohlcv(self, symbol: str, timeframe: str, start_ms: int, end_ms: int, max_candles: int = None):
         """Fetch and store all missing OHLCV candles between start_ms and end_ms."""
         logger.info(f"Backfill started for {symbol} {timeframe}: {start_ms} → {end_ms}")
         latest_ts = await asyncio.to_thread(get_latest_ohlcv_timestamp, symbol, timeframe)
@@ -539,6 +539,8 @@ class TradingEngine:
             since = max(start_ms, latest_ts + 1)
 
         total_inserted = 0
+        if max_candles is None:
+            max_candles = settings.BACKFILL_MAX_CANDLES_PER_CALL
         while since < end_ms:
             try:
                 async with self._exchange_semaphore:
@@ -557,6 +559,13 @@ class TradingEngine:
             total_inserted += batch_count
             logger.debug(f"Backfill batch: {symbol} {timeframe} fetched {batch_count} candles from {since}")
 
+            if total_inserted >= max_candles:
+                logger.info(
+                    f"Backfill limit reached for {symbol} {timeframe}: {total_inserted} candles inserted "
+                    f"(max {max_candles}). Remaining range will be filled in next cycle."
+                )
+                break
+
             last_ts = candles[-1][0]
             if last_ts <= since:
                 # Avoid infinite loop if exchange returns same candle
@@ -565,7 +574,10 @@ class TradingEngine:
             # Small delay to avoid rate limits
             await asyncio.sleep(0.2)
 
-        logger.info(f"Backfill complete for {symbol} {timeframe}: {total_inserted} candles inserted")
+        if total_inserted >= max_candles:
+            logger.info(f"Backfill partial for {symbol} {timeframe}: {total_inserted} candles inserted (limit reached)")
+        else:
+            logger.info(f"Backfill complete for {symbol} {timeframe}: {total_inserted} candles inserted")
 
     async def _fill_gaps(self, symbol: str, timeframe: str):
         """Detect and fill gaps in stored OHLCV data for a symbol/timeframe."""
