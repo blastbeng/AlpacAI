@@ -1,7 +1,10 @@
 import ccxt
 import logging
+import time
 from typing import List, Dict, Any, Optional
 from src.utils.retry import retry_on_rate_limit
+
+TIMEFRAME_FETCH_DELAY = 0.3  # seconds between timeframe requests
 
 logger = logging.getLogger(__name__)
 
@@ -84,4 +87,5 @@ def get_multi_timeframe_ohlcv(
         except Exception as e:
             logger.warning("Failed to fetch OHLCV for %s %s: %s", symbol, tf, e)
             result[tf] = []
+        time.sleep(TIMEFRAME_FETCH_DELAY)
     return result

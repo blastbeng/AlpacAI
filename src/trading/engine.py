@@ -69,6 +69,7 @@ class TradingEngine:
         self.max_coins = settings.MAX_COINS
         self.effective_max_coins = self.max_coins
         self.redis = get_redis_client()
+        self._exchange_semaphore = asyncio.Semaphore(3)  # max 3 concurrent API calls
 
         if settings.TRADING_MODE == "paper":
             self.trader = PaperSimulator(
@@ -488,9 +489,10 @@ class TradingEngine:
         total_inserted = 0
         while since < end_ms:
             try:
-                candles = await asyncio.to_thread(
-                    self.exchange.fetch_ohlcv, symbol, timeframe, since=since, limit=500
-                )
+                async with self._exchange_semaphore:
+                    candles = await asyncio.to_thread(
+                        self.exchange.fetch_ohlcv, symbol, timeframe, since=since, limit=500
+                    )
             except Exception as e:
                 logger.warning(f"fetch_ohlcv failed for {symbol} {timeframe} at {since}: {e}")
                 break
@@ -1980,14 +1982,16 @@ class TradingEngine:
         try:
             ticker = self.ws_manager.get_ticker(symbol)
             if ticker is None:
-                ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                async with self._exchange_semaphore:
+                    ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
             current_price = ticker['last']
             # Relative strength vs BTC for this coin
             rel_strength_btc = None
             try:
                 btc_ticker = self.ws_manager.get_ticker("BTC/USDT")
                 if btc_ticker is None:
-                    btc_ticker = await asyncio.to_thread(self.exchange.fetch_ticker, "BTC/USDT")
+                    async with self._exchange_semaphore:
+                        btc_ticker = await asyncio.to_thread(self.exchange.fetch_ticker, "BTC/USDT")
                 btc_price = btc_ticker.get("last")
                 if btc_price and btc_price > 0 and ticker.get("last"):
                     ratio = ticker["last"] / btc_price
@@ -2005,14 +2009,16 @@ class TradingEngine:
                 pass
             order_book = self.ws_manager.get_order_book(symbol)
             if order_book is None:
-                order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
+                async with self._exchange_semaphore:
+                    order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
             # Fetch recent trades for micro-momentum and liquidity assessment
             recent_trades_raw = self.ws_manager.get_trades(symbol)
             if not recent_trades_raw:
                 try:
-                    recent_trades_raw = await asyncio.to_thread(
-                        self.exchange.fetch_trades, symbol, limit=20
-                    )
+                    async with self._exchange_semaphore:
+                        recent_trades_raw = await asyncio.to_thread(
+                            self.exchange.fetch_trades, symbol, limit=20
+                        )
                 except Exception as e:
                     logger.debug(f"Could not fetch recent trades for {symbol}: {e}")
 
@@ -2039,9 +2045,10 @@ class TradingEngine:
             ohlcv_data = {}
             if settings.OHLCV_TIMEFRAMES:
                 try:
-                    ohlcv_data = await asyncio.to_thread(
-                        get_multi_timeframe_ohlcv, self.exchange, symbol, settings.OHLCV_TIMEFRAMES, limit=50
-                    )
+                    async with self._exchange_semaphore:
+                        ohlcv_data = await asyncio.to_thread(
+                            get_multi_timeframe_ohlcv, self.exchange, symbol, settings.OHLCV_TIMEFRAMES, limit=50
+                        )
                 except Exception as e:
                     logger.warning(f"OHLCV fetch failed for {symbol}: {e}")
             open_positions = [
