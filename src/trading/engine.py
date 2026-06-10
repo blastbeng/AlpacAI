@@ -1587,20 +1587,41 @@ class TradingEngine:
         }
         market_hash = compute_market_hash(market_snapshot)
         parsed = {}
-        try:
-            response = await asyncio.wait_for(
-                asyncio.to_thread(
-                    get_cached_llm_response,
-                    prompt,
-                    SYSTEM_PROMPT,
-                    300,
-                    market_hash=market_hash,
-                ),
-                timeout=60.0,
-            )
-        except asyncio.TimeoutError:
-            logger.warning("LLM coin selection timed out. Falling back to volume-based selection.")
-            response = None  # will trigger the fallback path below
+        max_retries = 2
+        response = None
+        for attempt in range(max_retries + 1):
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        get_cached_llm_response,
+                        prompt,
+                        SYSTEM_PROMPT,
+                        300,
+                        market_hash=market_hash,
+                    ),
+                    timeout=60.0,
+                )
+                break  # success
+            except asyncio.TimeoutError:
+                if attempt < max_retries:
+                    logger.warning(
+                        f"LLM coin selection timed out (attempt {attempt+1}/{max_retries+1}). Retrying..."
+                    )
+                    await asyncio.sleep(1)
+                else:
+                    logger.warning(
+                        "LLM coin selection timed out after all retries. Falling back to volume-based selection."
+                    )
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.warning(
+                        f"LLM coin selection failed with error: {e}. Retrying..."
+                    )
+                    await asyncio.sleep(1)
+                else:
+                    logger.error(
+                        f"LLM coin selection failed after all retries: {e}. Falling back to volume-based selection."
+                    )
         logger.info(f"LLM coin selection raw response: {response}")
 
         # Retry JSON parsing if the first attempt fails
