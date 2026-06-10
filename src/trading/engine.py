@@ -1163,6 +1163,9 @@ class TradingEngine:
 
     async def _reevaluate_coins(self):
         """Use LLM to select which coins to trade."""
+        # Reset per-cycle spending tracker so new buys are not blocked by prior cycle spending
+        self._cycle_spent = 0.0
+
         # Only re-evaluate every COIN_REVALUATION_INTERVAL
         last_key = "trading:last_coin_eval"
         last_eval = await asyncio.to_thread(self.redis.get, last_key)
