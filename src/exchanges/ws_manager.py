@@ -32,54 +32,58 @@ class WebSocketManager:
         async with self._reconnect_lock:
             logger.warning("WebSocket reconnecting...")
             try:
-                await self.exchange.close()
-            except Exception:
-                pass
+                try:
+                    await self.exchange.close()
+                except Exception:
+                    pass
 
-            # 1. Cancel all existing watch tasks EXCEPT the current task and the main loop task
-            current_task = asyncio.current_task()
-            all_watch_tasks = (
-                list(self._order_book_tasks.values())
-                + list(self._ticker_tasks.values())
-                + list(self._trade_tasks.values())
-            )
-            for task in all_watch_tasks:
-                if task is not current_task and task is not self._task:
-                    task.cancel()
+                # 1. Cancel all existing watch tasks EXCEPT the current task and the main loop task
+                current_task = asyncio.current_task()
+                all_watch_tasks = (
+                    list(self._order_book_tasks.values())
+                    + list(self._ticker_tasks.values())
+                    + list(self._trade_tasks.values())
+                )
+                for task in all_watch_tasks:
+                    if task is not current_task and task is not self._task:
+                        task.cancel()
 
-            # 2. Clear cached data and task dictionaries
-            self.tickers.clear()
-            self.order_books.clear()
-            self.trades.clear()
-            self._order_book_tasks.clear()
-            self._ticker_tasks.clear()
-            self._trade_tasks.clear()
+                # 2. Clear cached data and task dictionaries
+                self.tickers.clear()
+                self.order_books.clear()
+                self.trades.clear()
+                self._order_book_tasks.clear()
+                self._ticker_tasks.clear()
+                self._trade_tasks.clear()
 
-            # 3. Reset batch flag – we will try batch again on the new connection
-            self._use_batch_tickers = True
+                # 3. Reset batch flag – we will try batch again on the new connection
+                self._use_batch_tickers = True
 
-            # 4. Re-create the pro exchange
-            from src.exchanges.factory import get_pro_exchange
-            self.exchange = get_pro_exchange()
+                # 4. Re-create the pro exchange
+                from src.exchanges.factory import get_pro_exchange
+                self.exchange = get_pro_exchange()
 
-            # 5. Small delay to let the new connection stabilise
-            await asyncio.sleep(1)
+                # 5. Small delay to let the new connection stabilise
+                await asyncio.sleep(1)
 
-            # 6. Restart order book and trade tasks for all current symbols
-            for sym in self.symbols:
-                self._order_book_tasks[sym] = asyncio.create_task(self._watch_order_book(sym))
-                self._trade_tasks[sym] = asyncio.create_task(self._watch_trades(sym))
-
-            # 7. If we already know batch isn't supported, start per-symbol ticker tasks
-            if not self._use_batch_tickers:
+                # 6. Restart order book and trade tasks for all current symbols
                 for sym in self.symbols:
-                    self._ticker_tasks[sym] = asyncio.create_task(self._watch_ticker(sym))
+                    self._order_book_tasks[sym] = asyncio.create_task(self._watch_order_book(sym))
+                    self._trade_tasks[sym] = asyncio.create_task(self._watch_trades(sym))
 
-            # 8. Cancel the calling watch task so it doesn't keep running alongside the new one
-            if current_task is not None and current_task is not self._task:
-                current_task.cancel()
+                # 7. If we already know batch isn't supported, start per-symbol ticker tasks
+                if not self._use_batch_tickers:
+                    for sym in self.symbols:
+                        self._ticker_tasks[sym] = asyncio.create_task(self._watch_ticker(sym))
 
-            logger.info("WebSocket reconnection complete.")
+                # 8. Cancel the calling watch task so it doesn't keep running alongside the new one
+                if current_task is not None and current_task is not self._task:
+                    current_task.cancel()
+
+                logger.info("WebSocket reconnection complete.")
+            except Exception as e:
+                logger.error(f"Reconnect attempt failed: {e}", exc_info=True)
+                # Do not re-raise; the caller will handle the situation by retrying
 
     async def _watch_ticker(self, symbol: str):
         """Continuously watch the ticker for a single symbol."""
@@ -95,7 +99,10 @@ class WebSocketManager:
                 break
             except Exception as e:
                 logger.error(f"Ticker watch error for {symbol}: {e}", exc_info=True)
-                await self._reconnect()
+                try:
+                    await self._reconnect()
+                except Exception:
+                    pass
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, max_backoff)
 
@@ -113,7 +120,10 @@ class WebSocketManager:
                 break
             except Exception as e:
                 logger.error(f"Trade watch error for {symbol}: {e}", exc_info=True)
-                await self._reconnect()
+                try:
+                    await self._reconnect()
+                except Exception:
+                    pass
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, max_backoff)
 
@@ -179,7 +189,10 @@ class WebSocketManager:
                         self._ticker_tasks[sym] = task
             except Exception as e:
                 logger.error(f"WebSocket watch loop error: {e}", exc_info=True)
-                await self._reconnect()
+                try:
+                    await self._reconnect()
+                except Exception as reconnect_error:
+                    logger.critical(f"Reconnect failed, will retry later: {reconnect_error}", exc_info=True)
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, max_backoff)
 
@@ -213,7 +226,10 @@ class WebSocketManager:
                 break
             except Exception as e:
                 logger.error(f"Order book watch error for {symbol}: {e}", exc_info=True)
-                await self._reconnect()
+                try:
+                    await self._reconnect()
+                except Exception:
+                    pass
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, max_backoff)
 
