@@ -33,6 +33,9 @@ class WebSocketManager:
     async def _watch_loop(self):
         """Continuously watch tickers for all subscribed symbols."""
         while self._running:
+            if not self.symbols:
+                await asyncio.sleep(1)
+                continue
             try:
                 tickers = await self.exchange.watch_tickers(list(self.symbols))
                 for symbol, ticker in tickers.items():

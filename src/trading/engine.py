@@ -1815,11 +1815,15 @@ class TradingEngine:
             return
 
         try:
-            ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+            ticker = self.ws_manager.get_ticker(symbol)
+            if ticker is None:
+                ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
             # Relative strength vs BTC for this coin
             rel_strength_btc = None
             try:
-                btc_ticker = await asyncio.to_thread(self.exchange.fetch_ticker, "BTC/USDT")
+                btc_ticker = self.ws_manager.get_ticker("BTC/USDT")
+                if btc_ticker is None:
+                    btc_ticker = await asyncio.to_thread(self.exchange.fetch_ticker, "BTC/USDT")
                 btc_price = btc_ticker.get("last")
                 if btc_price and btc_price > 0 and ticker.get("last"):
                     ratio = ticker["last"] / btc_price
