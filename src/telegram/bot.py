@@ -604,13 +604,32 @@ class TelegramBot:
         if not chat_id:
             logger.warning("No chat_id stored – cannot send notification. Use /start first.")
             return
-        try:
-            await self.app.bot.send_message(chat_id=int(chat_id), text=message)
-            logger.info("Notification sent successfully.")
-        except Exception as e:
-            logger.error(f"Failed to send Telegram notification: {e}", exc_info=True)
 
-        # --- Log summary to JSONL file (if enabled) ---
+        # --- Verbosity filter ---
+        verbosity = settings.NOTIFICATION_VERBOSITY
+        should_send = True
+        if verbosity != "all":
+            if summary is None:
+                should_send = False
+            else:
+                action = summary.get("action", "")
+                if verbosity == "errors_only":
+                    should_send = (action == "ERROR")
+                elif verbosity == "trades_only":
+                    should_send = (action in ("BUY", "SELL"))
+                elif verbosity == "none":
+                    should_send = False
+
+        if should_send:
+            try:
+                await self.app.bot.send_message(chat_id=int(chat_id), text=message)
+                logger.info("Notification sent successfully.")
+            except Exception as e:
+                logger.error(f"Failed to send Telegram notification: {e}", exc_info=True)
+        else:
+            logger.debug("Notification suppressed by verbosity setting.")
+
+        # --- Log summary to JSONL file (always, if enabled) ---
         if summary is not None and settings.NOTIFICATION_LOG_ENABLED:
             data_dir = Path(settings.DATA_DIR)
             data_dir.mkdir(parents=True, exist_ok=True)

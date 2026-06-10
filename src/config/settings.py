@@ -256,6 +256,17 @@ class Settings(BaseSettings):
     # Notification log control
     NOTIFICATION_LOG_ENABLED: bool = True
 
+    # Notification verbosity: "all", "errors_only", "trades_only", or "none"
+    NOTIFICATION_VERBOSITY: str = "all"
+
+    @field_validator("NOTIFICATION_VERBOSITY")
+    @classmethod
+    def validate_notification_verbosity(cls, v: str) -> str:
+        allowed = {"all", "errors_only", "trades_only", "none"}
+        if v not in allowed:
+            raise ValueError(f"NOTIFICATION_VERBOSITY must be one of {allowed}")
+        return v
+
     def reload(self):
         """Reload settings from .env file and environment variables."""
         new_settings = self.__class__()
