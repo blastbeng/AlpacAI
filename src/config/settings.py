@@ -160,6 +160,10 @@ class Settings(BaseSettings):
             raise ValueError("MAX_SLIPPAGE_CAP_PCT must be >= 0")
         return v
 
+    # Enforce the LLM's minimum profit per trade check.
+    # Set to False to allow trades with very small expected profit.
+    ENFORCE_MIN_PROFIT_PER_TRADE: bool = True
+
     # Redis
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379

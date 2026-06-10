@@ -4172,26 +4172,27 @@ class TradingEngine:
                     pass
 
             # --- Minimum absolute profit check (LLM‑defined) ---
-            min_profit = params.get("min_profit_per_trade")
-            if min_profit is not None and min_profit > 0:
-                expected_gross_profit = desired_amount * tp_pct
-                if expected_gross_profit < min_profit:
-                    logger.info(
-                        f"Skipping BUY {symbol}: expected gross profit {expected_gross_profit:.4f} {quote} "
-                        f"below LLM minimum {min_profit:.4f}"
-                    )
-                    if self.notifier:
-                        await self.notifier.send_notification(
-                            f"⚠️ Skipping BUY {symbol}: profit too small ({expected_gross_profit:.4f} {quote})",
-                            summary={
-                                "symbol": symbol,
-                                "action": "SKIP",
-                                "reason": "Expected profit below minimum",
-                                "expected_profit": expected_gross_profit,
-                                "min_profit": min_profit,
-                            }
+            if settings.ENFORCE_MIN_PROFIT_PER_TRADE:
+                min_profit = params.get("min_profit_per_trade")
+                if min_profit is not None and min_profit > 0:
+                    expected_gross_profit = desired_amount * tp_pct
+                    if expected_gross_profit < min_profit:
+                        logger.info(
+                            f"Skipping BUY {symbol}: expected gross profit {expected_gross_profit:.4f} {quote} "
+                            f"below LLM minimum {min_profit:.4f}"
                         )
-                    return
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                f"⚠️ Skipping BUY {symbol}: profit too small ({expected_gross_profit:.4f} {quote})",
+                                summary={
+                                    "symbol": symbol,
+                                    "action": "SKIP",
+                                    "reason": "Expected profit below minimum",
+                                    "expected_profit": expected_gross_profit,
+                                    "min_profit": min_profit,
+                                }
+                            )
+                        return
 
             # Cap at remaining available balance in this cycle
             available = max(0.0, quote_balance - self._cycle_spent)
