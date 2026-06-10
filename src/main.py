@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import signal
 import uvicorn
 from src.web.app import app
 from src.config.settings import settings
