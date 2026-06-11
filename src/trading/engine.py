@@ -1785,6 +1785,12 @@ class TradingEngine:
                     )
         logger.info(f"LLM coin selection raw response: {response}")
 
+        # Initialize variables that may be used later even if LLM fails
+        parsed = {}
+        pause_trading = None
+        pause_reason = ""
+        pause_duration = None
+
         # Retry JSON parsing if the first attempt fails
         if response is not None:
             try:
