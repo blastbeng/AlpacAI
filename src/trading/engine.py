@@ -3454,6 +3454,17 @@ class TradingEngine:
                     )
                 return
 
+            # Apply any updated risk parameters from the LLM to the open position
+            if symbol in self.positions and signal.strategy_params:
+                self._update_position_params(
+                    symbol,
+                    signal.strategy_params,
+                    signal.indicator_config,
+                    assigned_tf,
+                    current_price,
+                    atr,
+                )
+
             if validated.action != "HOLD":
                 if trading_paused:
                     logger.info(f"Ignoring {validated.action} signal for {symbol}: trading is paused.")
@@ -4709,6 +4720,104 @@ class TradingEngine:
                             "reason": f"Sell order failed: {e}"[:200],
                         }
                     )
+
+    def _update_position_params(
+        self,
+        symbol: str,
+        params: Dict[str, Any],
+        indicator_config: Optional[Dict[str, Any]],
+        timeframe: str,
+        current_price: float,
+        atr: Optional[float],
+    ):
+        """Update risk parameters of an open position from LLM strategy_params."""
+        pos = self.positions.get(symbol)
+        if not pos:
+            return
+
+        # --- Stop-loss (supports fixed pct and ATR multiple) ---
+        stop_method = params.get("stop_loss_method", "fixed")
+        if stop_method == "atr_multiple" and atr is not None and atr > 0:
+            atr_mult = params.get("stop_loss_atr_multiple")
+            if atr_mult is not None:
+                sl_pct = (atr_mult * atr) / current_price
+                pos["stop_loss"] = current_price * (1 - sl_pct)
+        elif "stop_loss_pct" in params:
+            sl_pct = params["stop_loss_pct"]
+            pos["stop_loss"] = current_price * (1 - sl_pct)
+
+        # --- Take-profit ---
+        if "take_profit_pct" in params:
+            pos["take_profit"] = current_price * (1 + params["take_profit_pct"])
+
+        # --- Trailing stop ---
+        if "trailing_stop" in params:
+            pos["trailing_stop"] = params["trailing_stop"]
+        if "trailing_stop_distance_pct" in params:
+            pos["trailing_stop_distance_pct"] = params["trailing_stop_distance_pct"]
+        if "trailing_stop_activation_pct" in params:
+            pos["trailing_stop_activation_pct"] = params["trailing_stop_activation_pct"]
+
+        # --- Trailing take-profit ---
+        if "trailing_take_profit" in params:
+            pos["trailing_take_profit"] = params["trailing_take_profit"]
+        if "trailing_take_profit_distance_pct" in params:
+            pos["trailing_take_profit_distance_pct"] = params["trailing_take_profit_distance_pct"]
+
+        # --- Breakeven / lock-profit ---
+        if "breakeven_activation_pct" in params:
+            pos["breakeven_activation_pct"] = params["breakeven_activation_pct"]
+        if "lock_profit_activation_pct" in params:
+            pos["lock_profit_activation_pct"] = params["lock_profit_activation_pct"]
+        if "lock_profit_level_pct" in params:
+            pos["lock_profit_level_pct"] = params["lock_profit_level_pct"]
+
+        # --- Time-based exits ---
+        if "max_hold_time_seconds" in params:
+            pos["max_hold_time_seconds"] = params["max_hold_time_seconds"]
+
+        # --- Cooldown after loss ---
+        if "cooldown_after_loss_seconds" in params:
+            pos["cooldown_after_loss_seconds"] = params["cooldown_after_loss_seconds"]
+
+        # --- News sentiment exit ---
+        if "news_sentiment_exit_threshold" in params:
+            pos["news_sentiment_exit_threshold"] = params["news_sentiment_exit_threshold"]
+
+        # --- Max unrealized loss ---
+        if "max_unrealized_loss_pct" in params:
+            pos["max_unrealized_loss_pct"] = params["max_unrealized_loss_pct"]
+
+        # --- Partial take-profit levels ---
+        if "partial_take_profit_levels" in params:
+            pos["partial_take_profit_levels"] = params["partial_take_profit_levels"]
+            pos["partial_tp_levels_triggered"] = []
+            pos["partial_tp_depth_wait_start"] = {}
+            # Clear single-level fields to avoid confusion
+            pos["partial_take_profit_pct"] = None
+            pos["partial_take_profit_fraction"] = None
+            pos["partial_tp_triggered"] = None
+        else:
+            if "partial_take_profit_pct" in params:
+                pos["partial_take_profit_pct"] = params["partial_take_profit_pct"]
+            if "partial_take_profit_fraction" in params:
+                pos["partial_take_profit_fraction"] = params["partial_take_profit_fraction"]
+            if "partial_tp_triggered" not in pos:
+                pos["partial_tp_triggered"] = False
+
+        # --- Strategy interval ---
+        if "strategy_interval_seconds" in params:
+            self._strategy_intervals[symbol] = params["strategy_interval_seconds"]
+
+        # --- Indicator config ---
+        if indicator_config is not None:
+            pos["indicator_config"] = indicator_config
+
+        # --- Timeframe (if changed) ---
+        if timeframe:
+            pos["timeframe"] = timeframe
+
+        logger.info(f"Updated risk parameters for {symbol} from LLM strategy_params")
 
     async def _sweep_dust(self, symbol: str):
         """Sell any remaining dust balance of a coin after a partial sell."""
