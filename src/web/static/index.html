@@ -562,12 +562,13 @@
             const profitDiv = document.getElementById('profit');
             if (data.profit) {
                 const p = data.profit;
+                const cur = p.base_currency || '';
                 profitDiv.innerHTML = `
-                    💵 Initial: ${p.initial_balance?.toFixed(2)}<br>
-                    💰 Current: ${p.current_balance?.toFixed(2)}<br>
-                    📦 Open Value: ${p.open_value?.toFixed(2)}<br>
-                    🧾 Fees Paid: ${p.total_fees?.toFixed(2)}<br>
-                    📊 P&L: <span class="${p.total_pnl >= 0 ? 'green' : 'red'}">${p.total_pnl?.toFixed(2)} (${p.pnl_percent?.toFixed(2)}%)</span>
+                    💵 Initial: ${p.initial_balance?.toFixed(2)} ${cur}<br>
+                    💰 Current: ${p.current_balance?.toFixed(2)} ${cur}<br>
+                    📦 Open Value: ${p.open_value?.toFixed(2)} ${cur}<br>
+                    🧾 Fees Paid: ${p.total_fees?.toFixed(2)} ${cur}<br>
+                    📊 P&L: <span class="${p.total_pnl >= 0 ? 'green' : 'red'}">${p.total_pnl?.toFixed(2)} ${cur} (${p.pnl_percent?.toFixed(2)}%)</span>
                 `;
             }
 

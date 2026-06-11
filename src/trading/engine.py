@@ -3515,6 +3515,7 @@ class TradingEngine:
             "wins": wins,
             "losses": losses,
             "win_rate": round(win_rate, 4),
+            "base_currency": self.base_currency,
         }
 
     def get_open_trades(self) -> List[Dict[str, Any]]:
