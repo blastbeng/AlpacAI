@@ -45,8 +45,18 @@ def get_cached_llm_response(
     return response
 
 
+def _stringify_keys(obj):
+    """Recursively convert all dict keys to strings for JSON-safe sorting."""
+    if isinstance(obj, dict):
+        return {str(k): _stringify_keys(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_stringify_keys(item) for item in obj]
+    return obj
+
+
 def compute_market_hash(data: dict) -> str:
     """Return a SHA-256 hex digest of the JSON-serialised market data."""
     # sort_keys ensures deterministic output
-    serialized = json.dumps(data, sort_keys=True, default=str)
+    safe_data = _stringify_keys(data)
+    serialized = json.dumps(safe_data, sort_keys=True, default=str)
     return hashlib.sha256(serialized.encode()).hexdigest()
