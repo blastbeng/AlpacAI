@@ -605,14 +605,17 @@ class TradingEngine:
         """Convert a timeframe string (e.g., '5m', '1h') to seconds."""
         return self._timeframe_to_ms(timeframe) // 1000
 
-    async def _backfill_ohlcv(self, symbol: str, timeframe: str, start_ms: int, end_ms: int, max_candles: int = None):
+    async def _backfill_ohlcv(self, symbol: str, timeframe: str, start_ms: int, end_ms: int, max_candles: int = None, ignore_existing: bool = False):
         """Fetch and store all missing OHLCV candles between start_ms and end_ms."""
         logger.info(f"Backfill started for {symbol} {timeframe}: {start_ms} → {end_ms}")
-        latest_ts = await asyncio.to_thread(get_latest_ohlcv_timestamp, symbol, timeframe)
-        if latest_ts is None:
+        if ignore_existing:
             since = start_ms
         else:
-            since = max(start_ms, latest_ts + 1)
+            latest_ts = await asyncio.to_thread(get_latest_ohlcv_timestamp, symbol, timeframe)
+            if latest_ts is None:
+                since = start_ms
+            else:
+                since = max(start_ms, latest_ts + 1)
 
         total_inserted = 0
         if max_candles is None:
@@ -683,7 +686,7 @@ class TradingEngine:
                 gap_end = timestamps[i + 1] - interval_ms
                 if gap_end > gap_start:
                     logger.info(f"Gap detected for {symbol} {timeframe}: {gap_start} → {gap_end} (size {gap}ms)")
-                    await self._backfill_ohlcv(symbol, timeframe, gap_start, gap_end)
+                    await self._backfill_ohlcv(symbol, timeframe, gap_start, gap_end, ignore_existing=True)
                     gaps_filled += 1
 
         if gaps_found == 0:
