@@ -2064,6 +2064,22 @@ class TradingEngine:
                 self.current_coins.append({"symbol": symbol, "timeframe": tf})
                 logger.info(f"Keeping {symbol} in current_coins due to open position (timeframe={tf})")
 
+        # If trading is paused, keep ONLY coins with open positions.
+        # The LLM may have just set pause_trading = true, so re-read Redis.
+        paused_now = await asyncio.to_thread(self.redis.get, "trading:paused")
+        if paused_now and paused_now == b"1":
+            open_symbols = set(self.positions.keys())
+            before_count = len(self.current_coins)
+            self.current_coins = [c for c in self.current_coins if c["symbol"] in open_symbols]
+            removed = before_count - len(self.current_coins)
+            if removed > 0:
+                logger.info(
+                    "Trading paused: removed %d coin(s) without open positions. "
+                    "Remaining: %s",
+                    removed,
+                    [c["symbol"] for c in self.current_coins],
+                )
+
         # Update coin tenure tracking
         now_ts = time.time()
         new_symbols = {entry["symbol"] for entry in self.current_coins}
