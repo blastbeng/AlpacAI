@@ -2613,6 +2613,22 @@ class TradingEngine:
                         [c["timestamp"], c["open"], c["high"], c["low"], c["close"], c["volume"]]
                         for c in db_candles
                     ]
+
+                    # --- Gap check: discard historical data if gaps exist ---
+                    if len(historical_ohlcv) >= 2:
+                        interval_ms = self._timeframe_to_ms(assigned_tf)
+                        timestamps = [c[0] for c in historical_ohlcv]
+                        has_gap = False
+                        for i in range(len(timestamps) - 1):
+                            if timestamps[i+1] - timestamps[i] > interval_ms * 1.5:
+                                has_gap = True
+                                break
+                        if has_gap:
+                            logger.warning(
+                                f"Historical OHLCV for {symbol} {assigned_tf} contains gaps; "
+                                f"skipping backtest data for this cycle."
+                            )
+                            historical_ohlcv = None
             except Exception as e:
                 logger.warning(f"Failed to fetch historical OHLCV for {symbol} {assigned_tf}: {e}")
 
