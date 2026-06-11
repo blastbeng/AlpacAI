@@ -1994,34 +1994,6 @@ class TradingEngine:
                     else:
                         logger.warning(f"Invalid global_risk_multiplier: {global_risk_mult}")
 
-                # --- Send a notification only if the pause state actually changed ---
-                final_paused_raw = await asyncio.to_thread(self.redis.get, "trading:paused")
-                final_paused = final_paused_raw is not None and final_paused_raw == b"1"
-
-                if final_paused != was_paused:
-                    # State changed – notify with the LLM's reason for the action
-                    display_reason = pause_reason if pause_reason else ""
-                    reason_text = f" – {display_reason}" if display_reason else ""
-
-                    if final_paused:
-                        if self.notifier:
-                            await self.notifier.send_notification(
-                                f"⏸️ Trading paused by LLM decision{reason_text}",
-                                summary={
-                                    "action": "PAUSE",
-                                    "reason": f"LLM pause request: {display_reason}" if display_reason else "LLM pause request"
-                                }
-                            )
-                    else:
-                        if self.notifier:
-                            await self.notifier.send_notification(
-                                f"▶️ Trading resumed by LLM decision{reason_text}",
-                                summary={
-                                    "action": "RESUME",
-                                    "reason": f"LLM resume request: {display_reason}" if display_reason else "LLM resume request"
-                                }
-                            )
-
                 existing_coins = {c['symbol']: c for c in self.current_coins}
                 for coin in deduped[: self.effective_max_coins]:
                     if coin['symbol'] in existing_coins and 'entry_time' in existing_coins[coin['symbol']]:
@@ -2102,27 +2074,44 @@ class TradingEngine:
 
         coin_labels = [f"{c['symbol']}({c['timeframe']})" for c in self.current_coins]
         logger.info(f"Selected coins: {coin_labels}")
+
+        # Build a pause/resume message if the LLM provided a decision
+        pause_msg = ""
+        if isinstance(pause_trading, bool):
+            if pause_trading:
+                pause_msg = "⏸️ LLM decided to pause trading"
+            else:
+                pause_msg = "▶️ LLM decided to resume trading"
+            if pause_reason:
+                pause_msg += f" – {pause_reason}"
+
         if not self.current_coins:
             logger.warning("No coins selected after evaluation. Bot will idle until next cycle.")
             if self.notifier:
+                msg = f"⚠️ No coins selected. Bot will idle.\n"
+                msg += f"Balance: {base_balance:.2f} {self.base_currency}, "
+                msg += f"Per-coin budget: {per_coin_budget:.2f}"
+                if pause_msg:
+                    msg = pause_msg + "\n" + msg
                 await self.notifier.send_notification(
-                    f"⚠️ No coins selected. Bot will idle. "
-                    f"Balance: {base_balance:.2f} {self.base_currency}, "
-                    f"Per-coin budget: {per_coin_budget:.2f}",
+                    msg,
                     summary={
                         "action": "HOLD",
                         "reason": "No coins selected",
                         "base_balance": base_balance,
                         "per_coin_budget": per_coin_budget,
+                        "pause_decision": pause_trading if isinstance(pause_trading, bool) else None,
+                        "pause_reason": pause_reason,
                     }
                 )
         elif self.notifier:
-            # Extract LLM reasoning for coin selection
             coin_reasoning = parsed.get("reasoning", "") if isinstance(parsed, dict) else ""
             if coin_reasoning:
                 msg = f"🔄 Coins updated: {', '.join(coin_labels)}\n💡 {coin_reasoning}"
             else:
                 msg = f"🔄 Coins updated: {', '.join(coin_labels)}"
+            if pause_msg:
+                msg = pause_msg + "\n" + msg
             await self.notifier.send_notification(
                 msg,
                 summary={
@@ -2130,6 +2119,8 @@ class TradingEngine:
                     "reason": "Coins updated",
                     "coins": [c["symbol"] for c in self.current_coins],
                     "coin_reasoning": coin_reasoning,
+                    "pause_decision": pause_trading if isinstance(pause_trading, bool) else None,
+                    "pause_reason": pause_reason,
                 }
             )
 
