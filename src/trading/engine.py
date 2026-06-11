@@ -2085,6 +2085,18 @@ class TradingEngine:
             if pause_reason:
                 pause_msg += f" – {pause_reason}"
 
+        # Include pause duration if set
+        if pause_duration is not None and isinstance(pause_duration, (int, float)) and pause_duration > 0:
+            minutes = pause_duration / 60
+            if minutes >= 1:
+                duration_str = f"{minutes:.0f} min"
+            else:
+                duration_str = f"{pause_duration:.0f}s"
+            if pause_msg:
+                pause_msg += f" (auto‑resume in {duration_str})"
+            else:
+                pause_msg = f"⏱️ LLM set pause duration: {duration_str}"
+
         if not self.current_coins:
             logger.warning("No coins selected after evaluation. Bot will idle until next cycle.")
             if self.notifier:
