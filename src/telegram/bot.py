@@ -237,6 +237,9 @@ class TelegramBot:
                 logger.warning(f"Could not fetch current price for {sym}: {e}")
 
             line = f"<b>#{idx}</b> 🟢 <b>BUY</b> <code>{sym}</code>\n"
+            tf = t.get('timeframe')
+            if tf:
+                line += f"   ⏱️ {tf}\n"
             line += f"   🕒 {ts}\n"
             line += f"   Amount: {amt:.6f}  Entry: {price:.4f}"
             if current_price is not None:

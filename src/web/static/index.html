@@ -484,24 +484,28 @@
                         // Update existing row's static cells only if changed
                         const existing = positionsMap[sym];
                         const row = existing.row;
+                        if (existing.timeframe !== (pos.timeframe || '?')) {
+                            row.cells[1].textContent = pos.timeframe || '?';
+                            existing.timeframe = pos.timeframe || '?';
+                        }
                         if (existing.amount !== amount) {
-                            row.cells[1].textContent = amount.toFixed(6);
+                            row.cells[2].textContent = amount.toFixed(6);
                             existing.amount = amount;
                         }
                         if (existing.entry !== entry) {
-                            row.cells[2].textContent = entry.toFixed(4);
+                            row.cells[3].textContent = entry.toFixed(4);
                             existing.entry = entry;
                         }
                         if (existing.stopLoss !== stopLoss) {
-                            row.cells[6].textContent = stopLoss?.toFixed(4) || '';
+                            row.cells[7].textContent = stopLoss?.toFixed(4) || '';
                             existing.stopLoss = stopLoss;
                         }
                         if (existing.takeProfit !== takeProfit) {
-                            row.cells[7].textContent = takeProfit?.toFixed(4) || '';
+                            row.cells[8].textContent = takeProfit?.toFixed(4) || '';
                             existing.takeProfit = takeProfit;
                         }
                         if (existing.trailing !== trailing) {
-                            row.cells[8].textContent = trailing;
+                            row.cells[9].textContent = trailing;
                             existing.trailing = trailing;
                         }
                     } else {
@@ -511,11 +515,12 @@
                         symCell.textContent = sym;
                         symCell.className = 'clickable-coin';
                         symCell.onclick = () => openChart(sym);
+                        row.insertCell().textContent = pos.timeframe || '?';
                         row.insertCell().textContent = amount.toFixed(6);
                         row.insertCell().textContent = entry.toFixed(4);
-                        row.insertCell().textContent = '...'; // Current Price placeholder
-                        row.insertCell().textContent = '...'; // Unrealized P&L placeholder
-                        row.insertCell().textContent = '...'; // P&L % placeholder
+                        row.insertCell().textContent = '...'; // Current Price
+                        row.insertCell().textContent = '...'; // Unrealized P&L
+                        row.insertCell().textContent = '...'; // P&L %
                         row.insertCell().textContent = stopLoss?.toFixed(4) || '';
                         row.insertCell().textContent = takeProfit?.toFixed(4) || '';
                         row.insertCell().textContent = trailing;
@@ -526,7 +531,8 @@
                             entry,
                             stopLoss,
                             takeProfit,
-                            trailing
+                            trailing,
+                            timeframe: pos.timeframe || '?'
                         };
                     }
                 }

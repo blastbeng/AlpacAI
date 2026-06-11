@@ -3544,6 +3544,7 @@ class TradingEngine:
 
             open_trades.append({
                 'symbol': symbol,
+                'timeframe': pos.get('timeframe'),
                 'side': 'buy',
                 'amount': amount,
                 'price': entry_price,
