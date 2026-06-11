@@ -2091,9 +2091,15 @@ class TradingEngine:
         pause_msg = ""
         if isinstance(pause_trading, bool):
             if pause_trading:
-                pause_msg = "⏸️ LLM decided to pause trading"
+                if trading_paused_bool:
+                    pause_msg = "⏸️ LLM decided to keep trading paused"
+                else:
+                    pause_msg = "⏸️ LLM decided to pause trading"
             else:
-                pause_msg = "▶️ LLM decided to resume trading"
+                if trading_paused_bool:
+                    pause_msg = "▶️ LLM decided to resume trading"
+                else:
+                    pause_msg = "▶️ LLM decided to keep trading active"
             if pause_reason:
                 pause_msg += f" – {pause_reason}"
 
