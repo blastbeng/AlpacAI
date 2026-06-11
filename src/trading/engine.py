@@ -2028,46 +2028,6 @@ class TradingEngine:
                     self.effective_max_coins = 0
                     logger.info("LLM selected 0 coins – pausing trading until next evaluation.")
 
-                    # Send notification about the pause decision and empty coin list
-                    if self.notifier:
-                        pause_msg = ""
-                        if isinstance(pause_trading, bool):
-                            if pause_trading:
-                                pause_msg = "⏸️ LLM decided to pause trading"
-                            else:
-                                pause_msg = "▶️ LLM decided to resume trading"
-                            if pause_reason:
-                                pause_msg += f" – {pause_reason}"
-                        if pause_duration is not None and isinstance(pause_duration, (int, float)) and pause_duration > 0:
-                            minutes = pause_duration / 60
-                            if minutes >= 1:
-                                duration_str = f"{minutes:.0f} min"
-                            else:
-                                duration_str = f"{pause_duration:.0f}s"
-                            if pause_msg:
-                                pause_msg += f" (auto‑resume in {duration_str})"
-                            else:
-                                pause_msg = f"⏱️ LLM set pause duration: {duration_str}"
-                        msg = f"⚠️ No coins selected. Bot will idle.\n"
-                        msg += f"Balance: {base_balance:.2f} {self.base_currency}, "
-                        msg += f"Per-coin budget: {per_coin_budget:.2f}"
-                        if pause_msg:
-                            msg = pause_msg + "\n" + msg
-                        await self.notifier.send_notification(
-                            msg,
-                            summary={
-                                "action": "HOLD",
-                                "reason": "No coins selected",
-                                "base_balance": base_balance,
-                                "per_coin_budget": per_coin_budget,
-                                "pause_decision": pause_trading if isinstance(pause_trading, bool) else None,
-                                "pause_reason": pause_reason,
-                            }
-                        )
-
-                    await asyncio.to_thread(self.redis.set, last_key, now)
-                    return
-
             except json.JSONDecodeError:
                 logger.error("Failed to parse coin selection response.")
 
