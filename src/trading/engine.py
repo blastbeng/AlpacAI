@@ -3455,8 +3455,8 @@ class TradingEngine:
                 return
 
             if validated.action != "HOLD":
-                if trading_paused and validated.action == "BUY":
-                    logger.info(f"Ignoring BUY signal for {symbol}: trading is paused.")
+                if trading_paused:
+                    logger.info(f"Ignoring {validated.action} signal for {symbol}: trading is paused.")
                 else:
                     await self._execute_signal(symbol, validated, timeframe=assigned_tf, atr=atr, spread_pct=spread_pct, order_book=order_book)
         except Exception as e:
