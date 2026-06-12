@@ -45,7 +45,10 @@ def _get_openai_response(prompt: str, system_prompt: str = "") -> str:
 
     messages = []
     if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
+        msg = {"role": "system", "content": system_prompt}
+        # Enable OpenAI prompt caching to reduce costs for repeated system messages
+        msg["cache_control"] = {"type": "ephemeral"}
+        messages.append(msg)
     messages.append({"role": "user", "content": prompt})
 
     payload = {
