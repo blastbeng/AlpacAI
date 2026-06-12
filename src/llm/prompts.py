@@ -53,6 +53,12 @@ def _summarize_ohlcv(candles: List[List]) -> Optional[Dict[str, Any]]:
     }
 
 
+def _format_raw_candles_compact(candles: List[List], max_candles: int = 200) -> str:
+    """Return a compact JSON array of the last max_candles candles."""
+    truncated = candles[-max_candles:] if len(candles) > max_candles else candles
+    return json.dumps(truncated)
+
+
 def _format_news_for_prompt(articles: list) -> str:
     """Format a list of news articles into a compact string for the LLM prompt."""
     if not articles:
@@ -1137,6 +1143,23 @@ Maximum coins to trade: {max_coins}
                 "Use this longer‑term summary to assess the overall trend and avoid coins in prolonged decline. "
                 "Prefer coins with consistent upward momentum over the full period.\n"
             )
+        # Provide raw candles for backtesting
+        raw_candles_str = _format_raw_candles_compact(historical_ohlcv, max_candles=200)
+        prompt += (
+            f"\nRaw historical OHLCV candles for backtesting "
+            f"(last {min(len(historical_ohlcv), 200)} candles, "
+            f"format: [timestamp_ms, open, high, low, close, volume]):\n"
+            f"{raw_candles_str}\n"
+        )
+        prompt += (
+            "You MUST perform a backtest using this historical OHLCV data. "
+            "Simulate your proposed strategy (entry at current price or a specified entry condition, "
+            "stop-loss, take-profit, trailing stop, etc.) on these historical candles and compute "
+            "the number of winning/losing trades, net profit/loss, and win rate. "
+            "Include a `backtest_summary` field in your JSON output with a concise summary of the "
+            "backtest results (e.g., \"Simulated 5 trades over 30 days: 3 wins, 2 losses, net +2.3%\"). "
+            "If you cannot perform a meaningful backtest (e.g., insufficient data), explain why in the summary.\n"
+        )
     if drawdown_pct is not None:
         prompt += f"Current account drawdown: {drawdown_pct}%\n"
     if recent_trades:
