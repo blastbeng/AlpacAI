@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 from typing import Optional
-from src.llm.llm_client import get_llm_response
+from src.config.settings import settings
 from src.utils.redis_client import get_redis_client
 
 logger = logging.getLogger(__name__)
@@ -37,8 +37,13 @@ def get_cached_llm_response(
         logger.debug("LLM cache hit for key %s", cache_key[:32])
         return cached
 
-    # Not cached, call LLM
-    response = get_llm_response(prompt, system_prompt)
+    # Not cached, call the appropriate raw LLM function
+    if settings.LLM_PROVIDER == "openai":
+        from src.llm.llm_client import _get_openai_response
+        response = _get_openai_response(prompt, system_prompt)
+    else:
+        from src.llm.llm_client import _get_ollama_response
+        response = _get_ollama_response(prompt, system_prompt)
 
     if response is None:
         logger.warning("LLM returned None response; not caching.")

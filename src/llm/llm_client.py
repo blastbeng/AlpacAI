@@ -7,7 +7,7 @@ from src.config.settings import settings
 logger = logging.getLogger(__name__)
 
 
-def get_ollama_response(prompt: str, system_prompt: str = "") -> str:
+def _get_ollama_response(prompt: str, system_prompt: str = "") -> str:
     """Send a prompt to the configured Ollama model and return the response text."""
     url = f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat"
     headers = {"Content-Type": "application/json"}
@@ -36,7 +36,7 @@ def get_ollama_response(prompt: str, system_prompt: str = "") -> str:
         raise RuntimeError(f"Ollama request failed: {e}") from e
 
 
-def get_openai_response(prompt: str, system_prompt: str = "") -> str:
+def _get_openai_response(prompt: str, system_prompt: str = "") -> str:
     """Send a prompt to the configured OpenAI-compatible API and return the response text."""
     url = f"{settings.OPENAI_BASE_URL.rstrip('/')}/chat/completions"
     headers = {"Content-Type": "application/json"}
@@ -65,10 +65,15 @@ def get_openai_response(prompt: str, system_prompt: str = "") -> str:
 
 
 def get_llm_response(prompt: str, system_prompt: str = "") -> str:
-    """Send a prompt to the configured LLM provider and return the response text."""
-    if settings.LLM_PROVIDER == "openai":
-        logger.debug("Using OpenAI-compatible LLM provider")
-        return get_openai_response(prompt, system_prompt)
-    else:
-        logger.debug("Using Ollama LLM provider")
-        return get_ollama_response(prompt, system_prompt)
+    """Send a prompt to the configured LLM provider and return the response text.
+
+    Uses Redis caching with a 5-minute TTL (keyed by prompt + system prompt).
+    """
+    from src.llm.cache import get_cached_llm_response  # local import to avoid circular dependency at module level
+
+    response = get_cached_llm_response(prompt, system_prompt, ttl=300)
+    if response is None:
+        # This should not happen because the underlying raw call raises on failure,
+        # but guard against unexpected None.
+        raise RuntimeError("LLM returned an empty response")
+    return response
