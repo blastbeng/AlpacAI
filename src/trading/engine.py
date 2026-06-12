@@ -3092,6 +3092,20 @@ class TradingEngine:
                         }
                     )
                 return
+
+            if response is None:
+                logger.warning(f"LLM returned None for {symbol}. Skipping this cycle.")
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"⚠️ LLM returned empty response for {symbol}, skipping.",
+                        summary={
+                            "symbol": symbol,
+                            "action": "SKIP",
+                            "reason": "LLM returned None",
+                        }
+                    )
+                return
+
             try:
                 strategy = create_strategy_from_llm(response)
             except ValueError as e:

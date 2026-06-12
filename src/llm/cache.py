@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+from typing import Optional
 from src.llm.llm_client import get_llm_response
 from src.utils.redis_client import get_redis_client
 
@@ -11,7 +12,7 @@ def get_cached_llm_response(
     system_prompt: str = "",
     ttl: int = 300,
     market_hash: str = None,
-) -> str:
+) -> Optional[str]:
     """
     Get an LLM response, using Redis cache to avoid duplicate calls.
     If market_hash is provided, the cache key is based on that hash
@@ -38,6 +39,10 @@ def get_cached_llm_response(
 
     # Not cached, call LLM
     response = get_llm_response(prompt, system_prompt)
+
+    if response is None:
+        logger.warning("LLM returned None response; not caching.")
+        return None
 
     # Store in cache with TTL
     redis_client.setex(cache_key, ttl, response)
