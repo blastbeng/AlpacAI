@@ -21,7 +21,10 @@ from src.llm.prompts import (
     build_coin_selection_prompt,
     build_strategy_prompt,
     _format_news_for_prompt,
+    compact_prompt,
 )
+
+COMPACTED_SYSTEM_PROMPT = compact_prompt(SYSTEM_PROMPT)
 from src.indicators import (
     compute_atr,
     compute_rsi,
@@ -304,7 +307,7 @@ class TradingEngine:
                         "that explains the overall sentiment and the main reason for it. "
                         "Do not include any other text."
                     )
-                    summary = get_cached_llm_response(prompt, "", ttl=300).strip()
+                    summary = get_cached_llm_response(compact_prompt(prompt), "", ttl=300).strip()
                     # Limit length to avoid overly long notifications
                     if len(summary) > 120:
                         summary = summary[:117] + "..."
@@ -1757,8 +1760,8 @@ class TradingEngine:
             try:
                 response = await asyncio.to_thread(
                     get_cached_llm_response,
-                    prompt,
-                    SYSTEM_PROMPT,
+                    compact_prompt(prompt),
+                    COMPACTED_SYSTEM_PROMPT,
                     300,
                     market_hash=market_hash,
                 )
@@ -1804,7 +1807,7 @@ class TradingEngine:
                 )
                 try:
                     response = await asyncio.to_thread(
-                        get_cached_llm_response, correction_prompt, SYSTEM_PROMPT, 120
+                        get_cached_llm_response, compact_prompt(correction_prompt), COMPACTED_SYSTEM_PROMPT, 120
                     )
                     json.loads(response)  # validate the retry response
                 except Exception as e:
@@ -2243,7 +2246,7 @@ class TradingEngine:
 
             try:
                 response = await asyncio.to_thread(
-                    get_cached_llm_response, prompt, SYSTEM_PROMPT, 120
+                    get_cached_llm_response, compact_prompt(prompt), COMPACTED_SYSTEM_PROMPT, 120
                 )
                 decision = json.loads(response)
             except Exception as e:
@@ -3075,8 +3078,8 @@ class TradingEngine:
             try:
                 response = await asyncio.to_thread(
                     get_cached_llm_response,
-                    prompt,
-                    SYSTEM_PROMPT,
+                    compact_prompt(prompt),
+                    COMPACTED_SYSTEM_PROMPT,
                     60,
                     market_hash=market_hash,
                 )
@@ -3117,7 +3120,7 @@ class TradingEngine:
                 )
                 try:
                     response2 = await asyncio.to_thread(
-                        get_cached_llm_response, correction_prompt, SYSTEM_PROMPT, 30
+                        get_cached_llm_response, compact_prompt(correction_prompt), COMPACTED_SYSTEM_PROMPT, 30
                     )
                     strategy = create_strategy_from_llm(response2)
                 except Exception as e2:
@@ -3155,8 +3158,8 @@ class TradingEngine:
                     try:
                         corrected_response = await asyncio.to_thread(
                             get_cached_llm_response,
-                            correction_prompt,
-                            SYSTEM_PROMPT,
+                            compact_prompt(correction_prompt),
+                            COMPACTED_SYSTEM_PROMPT,
                             30,
                         )
                         corrected_signal = create_strategy_from_llm(corrected_response).generate_signal({})

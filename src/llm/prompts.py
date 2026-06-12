@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import List, Dict, Any, Optional, Tuple
 from src.config.settings import settings
 from src.database import get_news_for_symbol, get_aggregate_sentiment_from_db
@@ -24,6 +25,11 @@ from src.indicators import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def compact_prompt(text: str) -> str:
+    """Collapse all whitespace sequences to a single space and strip."""
+    return re.sub(r'\s+', ' ', text).strip()
 
 
 def _summarize_ohlcv(candles: List[List]) -> Optional[Dict[str, Any]]:
