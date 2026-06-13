@@ -827,6 +827,8 @@ def build_strategy_prompt(
     market_impact_score: Optional[float] = None,
     global_risk_multiplier: Optional[float] = None,
     trading_paused: bool = False,
+    max_hold_expired: bool = False,
+    max_hold_expired_count: int = 0,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     current_price = ticker.get("last") if ticker else None
@@ -1539,4 +1541,16 @@ Use this data to decide whether to BUY, SELL, or HOLD. If the coin has a poor wi
                 "Your account is in profit. You may take calculated risks, but do not be reckless. "
                 "Only trade if you see clear setups.\n"
             )
+    if max_hold_expired:
+        prompt += (
+            f"\n**IMPORTANT: The max hold time for your current position in {symbol} has expired "
+            f"(this is occurrence #{max_hold_expired_count}).**\n"
+            "You must decide immediately whether to SELL now or to extend the hold time.\n"
+            "- If you believe the position still has profit potential, output a **HOLD** action "
+            "and provide a new `max_hold_time_seconds` in the `parameters` object (you may also "
+            "update stop‑loss, take‑profit, or any other parameters).\n"
+            "- If you decide to exit, output a **SELL** action.\n"
+            "**Do NOT output HOLD without a new `max_hold_time_seconds`** – that will be treated "
+            "as a decision to sell immediately.\n"
+        )
     return prompt

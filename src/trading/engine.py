@@ -2339,6 +2339,15 @@ class TradingEngine:
             logger.debug(f"Skipping {symbol}: trading paused and no open position.")
             return
 
+        # --- Max hold expired flag ---
+        max_hold_expired = False
+        max_hold_expired_count = 0
+        if symbol in self.positions:
+            pos = self.positions[symbol]
+            if pos.get("_max_hold_expired"):
+                max_hold_expired = True
+                max_hold_expired_count = pos.get("_max_hold_expired_count", 1)
+
         try:
             ticker = self.ws_manager.get_ticker(symbol)
             if ticker is None:
@@ -2963,6 +2972,8 @@ class TradingEngine:
                 market_impact_score=market_impact_score,
                 global_risk_multiplier=global_risk_mult,
                 trading_paused=trading_paused,
+                max_hold_expired=max_hold_expired,
+                max_hold_expired_count=max_hold_expired_count,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-coin)
@@ -3230,6 +3241,40 @@ class TradingEngine:
 
             # --- LLM‑controlled trade filters ---
             params = signal.strategy_params or {}
+
+            # --- Handle max‑hold‑expired LLM decision ---
+            if max_hold_expired and signal.action == "HOLD":
+                new_max_hold = params.get("max_hold_time_seconds") if params else None
+                if new_max_hold is not None and new_max_hold > 0:
+                    # LLM decided to extend – update position and clear the flag
+                    logger.info(f"LLM extended max hold time for {symbol} to {new_max_hold}s")
+                    if symbol in self.positions:
+                        self.positions[symbol]["max_hold_time_seconds"] = new_max_hold
+                        self.positions[symbol].pop("_max_hold_expired", None)
+                        self.positions[symbol].pop("_max_hold_expired_count", None)
+                    # Let the normal _update_position_params apply any other changes
+                else:
+                    # LLM did not provide a new max_hold_time_seconds → treat as SELL
+                    logger.warning(
+                        f"LLM returned HOLD without new max_hold_time_seconds for {symbol} "
+                        f"after max hold expiry – forcing SELL."
+                    )
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"⏰ LLM did not extend hold time for {symbol} – closing position.",
+                            summary={
+                                "symbol": symbol,
+                                "action": "SELL",
+                                "reason": "Max hold expired, LLM did not extend",
+                                "exit_reason": "max_hold_time_llm_no_extend",
+                            }
+                        )
+                    await self._execute_signal(
+                        symbol,
+                        Signal(action="SELL", confidence=1.0, reasoning="Max hold expired, LLM did not extend"),
+                        exit_reason="max_hold_time_llm_no_extend"
+                    )
+                    return   # stop further processing for this coin
 
             # Compute stop-loss percentage for max risk cap (needed for slippage check)
             sl_pct = None
@@ -4107,24 +4152,52 @@ class TradingEngine:
                         )
                         continue
 
-                # Time‑based exit (LLM‑defined max hold time)
+                # --- Max hold time expired → ask LLM instead of auto‑closing ---
                 max_hold = pos.get("max_hold_time_seconds")
                 if max_hold is not None and max_hold > 0:
                     entry_ts = pos.get("timestamp", 0) / 1000.0  # convert ms to seconds
                     if time.time() - entry_ts > max_hold:
-                        logger.info(f"Max hold time reached for {symbol} ({max_hold}s). Closing position.")
-                        if self.notifier:
-                            await self.notifier.send_notification(
-                                f"⏰ Max hold time reached for {symbol} – closing position.",
-                                summary={
-                                    "symbol": symbol,
-                                    "action": "SELL",
-                                    "reason": "Max hold time",
-                                    "exit_reason": "max_hold_time",
-                                }
+                        # First expiry or repeated expiry without LLM resolution
+                        expired_count = pos.get("_max_hold_expired_count", 0) + 1
+                        pos["_max_hold_expired"] = True
+                        pos["_max_hold_expired_count"] = expired_count
+
+                        # Force re‑evaluation on the next main loop tick
+                        self._last_strategy_eval.pop(symbol, None)
+
+                        if expired_count >= 3:   # fallback after 3 consecutive expiries
+                            logger.warning(
+                                f"Max hold time expired {expired_count} times for {symbol} – forcing SELL."
                             )
-                        await self._execute_signal(symbol, Signal(action="SELL", confidence=1.0, reasoning="Max hold time"), exit_reason="max_hold_time")
-                        continue   # skip further checks for this symbol
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⏰ Max hold time expired repeatedly for {symbol} – forcing close.",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "SELL",
+                                        "reason": "Max hold time expired (fallback)",
+                                        "exit_reason": "max_hold_time_fallback",
+                                    }
+                                )
+                            await self._execute_signal(
+                                symbol,
+                                Signal(action="SELL", confidence=1.0, reasoning="Max hold time expired (fallback)"),
+                                exit_reason="max_hold_time_fallback"
+                            )
+                        else:
+                            logger.info(
+                                f"Max hold time expired for {symbol} (attempt {expired_count}) – asking LLM to decide."
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⏰ Max hold time expired for {symbol} – asking LLM whether to sell or extend.",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "HOLD",
+                                        "reason": "Max hold time expired – awaiting LLM decision",
+                                    }
+                                )
+                        continue   # skip further checks for this symbol in this cycle
 
                 if current_price <= pos["stop_loss"]:
                     logger.info(f"Stop-loss triggered for {symbol} at {current_price}")
@@ -4759,6 +4832,9 @@ class TradingEngine:
         # --- Time-based exits ---
         if "max_hold_time_seconds" in params:
             pos["max_hold_time_seconds"] = params["max_hold_time_seconds"]
+            # If the LLM explicitly sets a new hold time, clear any expiry flag
+            pos.pop("_max_hold_expired", None)
+            pos.pop("_max_hold_expired_count", None)
 
         # --- Cooldown after loss ---
         if "cooldown_after_loss_seconds" in params:
