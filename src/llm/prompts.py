@@ -77,6 +77,45 @@ def _format_news_for_prompt(articles: list) -> str:
     return "\n".join(lines)
 
 
+def get_cached_news_summary(symbol: str) -> str:
+    """Return a cached LLM-generated one‑sentence news summary for a symbol.
+
+    The summary is stored in Redis under ``news_summary:{symbol}`` with a TTL
+    equal to ``settings.NEWS_CACHE_TTL_SECONDS``.  If no articles are available
+    the string ``"No recent news."`` is returned (and also cached).
+    """
+    redis_client = get_redis_client()
+    cache_key = f"news_summary:{symbol}"
+    cached = redis_client.get(cache_key)
+    if cached:
+        return cached.decode() if isinstance(cached, bytes) else cached
+
+    base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+    articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+    if not articles:
+        summary = "No recent news."
+    else:
+        try:
+            formatted = _format_news_for_prompt(articles)
+            prompt = (
+                f"Here are recent news headlines and summaries for {base_coin}:\n\n"
+                f"{formatted}\n\n"
+                "Based on these articles, write a single very short sentence (max 15 words) "
+                "that explains the overall sentiment and the main reason for it. "
+                "Do not include any other text."
+            )
+            summary = get_cached_llm_response(compact_prompt(prompt), "", ttl=300)
+            summary = summary.strip()
+            if len(summary) > 120:
+                summary = summary[:117] + "..."
+        except Exception:
+            summary = "Could not generate summary."
+
+    ttl = settings.NEWS_CACHE_TTL_SECONDS
+    redis_client.setex(cache_key, ttl, summary)
+    return summary
+
+
 SYSTEM_PROMPT = """You are a professional cryptocurrency trading bot assistant. Your primary goal is to generate consistent profit across short, medium, and long timeframes. Prioritize positions where you find the most profit potential, regardless of timeframe, while preserving capital. You must avoid large drawdowns and only trade when there is a clear edge.
 
 Key principles:
