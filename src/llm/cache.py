@@ -12,6 +12,7 @@ def get_cached_llm_response(
     system_prompt: str = "",
     ttl: int = 300,
     market_hash: str = None,
+    model_type: str = "mind",
 ) -> Optional[str]:
     """
     Get an LLM response, using Redis cache to avoid duplicate calls.
@@ -19,15 +20,22 @@ def get_cached_llm_response(
     (representing the market snapshot). Otherwise, the key is based on
     the prompt and system prompt.
     ttl: time-to-live in seconds (default 5 minutes).
+    model_type: "mind" for complex reasoning, "actuator" for fast time‑critical decisions.
     """
     redis_client = get_redis_client()
 
-    if market_hash:
-        cache_key = f"llm:market:{market_hash}"
+    # Choose the concrete model name based on provider and role
+    if settings.LLM_PROVIDER == "openai":
+        model = settings.OPENAI_MIND_MODEL if model_type == "mind" else settings.OPENAI_ACTUATOR_MODEL
     else:
-        # Create a deterministic cache key from the prompts
+        model = settings.OLLAMA_MIND_MODEL if model_type == "mind" else settings.OLLAMA_ACTUATOR_MODEL
+
+    if market_hash:
+        cache_key = f"llm:{model_type}:market:{market_hash}"
+    else:
+        # Create a deterministic cache key from the prompts and model type
         key_data = json.dumps(
-            {"prompt": prompt, "system": system_prompt}, sort_keys=True
+            {"prompt": prompt, "system": system_prompt, "model_type": model_type}, sort_keys=True
         )
         cache_key = f"llm:{hashlib.sha256(key_data.encode()).hexdigest()}"
 
@@ -40,10 +48,10 @@ def get_cached_llm_response(
     # Not cached, call the appropriate raw LLM function
     if settings.LLM_PROVIDER == "openai":
         from src.llm.llm_client import _get_openai_response
-        response = _get_openai_response(prompt, system_prompt)
+        response = _get_openai_response(prompt, system_prompt, model=model)
     else:
         from src.llm.llm_client import _get_ollama_response
-        response = _get_ollama_response(prompt, system_prompt)
+        response = _get_ollama_response(prompt, system_prompt, model=model)
 
     if response is None:
         logger.warning("LLM returned None response; not caching.")

@@ -1761,6 +1761,7 @@ class TradingEngine:
                     COMPACTED_SYSTEM_PROMPT,
                     300,
                     market_hash=market_hash,
+                    model_type="mind",
                 )
                 break  # success
             except asyncio.TimeoutError:
@@ -1804,7 +1805,8 @@ class TradingEngine:
                 )
                 try:
                     response = await asyncio.to_thread(
-                        get_cached_llm_response, compact_prompt(correction_prompt), COMPACTED_SYSTEM_PROMPT, 120
+                        get_cached_llm_response, compact_prompt(correction_prompt), COMPACTED_SYSTEM_PROMPT, 120,
+                        model_type="actuator",
                     )
                     json.loads(response)  # validate the retry response
                 except Exception as e:
@@ -2222,7 +2224,8 @@ class TradingEngine:
 
             try:
                 response = await asyncio.to_thread(
-                    get_cached_llm_response, compact_prompt(prompt), COMPACTED_SYSTEM_PROMPT, 120
+                    get_cached_llm_response, compact_prompt(prompt), COMPACTED_SYSTEM_PROMPT, 120,
+                    model_type="mind",
                 )
                 decision = json.loads(response)
             except Exception as e:
@@ -3080,6 +3083,9 @@ class TradingEngine:
                 "trading_paused": trading_paused,
             }
             market_hash = compute_market_hash(market_snapshot)
+            # Determine whether to use the fast actuator model
+            is_critical = max_hold_expired or stop_loss_triggered or take_profit_triggered
+            strategy_model_type = "actuator" if is_critical else "mind"
             try:
                 response = await asyncio.to_thread(
                     get_cached_llm_response,
@@ -3087,6 +3093,7 @@ class TradingEngine:
                     COMPACTED_SYSTEM_PROMPT,
                     60,
                     market_hash=market_hash,
+                    model_type=strategy_model_type,
                 )
             except asyncio.TimeoutError:
                 logger.warning(f"LLM strategy call timed out for {symbol}.")
@@ -3169,7 +3176,8 @@ class TradingEngine:
                 )
                 try:
                     response2 = await asyncio.to_thread(
-                        get_cached_llm_response, compact_prompt(correction_prompt), COMPACTED_SYSTEM_PROMPT, 30
+                        get_cached_llm_response, compact_prompt(correction_prompt), COMPACTED_SYSTEM_PROMPT, 30,
+                        model_type="actuator",
                     )
                     strategy = create_strategy_from_llm(response2)
                 except Exception as e2:
@@ -3211,6 +3219,7 @@ class TradingEngine:
                             compact_prompt(correction_prompt),
                             COMPACTED_SYSTEM_PROMPT,
                             30,
+                            model_type="actuator",
                         )
                         corrected_signal = create_strategy_from_llm(corrected_response).generate_signal({})
                         validated = validate_signal(

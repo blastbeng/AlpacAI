@@ -88,7 +88,7 @@ def _format_news_for_prompt(articles: list) -> str:
     return "\n".join(lines)
 
 
-def get_cached_news_summary(symbol: str) -> str:
+def get_cached_news_summary(symbol: str, model_type: str = "mind") -> str:
     """Return a cached LLM-generated one‑sentence news summary for a symbol.
 
     The summary is stored in Redis under ``news_summary:{symbol}`` with a TTL
@@ -115,7 +115,7 @@ def get_cached_news_summary(symbol: str) -> str:
                 "that explains the overall sentiment and the main reason for it. "
                 "Do not include any other text."
             )
-            summary = get_cached_llm_response(compact_prompt(prompt), "", ttl=300)
+            summary = get_cached_llm_response(compact_prompt(prompt), "", ttl=300, model_type=model_type)
             summary = summary.strip()
             if len(summary) > 120:
                 summary = summary[:117] + "..."

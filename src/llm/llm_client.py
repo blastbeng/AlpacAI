@@ -7,7 +7,7 @@ from src.config.settings import settings
 logger = logging.getLogger(__name__)
 
 
-def _get_ollama_response(prompt: str, system_prompt: str = "") -> str:
+def _get_ollama_response(prompt: str, system_prompt: str = "", model: str = None) -> str:
     """Send a prompt to the configured Ollama model and return the response text."""
     url = f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat"
     headers = {"Content-Type": "application/json"}
@@ -20,7 +20,7 @@ def _get_ollama_response(prompt: str, system_prompt: str = "") -> str:
     messages.append({"role": "user", "content": prompt})
 
     payload = {
-        "model": settings.OLLAMA_MODEL,
+        "model": model or settings.OLLAMA_MODEL,
         "messages": messages,
         "stream": False,
         "temperature": settings.LLM_TEMPERATURE,
@@ -36,7 +36,7 @@ def _get_ollama_response(prompt: str, system_prompt: str = "") -> str:
         raise RuntimeError(f"Ollama request failed: {e}") from e
 
 
-def _get_openai_response(prompt: str, system_prompt: str = "") -> str:
+def _get_openai_response(prompt: str, system_prompt: str = "", model: str = None) -> str:
     """Send a prompt to the configured OpenAI-compatible API and return the response text."""
     url = f"{settings.OPENAI_BASE_URL.rstrip('/')}/chat/completions"
     headers = {"Content-Type": "application/json"}
@@ -52,7 +52,7 @@ def _get_openai_response(prompt: str, system_prompt: str = "") -> str:
     messages.append({"role": "user", "content": prompt})
 
     payload = {
-        "model": settings.OPENAI_MODEL,
+        "model": model or settings.OPENAI_MODEL,
         "messages": messages,
         "temperature": settings.LLM_TEMPERATURE,
     }
@@ -67,14 +67,15 @@ def _get_openai_response(prompt: str, system_prompt: str = "") -> str:
         raise RuntimeError(f"OpenAI request failed: {e}") from e
 
 
-def get_llm_response(prompt: str, system_prompt: str = "") -> str:
+def get_llm_response(prompt: str, system_prompt: str = "", model_type: str = "mind") -> str:
     """Send a prompt to the configured LLM provider and return the response text.
 
     Uses Redis caching with a 5-minute TTL (keyed by prompt + system prompt).
+    model_type: "mind" for complex reasoning, "actuator" for fast time‑critical decisions.
     """
     from src.llm.cache import get_cached_llm_response  # local import to avoid circular dependency at module level
 
-    response = get_cached_llm_response(prompt, system_prompt, ttl=300)
+    response = get_cached_llm_response(prompt, system_prompt, ttl=300, model_type=model_type)
     if response is None:
         # This should not happen because the underlying raw call raises on failure,
         # but guard against unexpected None.

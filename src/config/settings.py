@@ -133,6 +133,14 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o"
 
+    # Mind model (complex reasoning: coin selection, strategy generation)
+    OLLAMA_MIND_MODEL: str = "deepseek-v4-flash"
+    OPENAI_MIND_MODEL: str = "gpt-4o"
+
+    # Actuator model (fast, time‑critical decisions: stop‑loss/take‑profit reviews, corrections)
+    OLLAMA_ACTUATOR_MODEL: str = "deepseek-v4-flash"
+    OPENAI_ACTUATOR_MODEL: str = "gpt-4o-mini"
+
     # LLM temperature (applies to both providers)
     LLM_TEMPERATURE: float = 0.1
 
