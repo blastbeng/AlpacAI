@@ -22,6 +22,7 @@ from src.llm.prompts import (
     build_strategy_prompt,
     _format_news_for_prompt,
     compact_prompt,
+    get_cached_news_summary,
 )
 
 COMPACTED_SYSTEM_PROMPT = compact_prompt(SYSTEM_PROMPT)
@@ -297,20 +298,9 @@ class TradingEngine:
             # Try to get an LLM-generated summary of the news
             summary = ""
             try:
-                articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
-                if articles:
-                    formatted = _format_news_for_prompt(articles)
-                    prompt = (
-                        f"Here are recent news headlines and summaries for {base_coin}:\n\n"
-                        f"{formatted}\n\n"
-                        "Based on these articles, write a single very short sentence (max 15 words) "
-                        "that explains the overall sentiment and the main reason for it. "
-                        "Do not include any other text."
-                    )
-                    summary = get_cached_llm_response(compact_prompt(prompt), "", ttl=300).strip()
-                    # Limit length to avoid overly long notifications
-                    if len(summary) > 120:
-                        summary = summary[:117] + "..."
+                summary = get_cached_news_summary(symbol)
+                if summary in ("No recent news.", "Could not generate summary."):
+                    summary = ""
             except Exception:
                 pass  # fallback to no summary
 

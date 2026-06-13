@@ -4,6 +4,8 @@ import re
 from typing import List, Dict, Any, Optional, Tuple
 from src.config.settings import settings
 from src.database import get_news_for_symbol, get_aggregate_sentiment_from_db
+from src.utils.redis_client import get_redis_client
+from src.llm.cache import get_cached_llm_response
 from src.indicators import (
     compute_atr,
     compute_rsi,

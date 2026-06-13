@@ -12,8 +12,7 @@ from src.config.settings import settings
 from src.trading.engine import TradingEngine
 from src.utils.redis_client import get_redis_client
 from src.database import set_telegram_chat_id, get_telegram_chat_id, get_news_for_symbol
-from src.llm.prompts import _format_news_for_prompt
-from src.llm.cache import get_cached_llm_response
+from src.llm.prompts import _format_news_for_prompt, get_cached_news_summary
 
 logger = logging.getLogger(__name__)
 
@@ -428,25 +427,10 @@ class TelegramBot:
             for entry in coins:
                 symbol = entry["symbol"]
                 base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-                articles = await asyncio.to_thread(get_news_for_symbol, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
-                if not articles:
-                    summary = "No recent news."
-                else:
-                    try:
-                        formatted = await asyncio.to_thread(_format_news_for_prompt, articles)
-                        prompt = (
-                            f"Here are recent news headlines and summaries for {base_coin}:\n\n"
-                            f"{formatted}\n\n"
-                            "Based on these articles, write a single very short sentence (max 15 words) "
-                            "that explains the overall sentiment and the main reason for it. "
-                            "Do not include any other text."
-                        )
-                        summary = await asyncio.to_thread(get_cached_llm_response, prompt, "", ttl=300)
-                        summary = summary.strip()
-                        if len(summary) > 120:
-                            summary = summary[:117] + "..."
-                    except Exception:
-                        summary = "Could not generate summary."
+                try:
+                    summary = await asyncio.to_thread(get_cached_news_summary, symbol)
+                except Exception:
+                    summary = "Could not generate summary."
 
                 messages.append(f"<b>{symbol}</b>\n{summary}")
 

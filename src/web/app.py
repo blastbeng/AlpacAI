@@ -7,9 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from src.config.settings import settings
 from src.utils.redis_client import get_redis_client, check_redis_connection
-from src.database import get_news_for_symbol
-from src.llm.prompts import _format_news_for_prompt
-from src.llm.cache import get_cached_llm_response
+from src.llm.prompts import get_cached_news_summary
 
 app = FastAPI(title="Crypto Trading Bot")
 
@@ -83,25 +81,8 @@ async def news():
     result = {}
     for entry in coins:
         symbol = entry["symbol"]
-        base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-        articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
-        if not articles:
-            result[symbol] = "No recent news."
-            continue
-
         try:
-            formatted = _format_news_for_prompt(articles)
-            prompt = (
-                f"Here are recent news headlines and summaries for {base_coin}:\n\n"
-                f"{formatted}\n\n"
-                "Based on these articles, write a single very short sentence (max 15 words) "
-                "that explains the overall sentiment and the main reason for it. "
-                "Do not include any other text."
-            )
-            summary = await run_in_threadpool(get_cached_llm_response, prompt, "", ttl=300)
-            summary = summary.strip()
-            if len(summary) > 120:
-                summary = summary[:117] + "..."
+            summary = await run_in_threadpool(get_cached_news_summary, symbol)
         except Exception:
             summary = "Could not generate summary."
 
