@@ -347,7 +347,7 @@
                 <h2>📊 Positions</h2>
                 <div class="table-wrapper">
                     <table id="positions-table">
-                        <thead><tr><th>Symbol</th><th>Amount</th><th>Entry Price</th><th>Current Price</th><th>Unrealized P&L</th><th>P&L %</th><th>Stop Loss</th><th>Take Profit</th><th>Trailing</th></tr></thead>
+                        <thead><tr><th>Symbol</th><th>Timeframe</th><th>Amount</th><th>Entry Price</th><th>Current Price</th><th>Unrealized P&L</th><th>P&L %</th><th>Stop Loss</th><th>Take Profit</th><th>Trailing</th></tr></thead>
                         <tbody></tbody>
                         <tfoot></tfoot>
                     </table>
@@ -768,6 +768,7 @@
                 if (symbols.length > 0) {
                     tfoot.innerHTML = `<tr>
                         <td><strong>Total</strong></td>
+                        <td></td>
                         <td></td>
                         <td></td>
                         <td></td>
