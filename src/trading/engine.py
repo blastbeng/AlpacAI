@@ -63,6 +63,7 @@ DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no coins (10 m
 MIN_COIN_REVALUATION_INTERVAL = 300  # seconds (5 minutes) – prevents rapid toggling
 MIN_LLM_PAUSE_DURATION = 300  # seconds – LLM cannot resume before this
 MAX_STOP_LOSS_REVIEWS = 3   # force-sell after this many consecutive stop-loss reviews
+MAX_TAKE_PROFIT_REVIEWS = 3   # force-sell after this many consecutive take-profit reviews
 
 
 class TradingEngine:
@@ -2352,10 +2353,15 @@ class TradingEngine:
         # --- Stop-loss triggered flag ---
         stop_loss_triggered = False
         stop_loss_review_count = 0
+        # --- Take-profit triggered flag ---
+        take_profit_triggered = False
+        take_profit_review_count = 0
         if symbol in self.positions:
             pos = self.positions[symbol]
             stop_loss_triggered = pos.get("_stop_loss_triggered", False)
             stop_loss_review_count = pos.get("_stop_loss_review_count", 0)
+            take_profit_triggered = pos.get("_take_profit_triggered", False)
+            take_profit_review_count = pos.get("_take_profit_review_count", 0)
 
         try:
             ticker = self.ws_manager.get_ticker(symbol)
@@ -2985,6 +2991,8 @@ class TradingEngine:
                 max_hold_expired_count=max_hold_expired_count,
                 stop_loss_triggered=stop_loss_triggered,
                 stop_loss_review_count=stop_loss_review_count,
+                take_profit_triggered=take_profit_triggered,
+                take_profit_review_count=take_profit_review_count,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-coin)
@@ -3359,6 +3367,72 @@ class TradingEngine:
                 if symbol in self.positions:
                     self.positions[symbol].pop("_stop_loss_triggered", None)
                     self.positions[symbol].pop("_stop_loss_review_count", None)
+                # Continue to the normal SELL execution below (do not return)
+
+            # --- Handle take-profit-triggered LLM decision ---
+            if take_profit_triggered and signal.action == "HOLD":
+                # LLM decided to keep holding – must provide a new take-profit
+                new_params = signal.strategy_params or {}
+                new_tp_pct = new_params.get("take_profit_pct")
+                if new_tp_pct is not None and new_tp_pct > 0:
+                    # LLM provided a new take-profit – update position and clear the trigger flag
+                    logger.info(
+                        f"LLM decided to hold {symbol} after take-profit trigger, "
+                        f"new take_profit_pct={new_tp_pct:.4%}"
+                    )
+                    if symbol in self.positions:
+                        self.positions[symbol]["take_profit"] = current_price * (1 + new_tp_pct)
+                        self.positions[symbol].pop("_take_profit_triggered", None)
+                        self.positions[symbol].pop("_take_profit_review_count", None)
+                        # Also apply any other updated parameters from the LLM
+                        self._update_position_params(
+                            symbol,
+                            new_params,
+                            signal.indicator_config,
+                            assigned_tf,
+                            current_price,
+                            atr,
+                        )
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"🔄 {symbol}: LLM adjusted take-profit to {new_tp_pct:.4%} – holding.",
+                            summary={
+                                "symbol": symbol,
+                                "action": "HOLD",
+                                "reason": "Take-profit adjusted by LLM",
+                                "new_take_profit_pct": new_tp_pct,
+                            }
+                        )
+                    # Skip further processing for this coin
+                    return
+                else:
+                    # LLM returned HOLD but did not provide a new take-profit → force SELL
+                    logger.warning(
+                        f"LLM returned HOLD for {symbol} after take-profit trigger but did not provide "
+                        f"a new take-profit. Forcing SELL."
+                    )
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"🎯 {symbol}: LLM did not provide new take-profit – selling.",
+                            summary={
+                                "symbol": symbol,
+                                "action": "SELL",
+                                "reason": "Take-profit triggered, LLM did not provide new take-profit",
+                                "exit_reason": "take_profit_llm_no_action",
+                            }
+                        )
+                    await self._execute_signal(
+                        symbol,
+                        Signal(action="SELL", confidence=1.0, reasoning="Take-profit triggered, LLM did not provide new take-profit"),
+                        exit_reason="take_profit_llm_no_action"
+                    )
+                    return
+
+            elif take_profit_triggered and signal.action == "SELL":
+                # LLM decided to sell – clear the flag and let the normal SELL execution proceed
+                if symbol in self.positions:
+                    self.positions[symbol].pop("_take_profit_triggered", None)
+                    self.positions[symbol].pop("_take_profit_review_count", None)
                 # Continue to the normal SELL execution below (do not return)
 
             # Compute stop-loss percentage for max risk cap (needed for slippage check)
@@ -4338,19 +4412,58 @@ class TradingEngine:
                                 f"(review {review_count}/{self.MAX_STOP_LOSS_REVIEWS})."
                             )
                 elif current_price >= pos["take_profit"]:
-                    logger.info(f"Take-profit triggered for {symbol} at {current_price}")
-                    if self.notifier:
-                        await self.notifier.send_notification(
-                            f"✅ Take‑profit triggered for {symbol} at {current_price:.4f}",
-                            summary={
-                                "symbol": symbol,
-                                "action": "SELL",
-                                "reason": "Take-profit",
-                                "price": current_price,
-                                "exit_reason": "take_profit",
-                            }
+                    # Instead of immediately selling, ask the LLM whether to sell or adjust the take-profit.
+                    review_count = pos.get("_take_profit_review_count", 0)
+                    if review_count >= self.MAX_TAKE_PROFIT_REVIEWS:
+                        # Fallback: force-sell after too many reviews
+                        logger.warning(
+                            f"Take-profit triggered for {symbol} at {current_price} – "
+                            f"review count {review_count} >= {self.MAX_TAKE_PROFIT_REVIEWS}, forcing SELL."
                         )
-                    await self._execute_signal(symbol, Signal(action="SELL", confidence=1.0, reasoning="Take-profit"), exit_reason="take_profit")
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                f"✅ Take‑profit triggered for {symbol} at {current_price:.4f} – "
+                                f"max reviews reached, selling.",
+                                summary={
+                                    "symbol": symbol,
+                                    "action": "SELL",
+                                    "reason": "Take-profit (max reviews)",
+                                    "price": current_price,
+                                    "exit_reason": "take_profit_max_reviews",
+                                }
+                            )
+                        await self._execute_signal(
+                            symbol,
+                            Signal(action="SELL", confidence=1.0, reasoning="Take-profit (max reviews)"),
+                            exit_reason="take_profit_max_reviews"
+                        )
+                    else:
+                        # First or repeated trigger: set flag and ask LLM
+                        if not pos.get("_take_profit_triggered"):
+                            pos["_take_profit_triggered"] = True
+                            pos["_take_profit_review_count"] = review_count + 1
+                            # Force immediate strategy re-evaluation for this coin
+                            self._last_strategy_eval.pop(symbol, None)
+                            logger.info(
+                                f"Take-profit triggered for {symbol} at {current_price} – "
+                                f"asking LLM (review {pos['_take_profit_review_count']}/{self.MAX_TAKE_PROFIT_REVIEWS})."
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"🎯 Take‑profit hit for {symbol} at {current_price:.4f} – consulting LLM...",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "HOLD",
+                                        "reason": "Take-profit triggered – awaiting LLM decision",
+                                        "price": current_price,
+                                    }
+                                )
+                        else:
+                            # Already waiting for LLM; do nothing
+                            logger.debug(
+                                f"Take-profit still triggered for {symbol}, waiting for LLM response "
+                                f"(review {review_count}/{self.MAX_TAKE_PROFIT_REVIEWS})."
+                            )
             except Exception as e:
                 logger.error(f"Risk check failed for {symbol}: {e}")
 
