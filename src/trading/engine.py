@@ -62,6 +62,7 @@ COIN_REVALUATION_INTERVAL = 900  # seconds (15 minutes)
 DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no coins (10 minutes)
 MIN_COIN_REVALUATION_INTERVAL = 300  # seconds (5 minutes) – prevents rapid toggling
 MIN_LLM_PAUSE_DURATION = 300  # seconds – LLM cannot resume before this
+MAX_STOP_LOSS_REVIEWS = 3   # force-sell after this many consecutive stop-loss reviews
 
 
 class TradingEngine:
@@ -2348,6 +2349,14 @@ class TradingEngine:
                 max_hold_expired = True
                 max_hold_expired_count = pos.get("_max_hold_expired_count", 1)
 
+        # --- Stop-loss triggered flag ---
+        stop_loss_triggered = False
+        stop_loss_review_count = 0
+        if symbol in self.positions:
+            pos = self.positions[symbol]
+            stop_loss_triggered = pos.get("_stop_loss_triggered", False)
+            stop_loss_review_count = pos.get("_stop_loss_review_count", 0)
+
         try:
             ticker = self.ws_manager.get_ticker(symbol)
             if ticker is None:
@@ -2974,6 +2983,8 @@ class TradingEngine:
                 trading_paused=trading_paused,
                 max_hold_expired=max_hold_expired,
                 max_hold_expired_count=max_hold_expired_count,
+                stop_loss_triggered=stop_loss_triggered,
+                stop_loss_review_count=stop_loss_review_count,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-coin)
@@ -4200,19 +4211,58 @@ class TradingEngine:
                         continue   # skip further checks for this symbol in this cycle
 
                 if current_price <= pos["stop_loss"]:
-                    logger.info(f"Stop-loss triggered for {symbol} at {current_price}")
-                    if self.notifier:
-                        await self.notifier.send_notification(
-                            f"⛔ Stop‑loss triggered for {symbol} at {current_price:.4f}",
-                            summary={
-                                "symbol": symbol,
-                                "action": "SELL",
-                                "reason": "Stop-loss",
-                                "price": current_price,
-                                "exit_reason": "stop_loss",
-                            }
+                    # Instead of immediately selling, ask the LLM whether to sell or adjust the stop.
+                    review_count = pos.get("_stop_loss_review_count", 0)
+                    if review_count >= self.MAX_STOP_LOSS_REVIEWS:
+                        # Fallback: force-sell after too many reviews
+                        logger.warning(
+                            f"Stop-loss triggered for {symbol} at {current_price} – "
+                            f"review count {review_count} >= {self.MAX_STOP_LOSS_REVIEWS}, forcing SELL."
                         )
-                    await self._execute_signal(symbol, Signal(action="SELL", confidence=1.0, reasoning="Stop-loss"), exit_reason="stop_loss")
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                f"⛔ Stop‑loss triggered for {symbol} at {current_price:.4f} – "
+                                f"max reviews reached, selling.",
+                                summary={
+                                    "symbol": symbol,
+                                    "action": "SELL",
+                                    "reason": "Stop-loss (max reviews)",
+                                    "price": current_price,
+                                    "exit_reason": "stop_loss_max_reviews",
+                                }
+                            )
+                        await self._execute_signal(
+                            symbol,
+                            Signal(action="SELL", confidence=1.0, reasoning="Stop-loss (max reviews)"),
+                            exit_reason="stop_loss_max_reviews"
+                        )
+                    else:
+                        # First or repeated trigger: set flag and ask LLM
+                        if not pos.get("_stop_loss_triggered"):
+                            pos["_stop_loss_triggered"] = True
+                            pos["_stop_loss_review_count"] = review_count + 1
+                            # Force immediate strategy re-evaluation for this coin
+                            self._last_strategy_eval.pop(symbol, None)
+                            logger.info(
+                                f"Stop-loss triggered for {symbol} at {current_price} – "
+                                f"asking LLM (review {pos['_stop_loss_review_count']}/{self.MAX_STOP_LOSS_REVIEWS})."
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⛔ Stop‑loss hit for {symbol} at {current_price:.4f} – consulting LLM...",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "HOLD",
+                                        "reason": "Stop-loss triggered – awaiting LLM decision",
+                                        "price": current_price,
+                                    }
+                                )
+                        else:
+                            # Already waiting for LLM; do nothing (avoid re-triggering)
+                            logger.debug(
+                                f"Stop-loss still triggered for {symbol}, waiting for LLM response "
+                                f"(review {review_count}/{self.MAX_STOP_LOSS_REVIEWS})."
+                            )
                 elif current_price >= pos["take_profit"]:
                     logger.info(f"Take-profit triggered for {symbol} at {current_price}")
                     if self.notifier:
@@ -4718,6 +4768,10 @@ class TradingEngine:
                     order["hold_time_seconds"] = hold_time
                 else:
                     order["hold_time_seconds"] = None
+                # Clear any stop-loss review flags before removing the position
+                if pos:
+                    pos.pop("_stop_loss_triggered", None)
+                    pos.pop("_stop_loss_review_count", None)
                 # Remove position
                 self.positions.pop(symbol, None)
                 self._strategy_intervals.pop(symbol, None)

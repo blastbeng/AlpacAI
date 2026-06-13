@@ -829,6 +829,8 @@ def build_strategy_prompt(
     trading_paused: bool = False,
     max_hold_expired: bool = False,
     max_hold_expired_count: int = 0,
+    stop_loss_triggered: bool = False,
+    stop_loss_review_count: int = 0,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     current_price = ticker.get("last") if ticker else None
@@ -1552,5 +1554,18 @@ Use this data to decide whether to BUY, SELL, or HOLD. If the coin has a poor wi
             "- If you decide to exit, output a **SELL** action.\n"
             "**Do NOT output HOLD without a new `max_hold_time_seconds`** – that will be treated "
             "as a decision to sell immediately.\n"
+        )
+    if stop_loss_triggered:
+        prompt += (
+            f"\n**⚠️ STOP-LOSS TRIGGERED (review {stop_loss_review_count}/{MAX_STOP_LOSS_REVIEWS_PLACEHOLDER}):** "
+            f"Your stop-loss level was triggered for {symbol}.\n"
+            "You must decide immediately:\n"
+            "- **SELL**: output a SELL action to close the position.\n"
+            "- **HOLD with adjusted stop**: output a HOLD action and provide a **new, lower stop-loss** "
+            "(via `stop_loss_pct` or `stop_loss_atr_multiple`). You may also update other parameters "
+            "(e.g., take-profit, trailing stop).\n"
+            "**If you output HOLD without a new stop-loss, the engine will force-sell the position.**\n"
+            "Choose the option that you believe will maximise profit or minimise loss given the current "
+            "market conditions, indicators, and order book.\n"
         )
     return prompt
