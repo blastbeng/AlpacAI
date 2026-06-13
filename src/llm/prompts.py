@@ -156,7 +156,9 @@ Key principles:
   Before outputting JSON, verify: `take_profit_pct > stop_loss_pct`.  
   Example: stop_loss_pct=0.02, take_profit_pct=0.05 → OK.  
   Example: stop_loss_pct=0.03, take_profit_pct=0.03 → REJECTED.
-- Set a maximum hold time (max_hold_time_seconds) for every trade. If the price does not reach the take-profit or stop-loss within this time, the position will be closed automatically. Choose a time appropriate for the timeframe (e.g., 1-4 hours for 1h candles, 15-60 minutes for 5m candles).
+- Set a maximum hold time (max_hold_time_seconds) for every trade. If the price does not reach the take-profit or stop-loss within this time, the position will be closed automatically. Choose a time appropriate for the timeframe.
+
+**CRITICAL: Do NOT set max_hold_time_seconds too short.** A too-short max hold time is a leading cause of losing trades because it forces an exit before the trade has time to develop. Err on the side of longer hold times. For 1h candles, consider at least 2-4 hours; for 4h candles, 8-24 hours; for 5m candles, at least 30-60 minutes. Only use very short times if you are scalping tiny percentages with high confidence and a tight stop, and even then ensure the time is sufficient for the price to reach the target.
 - Use trailing stops to lock in profits when the price moves favourably.
 - Adjust position size according to your confidence, risk level, account drawdown, and portfolio exposure. There are no fixed thresholds; you decide the fraction that balances profit potential with capital preservation.
 - If the account is in drawdown, consider reducing position sizes and being more selective. The severity of the reduction is your decision based on the drawdown percentage and recent performance.
