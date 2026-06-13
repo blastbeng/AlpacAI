@@ -140,16 +140,26 @@ def reload():
 
 @app.get("/api/config")
 def config():
+    mind_provider = settings.LLM_MIND_PROVIDER or settings.LLM_PROVIDER
+    actuator_provider = settings.LLM_ACTUATOR_PROVIDER or settings.LLM_PROVIDER
+    if mind_provider == "ollama":
+        mind_model = settings.OLLAMA_MIND_MODEL
+    else:
+        mind_model = settings.OPENAI_MIND_MODEL
+    if actuator_provider == "ollama":
+        actuator_model = settings.OLLAMA_ACTUATOR_MODEL
+    else:
+        actuator_model = settings.OPENAI_ACTUATOR_MODEL
+
     return {
         "exchange_id": settings.EXCHANGE_ID,
         "trading_mode": settings.TRADING_MODE,
         "base_currency": settings.BASE_CURRENCY,
         "max_coins": settings.MAX_COINS,
-        "llm_provider": settings.LLM_PROVIDER,
-        "ollama_mind_model": settings.OLLAMA_MIND_MODEL,
-        "ollama_actuator_model": settings.OLLAMA_ACTUATOR_MODEL,
-        "openai_mind_model": settings.OPENAI_MIND_MODEL,
-        "openai_actuator_model": settings.OPENAI_ACTUATOR_MODEL,
+        "llm_mind_provider": mind_provider,
+        "llm_mind_model": mind_model,
+        "llm_actuator_provider": actuator_provider,
+        "llm_actuator_model": actuator_model,
         "web_port": settings.WEB_PORT,
     }
 

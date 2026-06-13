@@ -24,11 +24,20 @@ def get_cached_llm_response(
     """
     redis_client = get_redis_client()
 
-    # Choose the concrete model name based on provider and role
-    if settings.LLM_PROVIDER == "openai":
+    # Determine effective provider for this role
+    if model_type == "mind":
+        provider = settings.LLM_MIND_PROVIDER or settings.LLM_PROVIDER
+    else:
+        provider = settings.LLM_ACTUATOR_PROVIDER or settings.LLM_PROVIDER
+
+    if provider == "openai":
         model = settings.OPENAI_MIND_MODEL if model_type == "mind" else settings.OPENAI_ACTUATOR_MODEL
+        base_url = (settings.OPENAI_MIND_BASE_URL or settings.OPENAI_BASE_URL) if model_type == "mind" else (settings.OPENAI_ACTUATOR_BASE_URL or settings.OPENAI_BASE_URL)
+        api_key = (settings.OPENAI_MIND_API_KEY or settings.OPENAI_API_KEY) if model_type == "mind" else (settings.OPENAI_ACTUATOR_API_KEY or settings.OPENAI_API_KEY)
     else:
         model = settings.OLLAMA_MIND_MODEL if model_type == "mind" else settings.OLLAMA_ACTUATOR_MODEL
+        base_url = (settings.OLLAMA_MIND_BASE_URL or settings.OLLAMA_BASE_URL) if model_type == "mind" else (settings.OLLAMA_ACTUATOR_BASE_URL or settings.OLLAMA_BASE_URL)
+        api_key = (settings.OLLAMA_MIND_API_KEY or settings.OLLAMA_API_KEY) if model_type == "mind" else (settings.OLLAMA_ACTUATOR_API_KEY or settings.OLLAMA_API_KEY)
 
     if market_hash:
         cache_key = f"llm:{model_type}:market:{market_hash}"
@@ -46,12 +55,12 @@ def get_cached_llm_response(
         return cached
 
     # Not cached, call the appropriate raw LLM function
-    if settings.LLM_PROVIDER == "openai":
+    if provider == "openai":
         from src.llm.llm_client import _get_openai_response
-        response = _get_openai_response(prompt, system_prompt, model=model)
+        response = _get_openai_response(prompt, system_prompt, model=model, base_url=base_url, api_key=api_key)
     else:
         from src.llm.llm_client import _get_ollama_response
-        response = _get_ollama_response(prompt, system_prompt, model=model)
+        response = _get_ollama_response(prompt, system_prompt, model=model, base_url=base_url, api_key=api_key)
 
     if response is None:
         logger.warning("LLM returned None response; not caching.")

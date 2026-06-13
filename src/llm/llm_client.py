@@ -7,12 +7,14 @@ from src.config.settings import settings
 logger = logging.getLogger(__name__)
 
 
-def _get_ollama_response(prompt: str, system_prompt: str = "", model: str = None) -> str:
+def _get_ollama_response(prompt: str, system_prompt: str = "", model: str = None,
+                         base_url: str = None, api_key: str = None) -> str:
     """Send a prompt to the configured Ollama model and return the response text."""
-    url = f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat"
+    url = f"{(base_url or settings.OLLAMA_BASE_URL).rstrip('/')}/api/chat"
     headers = {"Content-Type": "application/json"}
-    if settings.OLLAMA_API_KEY:
-        headers["Authorization"] = f"Bearer {settings.OLLAMA_API_KEY}"
+    effective_api_key = api_key or settings.OLLAMA_API_KEY
+    if effective_api_key:
+        headers["Authorization"] = f"Bearer {effective_api_key}"
 
     messages = []
     if system_prompt:
@@ -36,12 +38,14 @@ def _get_ollama_response(prompt: str, system_prompt: str = "", model: str = None
         raise RuntimeError(f"Ollama request failed: {e}") from e
 
 
-def _get_openai_response(prompt: str, system_prompt: str = "", model: str = None) -> str:
+def _get_openai_response(prompt: str, system_prompt: str = "", model: str = None,
+                         base_url: str = None, api_key: str = None) -> str:
     """Send a prompt to the configured OpenAI-compatible API and return the response text."""
-    url = f"{settings.OPENAI_BASE_URL.rstrip('/')}/chat/completions"
+    url = f"{(base_url or settings.OPENAI_BASE_URL).rstrip('/')}/chat/completions"
     headers = {"Content-Type": "application/json"}
-    if settings.OPENAI_API_KEY:
-        headers["Authorization"] = f"Bearer {settings.OPENAI_API_KEY}"
+    effective_api_key = api_key or settings.OPENAI_API_KEY
+    if effective_api_key:
+        headers["Authorization"] = f"Bearer {effective_api_key}"
 
     messages = []
     if system_prompt:
