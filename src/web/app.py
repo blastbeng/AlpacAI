@@ -146,8 +146,10 @@ def config():
         "base_currency": settings.BASE_CURRENCY,
         "max_coins": settings.MAX_COINS,
         "llm_provider": settings.LLM_PROVIDER,
-        "ollama_model": settings.OLLAMA_MODEL,
-        "openai_model": settings.OPENAI_MODEL,
+        "ollama_mind_model": settings.OLLAMA_MIND_MODEL,
+        "ollama_actuator_model": settings.OLLAMA_ACTUATOR_MODEL,
+        "openai_mind_model": settings.OPENAI_MIND_MODEL,
+        "openai_actuator_model": settings.OPENAI_ACTUATOR_MODEL,
         "web_port": settings.WEB_PORT,
     }
 
