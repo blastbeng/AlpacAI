@@ -141,6 +141,22 @@ class Settings(BaseSettings):
     OLLAMA_ACTUATOR_MODEL: str = "deepseek-v4-flash"
     OPENAI_ACTUATOR_MODEL: str = "gpt-4o-mini"
 
+    # Per‑role provider overrides (empty = use global LLM_PROVIDER)
+    LLM_MIND_PROVIDER: str = ""
+    LLM_ACTUATOR_PROVIDER: str = ""
+
+    # Per‑role OpenAI settings (empty or None = use global OPENAI_*)
+    OPENAI_MIND_API_KEY: Optional[str] = None
+    OPENAI_ACTUATOR_API_KEY: Optional[str] = None
+    OPENAI_MIND_BASE_URL: str = ""
+    OPENAI_ACTUATOR_BASE_URL: str = ""
+
+    # Per‑role Ollama settings (empty or None = use global OLLAMA_*)
+    OLLAMA_MIND_BASE_URL: str = ""
+    OLLAMA_ACTUATOR_BASE_URL: str = ""
+    OLLAMA_MIND_API_KEY: Optional[str] = None
+    OLLAMA_ACTUATOR_API_KEY: Optional[str] = None
+
     # LLM temperature (applies to both providers)
     LLM_TEMPERATURE: float = 0.1
 
