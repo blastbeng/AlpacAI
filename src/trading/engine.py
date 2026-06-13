@@ -63,7 +63,6 @@ DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no coins (10 m
 MIN_COIN_REVALUATION_INTERVAL = 300  # seconds (5 minutes) – prevents rapid toggling
 MIN_LLM_PAUSE_DURATION = 300  # seconds – LLM cannot resume before this
 MAX_STOP_LOSS_REVIEWS = 3   # force-sell after this many consecutive stop-loss reviews
-MAX_TAKE_PROFIT_REVIEWS = 3   # force-sell after this many consecutive take-profit reviews
 
 
 class TradingEngine:
@@ -4436,58 +4435,34 @@ class TradingEngine:
                                 f"(review {review_count}/{self.MAX_STOP_LOSS_REVIEWS})."
                             )
                 elif current_price >= pos["take_profit"]:
-                    # Instead of immediately selling, ask the LLM whether to sell or adjust the take-profit.
+                    # Always ask the LLM whether to sell or adjust the take-profit.
                     review_count = pos.get("_take_profit_review_count", 0)
-                    if review_count >= self.MAX_TAKE_PROFIT_REVIEWS:
-                        # Fallback: force-sell after too many reviews
-                        logger.warning(
+                    # First or repeated trigger: set flag and ask LLM
+                    if not pos.get("_take_profit_triggered"):
+                        pos["_take_profit_triggered"] = True
+                        pos["_take_profit_review_count"] = review_count + 1
+                        # Force immediate strategy re-evaluation for this coin
+                        self._last_strategy_eval.pop(symbol, None)
+                        logger.info(
                             f"Take-profit triggered for {symbol} at {current_price} – "
-                            f"review count {review_count} >= {self.MAX_TAKE_PROFIT_REVIEWS}, forcing SELL."
+                            f"asking LLM (review {pos['_take_profit_review_count']})."
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"✅ Take‑profit triggered for {symbol} at {current_price:.4f} – "
-                                f"max reviews reached, selling.",
+                                f"🎯 Take‑profit hit for {symbol} at {current_price:.4f} – consulting LLM...",
                                 summary={
                                     "symbol": symbol,
-                                    "action": "SELL",
-                                    "reason": "Take-profit (max reviews)",
+                                    "action": "HOLD",
+                                    "reason": "Take-profit triggered – awaiting LLM decision",
                                     "price": current_price,
-                                    "exit_reason": "take_profit_max_reviews",
                                 }
                             )
-                        await self._execute_signal(
-                            symbol,
-                            Signal(action="SELL", confidence=1.0, reasoning="Take-profit (max reviews)"),
-                            exit_reason="take_profit_max_reviews"
-                        )
                     else:
-                        # First or repeated trigger: set flag and ask LLM
-                        if not pos.get("_take_profit_triggered"):
-                            pos["_take_profit_triggered"] = True
-                            pos["_take_profit_review_count"] = review_count + 1
-                            # Force immediate strategy re-evaluation for this coin
-                            self._last_strategy_eval.pop(symbol, None)
-                            logger.info(
-                                f"Take-profit triggered for {symbol} at {current_price} – "
-                                f"asking LLM (review {pos['_take_profit_review_count']}/{self.MAX_TAKE_PROFIT_REVIEWS})."
-                            )
-                            if self.notifier:
-                                await self.notifier.send_notification(
-                                    f"🎯 Take‑profit hit for {symbol} at {current_price:.4f} – consulting LLM...",
-                                    summary={
-                                        "symbol": symbol,
-                                        "action": "HOLD",
-                                        "reason": "Take-profit triggered – awaiting LLM decision",
-                                        "price": current_price,
-                                    }
-                                )
-                        else:
-                            # Already waiting for LLM; do nothing
-                            logger.debug(
-                                f"Take-profit still triggered for {symbol}, waiting for LLM response "
-                                f"(review {review_count}/{self.MAX_TAKE_PROFIT_REVIEWS})."
-                            )
+                        # Already waiting for LLM; do nothing
+                        logger.debug(
+                            f"Take-profit still triggered for {symbol}, waiting for LLM response "
+                            f"(review {review_count})."
+                        )
             except Exception as e:
                 logger.error(f"Risk check failed for {symbol}: {e}")
 
