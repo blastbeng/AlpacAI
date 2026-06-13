@@ -2003,31 +2003,45 @@ class TradingEngine:
                                                     )
                                         except (ValueError, TypeError):
                                             pass
-                                if not skip_resume:
-                                    # Delete all pause keys
-                                    pause_keys = [
-                                        "trading:paused",
-                                        "trading:pause_source",
-                                        "trading:pause_start",
-                                        "trading:pause_duration",
-                                        "trading:pause_reason",
-                                        "trading:llm_pause_time",
-                                    ]
-                                    for key in pause_keys:
-                                        await asyncio.to_thread(self.redis.delete, key)
-                                    logger.info("LLM requested to resume trading.")
+                                    if not skip_resume:
+                                        # Delete all pause keys
+                                        pause_keys = [
+                                            "trading:paused",
+                                            "trading:pause_source",
+                                            "trading:pause_start",
+                                            "trading:pause_duration",
+                                            "trading:pause_reason",
+                                            "trading:llm_pause_time",
+                                        ]
+                                        for key in pause_keys:
+                                            await asyncio.to_thread(self.redis.delete, key)
+                                        logger.info("LLM requested to resume trading.")
+                                        if self.notifier:
+                                            resume_notif_msg = "▶️ Trading resumed by LLM decision."
+                                            if pause_reason:
+                                                resume_notif_msg += f" (was paused: {pause_reason})"
+                                            await self.notifier.send_notification(
+                                                resume_notif_msg,
+                                                summary={
+                                                    "action": "RESUME",
+                                                    "reason": f"LLM resume: {pause_reason}" if pause_reason else "LLM resume",
+                                                }
+                                            )
+                                        self._reeval_trigger.set()
+                                else:
+                                    # Trading is already active – LLM confirms to keep it active
+                                    logger.info("LLM decided to keep trading active (already active).")
                                     if self.notifier:
-                                        resume_notif_msg = "▶️ Trading resumed by LLM decision."
+                                        keep_msg = "▶️ LLM decided to keep trading active."
                                         if pause_reason:
-                                            resume_notif_msg += f" (was paused: {pause_reason})"
+                                            keep_msg += f" Reason: {pause_reason}"
                                         await self.notifier.send_notification(
-                                            resume_notif_msg,
+                                            keep_msg,
                                             summary={
                                                 "action": "RESUME",
-                                                "reason": f"LLM resume: {pause_reason}" if pause_reason else "LLM resume",
+                                                "reason": f"LLM keep active: {pause_reason}" if pause_reason else "LLM keep active",
                                             }
                                         )
-                                    self._reeval_trigger.set()
                     else:
                         logger.warning(f"Invalid pause_trading value: {pause_trading}")
 
