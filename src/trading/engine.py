@@ -4378,7 +4378,10 @@ class TradingEngine:
                 if max_hold is not None and max_hold > 0:
                     entry_ts = pos.get("timestamp", 0) / 1000.0  # convert ms to seconds
                     if time.time() - entry_ts > max_hold:
-                        # First expiry or repeated expiry without LLM resolution
+                        # Already waiting for LLM – do not re‑trigger
+                        if pos.get("_max_hold_expired"):
+                            continue
+                        # First expiry – ask LLM
                         expired_count = pos.get("_max_hold_expired_count", 0) + 1
                         pos["_max_hold_expired"] = True
                         pos["_max_hold_expired_count"] = expired_count
