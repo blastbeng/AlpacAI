@@ -12,7 +12,7 @@ def get_cached_llm_response(
     system_prompt: str = "",
     ttl: int = 300,
     market_hash: str = None,
-    model_type: str = "mind",
+    model_type: str = "actuator",
 ) -> Optional[str]:
     """
     Get an LLM response, using Redis cache to avoid duplicate calls.

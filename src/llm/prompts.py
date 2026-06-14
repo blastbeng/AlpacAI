@@ -88,7 +88,7 @@ def _format_news_for_prompt(articles: list) -> str:
     return "\n".join(lines)
 
 
-def get_cached_news_summary(symbol: str, model_type: str = "mind") -> str:
+def get_cached_news_summary(symbol: str, model_type: str = "actuator") -> str:
     """Return a cached LLM-generated one‑sentence news summary for a symbol.
 
     The summary is stored in Redis under ``news_summary:{symbol}`` with a TTL

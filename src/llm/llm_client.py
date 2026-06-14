@@ -71,7 +71,7 @@ def _get_openai_response(prompt: str, system_prompt: str = "", model: str = None
         raise RuntimeError(f"OpenAI request failed: {e}") from e
 
 
-def get_llm_response(prompt: str, system_prompt: str = "", model_type: str = "mind") -> str:
+def get_llm_response(prompt: str, system_prompt: str = "", model_type: str = "actuator") -> str:
     """Send a prompt to the configured LLM provider and return the response text.
 
     Uses Redis caching with a 5-minute TTL (keyed by prompt + system prompt).

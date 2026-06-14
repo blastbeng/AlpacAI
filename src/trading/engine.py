@@ -2230,7 +2230,7 @@ class TradingEngine:
             try:
                 response = await asyncio.to_thread(
                     get_cached_llm_response, compact_prompt(prompt), COMPACTED_SYSTEM_PROMPT, 120,
-                    model_type="mind",
+                    model_type="actuator",
                 )
                 decision = json.loads(response)
             except Exception as e:
@@ -3090,7 +3090,7 @@ class TradingEngine:
             market_hash = compute_market_hash(market_snapshot)
             # Determine whether to use the fast actuator model
             is_critical = max_hold_expired or stop_loss_triggered or take_profit_triggered
-            strategy_model_type = "actuator" if is_critical else "mind"
+            strategy_model_type = "mind" if is_critical else "actuator"
             try:
                 response = await asyncio.to_thread(
                     get_cached_llm_response,
