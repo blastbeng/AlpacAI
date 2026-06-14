@@ -5081,7 +5081,21 @@ class TradingEngine:
                 pos["stop_loss"] = current_price * (1 - sl_pct)
         elif "stop_loss_pct" in params:
             sl_pct = params["stop_loss_pct"]
-            pos["stop_loss"] = current_price * (1 - sl_pct)
+            try:
+                sl_pct = float(sl_pct)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Ignoring invalid stop_loss_pct=%r for %s",
+                    params["stop_loss_pct"], symbol,
+                )
+                sl_pct = None
+            if sl_pct is not None and sl_pct > 0 and current_price > 0:
+                pos["stop_loss"] = current_price * (1 - sl_pct)
+            elif sl_pct is not None:
+                logger.warning(
+                    "Ignoring invalid stop_loss_pct=%s for %s (current_price=%s)",
+                    sl_pct, symbol, current_price,
+                )
 
         # --- Take-profit ---
         if "take_profit_pct" in params:
