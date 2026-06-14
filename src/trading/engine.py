@@ -211,6 +211,40 @@ class TradingEngine:
                     if source and (source.decode() if isinstance(source, bytes) else source) == "llm":
                         pause_start_raw = await asyncio.to_thread(self.redis.get, "trading:pause_start")
                         pause_duration_raw = await asyncio.to_thread(self.redis.get, "trading:pause_duration")
+                        # --- Fallback if no pause_duration was set ---
+                        if not pause_duration_raw:
+                            # No LLM-set duration → resume after a safe default
+                            default_max_pause = 7200  # 2 hours
+                            try:
+                                elapsed = time.time() - float(pause_start_raw)
+                                if elapsed >= default_max_pause:
+                                    logger.warning(
+                                        "Pause has no duration; forcing auto‑resume after default fallback (2 hours)."
+                                    )
+                                    stored_reason_raw = await asyncio.to_thread(self.redis.get, "trading:pause_reason")
+                                    stored_reason = stored_reason_raw.decode() if isinstance(stored_reason_raw, bytes) else (stored_reason_raw or "")
+                                    pause_keys = [
+                                        "trading:paused",
+                                        "trading:pause_source",
+                                        "trading:pause_start",
+                                        "trading:pause_duration",
+                                        "trading:pause_reason",
+                                        "trading:llm_pause_time",
+                                    ]
+                                    for key in pause_keys:
+                                        await asyncio.to_thread(self.redis.delete, key)
+                                    self._reeval_trigger.set()
+                                    if self.notifier:
+                                        await self.notifier.send_notification(
+                                            "⏰ Trading auto‑resumed after maximum pause duration (no LLM‑set duration).",
+                                            summary={"action": "RESUME", "reason": "Fallback pause timeout"}
+                                        )
+                                else:
+                                    # still waiting, but we already know there is no duration, don't spam log
+                                    pass
+                            except (ValueError, TypeError):
+                                pass
+                            return   # skip the original duration logic
                         if pause_start_raw and pause_duration_raw:
                             try:
                                 pause_start = float(pause_start_raw)
@@ -1922,6 +1956,12 @@ class TradingEngine:
                                 await asyncio.to_thread(self.redis.set, "trading:pause_source", "llm")
                                 await asyncio.to_thread(self.redis.set, "trading:pause_start", str(time.time()))
                                 await asyncio.to_thread(self.redis.set, "trading:llm_pause_time", str(time.time()))
+                                # Fallback if LLM did not provide pause_duration_seconds
+                                if pause_duration is None:
+                                    pause_duration = MIN_LLM_PAUSE_DURATION
+                                    await asyncio.to_thread(
+                                        self.redis.setex, "trading:pause_duration", 7 * 24 * 3600, str(int(pause_duration))
+                                    )
                                 if pause_reason:
                                     await asyncio.to_thread(self.redis.set, "trading:pause_reason", pause_reason)
                                 logger.info("LLM requested to pause trading.")
@@ -2236,6 +2276,35 @@ class TradingEngine:
                 decision = json.loads(response)
             except Exception as e:
                 logger.warning(f"Pause/resume LLM call failed: {e}")
+                # Track consecutive failures in Redis
+                fail_key = "trading:pause:llm_fail_count"
+                current_fails = await asyncio.to_thread(self.redis.incr, fail_key)
+                await asyncio.to_thread(self.redis.expire, fail_key, 3600)
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"⚠️ Could not reach LLM to decide pause/resume (failure #{current_fails}). "
+                        f"Auto‑resume will be attempted after {MIN_LLM_PAUSE_DURATION}s if LLM stays silent.",
+                        summary={"action": "INFO", "reason": "LLM pause-resume call failed"}
+                    )
+                # If we failed 3 times in a row, force‑resume (optional but safe)
+                if current_fails >= 3:
+                    pause_keys = [
+                        "trading:paused",
+                        "trading:pause_source",
+                        "trading:pause_start",
+                        "trading:pause_duration",
+                        "trading:pause_reason",
+                        "trading:llm_pause_time",
+                    ]
+                    for key in pause_keys:
+                        await asyncio.to_thread(self.redis.delete, key)
+                    await asyncio.to_thread(self.redis.delete, fail_key)
+                    self._reeval_trigger.set()
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            "▶️ Trading auto‑resumed because LLM could not be reached for pause decision.",
+                            summary={"action": "RESUME", "reason": "LLM pause-resume failures exceeded limit"}
+                        )
                 return
 
             resume_trading = decision.get("resume_trading")
