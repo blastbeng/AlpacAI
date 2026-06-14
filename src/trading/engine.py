@@ -3836,6 +3836,27 @@ class TradingEngine:
                 )
 
             if validated.action != "HOLD":
+                # --- Entry condition check (only for BUY) ---
+                if validated.action == "BUY" and validated.entry_condition is not None:
+                    timeout = validated.entry_condition.get("timeout_seconds", 300)
+                    condition_met = await self._wait_for_entry_condition(
+                        symbol, validated, timeout, assigned_tf
+                    )
+                    if not condition_met:
+                        logger.info(f"Entry condition not met for {symbol} within {timeout}s; skipping trade.")
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                f"⏭️ Skipping BUY {symbol}: entry condition not met within {timeout}s.",
+                                summary={
+                                    "symbol": symbol,
+                                    "action": "SKIP",
+                                    "reason": "Entry condition timeout",
+                                }
+                            )
+                        return
+
+                    logger.info(f"Entry condition met for {symbol}; proceeding to execute.")
+
                 if trading_paused:
                     logger.info(f"Ignoring {validated.action} signal for {symbol}: trading is paused.")
                 else:
@@ -5251,6 +5272,119 @@ class TradingEngine:
         # Have an open position – skip if price far from stop/tp and indicators calm
         # (the risk management loop will handle stop/tp)
         return True
+
+    async def _wait_for_entry_condition(self, symbol: str, signal: Signal, timeout_seconds: float, timeframe: str) -> bool:
+        """Wait for the entry condition to be met; return True if met, False if timeout."""
+        entry = signal.entry_condition
+        if entry is None:
+            return True  # no condition – execute immediately
+
+        etype = entry.get("type")
+        deadline = time.time() + timeout_seconds
+        logger.info(f"Waiting for entry condition '{etype}' on {symbol} (timeout {timeout_seconds}s)")
+
+        while time.time() < deadline:
+            if etype == "limit_price":
+                target_price = entry["price"]
+                ticker = self.ws_manager.get_ticker(symbol)
+                if ticker is None:
+                    try:
+                        async with self._exchange_semaphore:
+                            ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                    except Exception as e:
+                        logger.debug(f"Failed to fetch ticker for {symbol}: {e}")
+                        await asyncio.sleep(1)
+                        continue
+                current_price = ticker.get("last", 0) if ticker else 0
+                if current_price > 0 and current_price <= target_price:
+                    logger.info(f"Limit price condition met for {symbol}: {current_price} <= {target_price}")
+                    return True
+
+            elif etype == "rsi_threshold":
+                target_rsi = entry["rsi_below"]
+                try:
+                    async with self._exchange_semaphore:
+                        ohlcv = await asyncio.to_thread(
+                            get_multi_timeframe_ohlcv, self.exchange, symbol, [timeframe], limit=50
+                        )
+                except Exception as e:
+                    logger.debug(f"OHLCV fetch failed for {symbol}: {e}")
+                    await asyncio.sleep(1)
+                    continue
+                if timeframe in ohlcv and ohlcv[timeframe]:
+                    candles = ohlcv[timeframe]
+                    # compute RSI (14) using imported function
+                    rsi = compute_rsi([c[4] for c in candles])
+                    if rsi is not None and rsi <= target_rsi:
+                        logger.info(f"RSI condition met for {symbol}: RSI={rsi:.2f} <= {target_rsi}")
+                        return True
+
+            elif etype == "order_book_depth":
+                min_vol = entry["min_ask_volume"]
+                ob = self.ws_manager.get_order_book(symbol)
+                if ob is None:
+                    try:
+                        async with self._exchange_semaphore:
+                            ob = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
+                    except Exception as e:
+                        logger.debug(f"Order book fetch failed for {symbol}: {e}")
+                        await asyncio.sleep(1)
+                        continue
+                if ob:
+                    asks = ob.get("asks", [])
+                    bids = ob.get("bids", [])
+                    if asks and bids:
+                        mid = (asks[0][0] + bids[0][0]) / 2
+                        cum_vol = sum(a[1] for a in asks if a[0] <= mid * 1.01)
+                        if cum_vol >= min_vol:
+                            logger.info(f"Order book depth condition met for {symbol}: cum_ask_vol={cum_vol:.2f} >= {min_vol}")
+                            return True
+
+            elif etype == "delay":
+                delay_sec = entry["delay_seconds"]
+                logger.info(f"Delay entry for {symbol}: waiting {delay_sec}s")
+                await asyncio.sleep(delay_sec)
+                return True
+
+            elif etype == "indicator_combo":
+                conditions = entry["conditions"]
+                try:
+                    async with self._exchange_semaphore:
+                        ohlcv = await asyncio.to_thread(
+                            get_multi_timeframe_ohlcv, self.exchange, symbol, [timeframe], limit=50
+                        )
+                except Exception as e:
+                    logger.debug(f"OHLCV fetch failed for {symbol}: {e}")
+                    await asyncio.sleep(1)
+                    continue
+                if timeframe in ohlcv and ohlcv[timeframe]:
+                    candles = ohlcv[timeframe]
+                    closes = [c[4] for c in candles]
+                    all_met = True
+                    for cond in conditions:
+                        ind = cond["indicator"]
+                        thresh = cond["threshold"]
+                        direction = cond["direction"]
+                        if ind == "rsi":
+                            rsi_val = compute_rsi(closes)
+                            if rsi_val is None or (direction == "below" and rsi_val > thresh) or (direction == "above" and rsi_val < thresh):
+                                all_met = False
+                                break
+                        elif ind == "macd_hist":
+                            macd_vals = compute_macd(closes)
+                            macd_hist_val = macd_vals[2][-1] if macd_vals and len(macd_vals[2]) > 0 else None
+                            if macd_hist_val is None or (direction == "below" and macd_hist_val > thresh) or (direction == "above" and macd_hist_val < thresh):
+                                all_met = False
+                                break
+                        # other indicators can be added later
+                    if all_met:
+                        logger.info(f"Indicator combo condition met for {symbol}")
+                        return True
+
+            await asyncio.sleep(1.0)
+
+        logger.warning(f"Entry condition timeout for {symbol} ({etype})")
+        return False
 
     def _choose_model_tier(
         self,

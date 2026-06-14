@@ -19,6 +19,9 @@ class Signal:
     trailing_stop: Optional[bool] = False    # whether to use a trailing stop
     max_hold_minutes: Optional[int] = None   # maximum time to hold the position
     reason: Optional[str] = None             # LLM's explanation (for logging)
+    # --- New: entry condition & timeframe for delayed execution ---
+    entry_condition: Optional[Dict[str, Any]] = None   # e.g., {"type": "limit_price", "price": 1.23, "timeout_seconds": 300}
+    timeframe: Optional[str] = None   # e.g., "5m", "1h" – needed for indicator-based entry conditions
 
 
 class Strategy:

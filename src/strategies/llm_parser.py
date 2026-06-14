@@ -62,6 +62,24 @@ def parse_llm_response(response_text: str) -> Signal:
         max_hold_minutes = data.get("max_hold_minutes")
         reason = data.get("reason", "")
 
+        # --- entry condition ---
+        entry_condition_raw = data.get("entry_condition")
+        entry_condition = None
+        if isinstance(entry_condition_raw, dict):
+            etype = entry_condition_raw.get("type")
+            valid_types = ("limit_price", "rsi_threshold", "order_book_depth", "delay", "indicator_combo")
+            if etype in valid_types:
+                if etype == "limit_price" and "price" in entry_condition_raw and "timeout_seconds" in entry_condition_raw:
+                    entry_condition = entry_condition_raw
+                elif etype == "rsi_threshold" and "rsi_below" in entry_condition_raw and "timeout_seconds" in entry_condition_raw:
+                    entry_condition = entry_condition_raw
+                elif etype == "order_book_depth" and "min_ask_volume" in entry_condition_raw and "timeout_seconds" in entry_condition_raw:
+                    entry_condition = entry_condition_raw
+                elif etype == "delay" and "delay_seconds" in entry_condition_raw:
+                    entry_condition = entry_condition_raw
+                elif etype == "indicator_combo" and isinstance(entry_condition_raw.get("conditions"), list) and len(entry_condition_raw["conditions"]) > 0 and "timeout_seconds" in entry_condition_raw:
+                    entry_condition = entry_condition_raw
+
         return Signal(
             action=action,
             confidence=confidence,
@@ -77,6 +95,7 @@ def parse_llm_response(response_text: str) -> Signal:
             trailing_stop=trailing_stop,
             max_hold_minutes=max_hold_minutes,
             reason=reason,
+            entry_condition=entry_condition,
         )
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         raise ValueError(f"Failed to parse LLM response as valid JSON: {e}") from e
