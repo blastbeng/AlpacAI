@@ -124,6 +124,7 @@ class TradingEngine:
         self._reeval_trigger = asyncio.Event()
         self._running = True
         self._last_state_save = 0
+        self._last_eval_snapshot: Dict[str, Dict[str, float]] = {}  # symbol -> indicator snapshot
 
         # Re-entrancy guards for periodic tasks
         self._reconcile_running = False
@@ -3088,9 +3089,39 @@ class TradingEngine:
                 "trading_paused": trading_paused,
             }
             market_hash = compute_market_hash(market_snapshot)
-            # Determine whether to use the fast actuator model
+            # Determine whether we even need to call the LLM, and if so which model to use
             is_critical = max_hold_expired or stop_loss_triggered or take_profit_triggered
-            strategy_model_type = "mind" if is_critical else "actuator"
+            has_position = symbol in self.positions
+
+            if self._should_skip_llm_eval(
+                symbol=symbol,
+                current_price=current_price,
+                atr=atr,
+                rsi=rsi,
+                macd_hist=macd_hist,
+                atr_percentile=atr_percentile,
+                market_regime=market_regime,
+                sentiment_trend_val=sentiment_trend_val,
+                timeframe_seconds=tf_seconds,
+                has_position=has_position,
+                is_critical=is_critical,
+            ):
+                logger.debug(f"Skipping LLM for {symbol}: market unchanged, no strong signals.")
+                # Update snapshot but no LLM call – assume HOLD
+                self._update_last_eval_snapshot(symbol, current_price, rsi, macd_hist)
+                return
+
+            strategy_model_type = self._choose_model_tier(
+                atr_percentile=atr_percentile,
+                market_regime=market_regime,
+                sentiment_trend_val=sentiment_trend_val,
+                rsi=rsi,
+                macd_hist=macd_hist,
+                macd=macd,
+                macd_signal=macd_signal,
+                is_critical=is_critical,
+            )
+
             try:
                 response = await asyncio.to_thread(
                     get_cached_llm_response,
@@ -3100,6 +3131,8 @@ class TradingEngine:
                     market_hash=market_hash,
                     model_type=strategy_model_type,
                 )
+                # Update snapshot after a real LLM call
+                self._update_last_eval_snapshot(symbol, current_price, rsi, macd_hist)
             except asyncio.TimeoutError:
                 logger.warning(f"LLM strategy call timed out for {symbol}.")
                 # If a critical decision is pending, force a SELL immediately to protect capital.
@@ -3186,6 +3219,8 @@ class TradingEngine:
                         get_cached_llm_response, compact_prompt(correction_prompt), COMPACTED_SYSTEM_PROMPT, 30,
                         model_type="actuator",
                     )
+                    # Update snapshot after retry call
+                    self._update_last_eval_snapshot(symbol, current_price, rsi, macd_hist)
                     strategy = create_strategy_from_llm(response2)
                 except Exception as e2:
                     logger.error(f"LLM response still invalid after retry for {symbol}: {e2}")
@@ -5083,6 +5118,120 @@ class TradingEngine:
                             "reason": f"Sell order failed: {e}"[:200],
                         }
                     )
+
+    def _should_skip_llm_eval(
+        self,
+        symbol: str,
+        current_price: float,
+        atr: Optional[float],
+        rsi: Optional[float],
+        macd_hist: Optional[float],
+        atr_percentile: Optional[float],
+        market_regime: str,
+        sentiment_trend_val: Optional[float],
+        timeframe_seconds: float,
+        has_position: bool,
+        is_critical: bool,
+    ) -> bool:
+        """Return True if it’s safe to skip the LLM call and just HOLD."""
+        # Never skip critical situations (max hold, stop-loss, take-profit triggered)
+        if is_critical:
+            return False
+
+        snapshot = self._last_eval_snapshot.get(symbol)
+        if snapshot is None:
+            # First evaluation – must call
+            return False
+
+        now = time.time()
+        last_time = snapshot.get("timestamp", 0)
+        last_price = snapshot.get("price", 0)
+
+        # Always call if enough time has passed (2× the normal interval)
+        if now - last_time > 2 * timeframe_seconds:
+            return False
+
+        # Price change since last evaluation
+        if last_price > 0:
+            price_change_pct = abs(current_price - last_price) / last_price
+            # If price moved less than 0.2× ATR (in %), it’s boring
+            atr_pct = (atr / current_price) if (atr and atr > 0) else 0.005
+            if price_change_pct > atr_pct * 0.5:
+                return False   # enough movement to warrant a new look
+
+        # Indicator changes
+        last_rsi = snapshot.get("rsi")
+        last_macd_hist = snapshot.get("macd_hist")
+        if rsi is not None and last_rsi is not None:
+            if abs(rsi - last_rsi) > 5:
+                return False
+        if macd_hist is not None and last_macd_hist is not None:
+            if abs(macd_hist - last_macd_hist) > 0.0005:
+                return False
+
+        # If we have no open position and nothing is screaming, skip
+        if not has_position:
+            # Only call if there is a potential entry signal (extreme RSI, MACD crossover, etc.)
+            # RSI extreme?
+            if rsi is not None and (rsi < 30 or rsi > 70):
+                return False
+            # MACD histogram direction change? (harder to detect without previous sign – skip for simplicity)
+            # Otherwise, no strong signal → skip
+            return True
+
+        # Have an open position – skip if price far from stop/tp and indicators calm
+        # (the risk management loop will handle stop/tp)
+        return True
+
+    def _choose_model_tier(
+        self,
+        atr_percentile: Optional[float],
+        market_regime: str,
+        sentiment_trend_val: Optional[float],
+        rsi: Optional[float],
+        macd_hist: Optional[float],
+        macd: Optional[float],
+        macd_signal: Optional[float],
+        is_critical: bool,
+    ) -> str:
+        """Return "mind" or "actuator" based on market complexity."""
+        if is_critical:
+            return "mind"
+
+        complexity = 0
+
+        # High or low volatility extremes
+        if atr_percentile is not None:
+            if atr_percentile > 80 or atr_percentile < 20:
+                complexity += 1
+
+        # Turbulent market regime
+        if market_regime and ("high volatility" in market_regime or "squeeze" in market_regime):
+            complexity += 1
+
+        # Strong sentiment swing
+        if sentiment_trend_val is not None and abs(sentiment_trend_val) > 0.2:
+            complexity += 1
+
+        # Conflicting technicals (RSI extreme vs MACD direction)
+        if rsi is not None and macd_hist is not None:
+            if (rsi < 30 and macd_hist < 0) or (rsi > 70 and macd_hist > 0):
+                complexity += 1
+
+        # MACD crossover nearby (hist near zero while lines close)
+        if macd is not None and macd_signal is not None:
+            if abs(macd - macd_signal) < 0.0001 * abs(macd) if macd else 0:
+                complexity += 1
+
+        return "mind" if complexity >= 2 else "actuator"
+
+    def _update_last_eval_snapshot(self, symbol: str, price: float, rsi: Optional[float], macd_hist: Optional[float]):
+        self._last_eval_snapshot[symbol] = {
+            "timestamp": time.time(),
+            "price": price,
+            "rsi": rsi,
+            "macd_hist": macd_hist,
+        }
 
     def _update_position_params(
         self,
