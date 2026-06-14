@@ -3321,8 +3321,15 @@ class TradingEngine:
                     logger.info(f"LLM extended max hold time for {symbol} to {new_max_hold}s")
                     if symbol in self.positions:
                         self.positions[symbol]["max_hold_time_seconds"] = new_max_hold
+                        # IMPORTANT: Reset the entry timestamp so the new hold period starts now
+                        self.positions[symbol]["timestamp"] = int(time.time() * 1000)
                         self.positions[symbol].pop("_max_hold_expired", None)
                         self.positions[symbol].pop("_max_hold_expired_count", None)
+                    # Also update current_coins entry_time for consistency
+                    for coin_entry in self.current_coins:
+                        if coin_entry["symbol"] == symbol:
+                            coin_entry["entry_time"] = time.time()
+                            break
                     # Let the normal _update_position_params apply any other changes
                 else:
                     # LLM did not provide a new max_hold_time_seconds → treat as SELL
