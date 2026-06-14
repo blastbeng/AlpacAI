@@ -3,10 +3,37 @@ import json
 import os
 import logging
 import time
+import functools
 from typing import Dict, List, Any, Optional
 from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+
+def retry_on_db_lock(max_retries=3, initial_delay=0.5):
+    """
+    Decorator that retries a function if it raises sqlite3.OperationalError
+    with 'database is locked'.  Uses exponential backoff.
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exc = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    if "database is locked" in str(e):
+                        last_exc = e
+                        if attempt < max_retries:
+                            delay = initial_delay * (2 ** attempt)
+                            time.sleep(delay)
+                            continue
+                    raise
+            raise last_exc
+        return wrapper
+    return decorator
+
 
 DB_PATH = settings.DATABASE_PATH
 
@@ -19,7 +46,7 @@ def _normalize_symbol(symbol: str) -> str:
 def get_connection() -> sqlite3.Connection:
     """Return a new connection to the SQLite database."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
@@ -124,6 +151,7 @@ def init_db():
     _migrate_db()
 
 
+@retry_on_db_lock()
 def insert_trade(trade: Dict[str, Any]):
     """Insert a completed trade into the trade_history table."""
     conn = get_connection()
@@ -174,6 +202,7 @@ def load_trading_state() -> Dict[str, Any]:
     return state
 
 
+@retry_on_db_lock()
 def save_trading_state(key: str, value: Any):
     """Insert or update a single trading state key."""
     conn = get_connection()
@@ -185,6 +214,7 @@ def save_trading_state(key: str, value: Any):
     conn.close()
 
 
+@retry_on_db_lock()
 def delete_trading_state(key: str):
     """Remove a trading state key."""
     conn = get_connection()
@@ -195,6 +225,7 @@ def delete_trading_state(key: str):
 
 # ---------- Paper balance helpers ----------
 
+@retry_on_db_lock()
 def save_paper_balances(balances: Dict[str, float]):
     """Persist the paper simulator's balances dict."""
     conn = get_connection()
@@ -235,6 +266,7 @@ def get_telegram_chat_id() -> Optional[int]:
             return None
     return None
 
+@retry_on_db_lock()
 def cleanup_old_ohlcv(retention_days: int = 30):
     """Delete OHLCV candles older than retention_days for all symbols and timeframes."""
     conn = get_connection()
@@ -321,6 +353,7 @@ def get_performance() -> Dict[str, Any]:
     }
 
 
+@retry_on_db_lock()
 def set_telegram_chat_id(chat_id: int):
     """Store the Telegram chat ID."""
     conn = get_connection()
@@ -332,6 +365,7 @@ def set_telegram_chat_id(chat_id: int):
     conn.close()
 
 
+@retry_on_db_lock()
 def store_news_articles(symbol: str, articles: List[Dict[str, Any]]):
     """Replace all stored articles for a symbol with a fresh batch."""
     symbol = _normalize_symbol(symbol)
@@ -419,6 +453,7 @@ def get_aggregate_sentiment_from_db(symbol: str, max_age_seconds: int = 900) -> 
     }
 
 
+@retry_on_db_lock()
 def cleanup_old_news(retention_seconds: int):
     """Delete news articles older than retention_seconds."""
     conn = get_connection()
@@ -431,6 +466,7 @@ def cleanup_old_news(retention_seconds: int):
         logger.info(f"Cleaned up {deleted} old news articles.")
 
 
+@retry_on_db_lock()
 def insert_ohlcv_batch(symbol: str, timeframe: str, candles: List[List]):
     """Insert OHLCV candles into the market_data table, ignoring duplicates."""
     if not candles:
