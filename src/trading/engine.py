@@ -2249,7 +2249,7 @@ class TradingEngine:
                     if self.notifier:
                         await self.notifier.send_notification(
                             "▶️ LLM requested to resume trading, but the pause was not initiated by the LLM.",
-                            summary={"action": "RESUME", "reason": "LLM resume request ignored (manual pause active)"}
+                            summary={"action": "RESUME", "reason": "LLM resume request ignored (manual pause active)", "model_type": "actuator"}
                         )
                     return
 
@@ -2265,7 +2265,7 @@ class TradingEngine:
                                 await self.notifier.send_notification(
                                     f"⏸️ LLM resume request ignored: minimum pause duration "
                                     f"({MIN_LLM_PAUSE_DURATION}s) not yet elapsed ({remaining:.0f}s remaining).",
-                                    summary={"action": "RESUME", "reason": f"LLM resume blocked by minimum pause duration ({MIN_LLM_PAUSE_DURATION}s)", "model_type": "mind"}
+                                    summary={"action": "RESUME", "reason": f"LLM resume blocked by minimum pause duration ({MIN_LLM_PAUSE_DURATION}s)", "model_type": "actuator"}
                                 )
                             return
                     except (ValueError, TypeError):
@@ -2288,7 +2288,7 @@ class TradingEngine:
                     reason_text = f" – {reason}" if reason else ""
                     await self.notifier.send_notification(
                         f"▶️ Trading resumed by LLM decision{reason_text}",
-                        summary={"action": "RESUME", "reason": f"LLM resume request: {reason}" if reason else "LLM resume request"}
+                        summary={"action": "RESUME", "reason": f"LLM resume request: {reason}" if reason else "LLM resume request", "model_type": "actuator"}
                     )
             elif resume_trading is False:
                 # LLM wants to stay paused – optionally update reason
@@ -2299,7 +2299,7 @@ class TradingEngine:
                     reason_text = f" – {reason}" if reason else ""
                     await self.notifier.send_notification(
                         f"⏸️ LLM decided to keep trading paused{reason_text}",
-                        summary={"action": "PAUSE", "reason": f"LLM keep paused: {reason}" if reason else "LLM keep paused"}
+                        summary={"action": "PAUSE", "reason": f"LLM keep paused: {reason}" if reason else "LLM keep paused", "model_type": "actuator"}
                     )
             else:
                 logger.warning(f"Invalid resume_trading value in LLM response: {resume_trading}")
