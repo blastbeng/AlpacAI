@@ -3340,6 +3340,18 @@ class TradingEngine:
                         if coin_entry["symbol"] == symbol:
                             coin_entry["entry_time"] = time.time()
                             break
+                    # Notify the user about the extension
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"⏰ Max hold time for {symbol} extended to {new_max_hold}s by LLM.\n"
+                            f"Reasoning: {validated.reasoning}",
+                            summary={
+                                "symbol": symbol,
+                                "action": "HOLD",
+                                "reason": validated.reasoning,
+                                "new_max_hold_seconds": new_max_hold,
+                            }
+                        )
                     # Let the normal _update_position_params apply any other changes
                 else:
                     # LLM did not provide a new max_hold_time_seconds → treat as SELL
