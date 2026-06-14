@@ -4406,11 +4406,11 @@ class TradingEngine:
                 if current_price <= pos["stop_loss"]:
                     # Instead of immediately selling, ask the LLM whether to sell or adjust the stop.
                     review_count = pos.get("_stop_loss_review_count", 0)
-                    if review_count >= self.MAX_STOP_LOSS_REVIEWS:
+                    if review_count >= MAX_STOP_LOSS_REVIEWS:
                         # Fallback: force-sell after too many reviews
                         logger.warning(
                             f"Stop-loss triggered for {symbol} at {current_price} – "
-                            f"review count {review_count} >= {self.MAX_STOP_LOSS_REVIEWS}, forcing SELL."
+                            f"review count {review_count} >= {MAX_STOP_LOSS_REVIEWS}, forcing SELL."
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
@@ -4459,10 +4459,10 @@ class TradingEngine:
                 elif current_price >= pos["take_profit"]:
                     # Always ask the LLM whether to sell or adjust the take-profit, but cap reviews.
                     review_count = pos.get("_take_profit_review_count", 0)
-                    if review_count >= self.MAX_TAKE_PROFIT_REVIEWS:
+                    if review_count >= MAX_TAKE_PROFIT_REVIEWS:
                         logger.warning(
                             f"Take-profit triggered for {symbol} at {current_price} – "
-                            f"review count {review_count} >= {self.MAX_TAKE_PROFIT_REVIEWS}, forcing SELL."
+                            f"review count {review_count} >= {MAX_TAKE_PROFIT_REVIEWS}, forcing SELL."
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
