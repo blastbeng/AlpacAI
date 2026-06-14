@@ -2141,6 +2141,7 @@ class TradingEngine:
                         "per_coin_budget": per_coin_budget,
                         "pause_decision": pause_trading if isinstance(pause_trading, bool) else None,
                         "pause_reason": pause_reason,
+                        "model_type": "mind",
                     }
                 )
         elif self.notifier:
@@ -2160,6 +2161,7 @@ class TradingEngine:
                     "coin_reasoning": coin_reasoning,
                     "pause_decision": pause_trading if isinstance(pause_trading, bool) else None,
                     "pause_reason": pause_reason,
+                    "model_type": "mind",
                 }
             )
 
@@ -2263,7 +2265,7 @@ class TradingEngine:
                                 await self.notifier.send_notification(
                                     f"⏸️ LLM resume request ignored: minimum pause duration "
                                     f"({MIN_LLM_PAUSE_DURATION}s) not yet elapsed ({remaining:.0f}s remaining).",
-                                    summary={"action": "RESUME", "reason": f"LLM resume blocked by minimum pause duration ({MIN_LLM_PAUSE_DURATION}s)"}
+                                    summary={"action": "RESUME", "reason": f"LLM resume blocked by minimum pause duration ({MIN_LLM_PAUSE_DURATION}s)", "model_type": "mind"}
                                 )
                             return
                     except (ValueError, TypeError):
@@ -3113,7 +3115,7 @@ class TradingEngine:
                     if self.notifier:
                         await self.notifier.send_notification(
                             f"⏱️ LLM timeout for {symbol} with critical flag – forcing SELL.",
-                            summary={"symbol": symbol, "action": "SELL", "reason": reason}
+                            summary={"symbol": symbol, "action": "SELL", "reason": reason, "model_type": strategy_model_type}
                         )
                     await self._execute_signal(
                         symbol,
@@ -3129,6 +3131,7 @@ class TradingEngine:
                             "symbol": symbol,
                             "action": "SKIP",
                             "reason": "LLM timeout",
+                            "model_type": strategy_model_type,
                         }
                     )
                 return
@@ -3148,7 +3151,7 @@ class TradingEngine:
                     if self.notifier:
                         await self.notifier.send_notification(
                             f"⚠️ LLM returned empty response for {symbol} with critical flag – forcing SELL.",
-                            summary={"symbol": symbol, "action": "SELL", "reason": reason}
+                            summary={"symbol": symbol, "action": "SELL", "reason": reason, "model_type": strategy_model_type}
                         )
                     await self._execute_signal(
                         symbol,
@@ -3164,6 +3167,7 @@ class TradingEngine:
                             "symbol": symbol,
                             "action": "SKIP",
                             "reason": "LLM returned None",
+                            "model_type": strategy_model_type,
                         }
                     )
                 return
@@ -3187,6 +3191,7 @@ class TradingEngine:
                     logger.error(f"LLM response still invalid after retry for {symbol}: {e2}")
                     strategy = LLMStrategy(Signal(action="HOLD", confidence=0.0, reasoning="Failed to parse LLM response after retry"))
             signal = strategy.generate_signal({})
+            signal.model_type = strategy_model_type
             current_price = ticker['last']
             validated = validate_signal(
                 signal,
@@ -3196,6 +3201,7 @@ class TradingEngine:
                 spread_pct=spread_pct,
                 timeframe_seconds=tf_seconds,
             )
+            validated.model_type = getattr(signal, 'model_type', None)
 
             # If the LLM produced a BUY/SELL but the validator rejected it due to a parameter
             # error, give the LLM one chance to fix its own mistake.
@@ -3310,6 +3316,7 @@ class TradingEngine:
                     "strategy_type": signal.strategy_type,
                     "market_regime": market_regime,
                     "scalping_score": scalping_score,
+                    "model_type": getattr(validated, 'model_type', None),
                 }
                 await self.notifier.send_notification(msg, summary=decision_summary)
 

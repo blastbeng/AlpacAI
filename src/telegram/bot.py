@@ -651,6 +651,10 @@ class TelegramBot:
                     should_send = False
 
         if should_send:
+            if summary and summary.get("model_type"):
+                model = summary["model_type"]
+                emoji = "🧠" if model == "mind" else "⚡"
+                message += f"  {emoji} {model}"
             try:
                 await self.app.bot.send_message(chat_id=int(chat_id), text=message)
                 logger.info("Notification sent successfully.")
