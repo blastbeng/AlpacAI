@@ -3398,11 +3398,12 @@ class TradingEngine:
                         )
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"🔄 {symbol}: LLM adjusted stop-loss to {new_stop_pct:.4%} – holding.",
+                            f"🔄 {symbol}: LLM adjusted stop-loss to {new_stop_pct:.4%} – holding.\n"
+                            f"Reasoning: {validated.reasoning}",
                             summary={
                                 "symbol": symbol,
                                 "action": "HOLD",
-                                "reason": "Stop-loss adjusted by LLM",
+                                "reason": validated.reasoning,
                                 "new_stop_loss_pct": new_stop_pct,
                             }
                         )
@@ -3464,11 +3465,12 @@ class TradingEngine:
                         )
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"🔄 {symbol}: LLM adjusted take-profit to {new_tp_pct:.4%} – holding.",
+                            f"🔄 {symbol}: LLM adjusted take-profit to {new_tp_pct:.4%} – holding.\n"
+                            f"Reasoning: {validated.reasoning}",
                             summary={
                                 "symbol": symbol,
                                 "action": "HOLD",
-                                "reason": "Take-profit adjusted by LLM",
+                                "reason": validated.reasoning,
                                 "new_take_profit_pct": new_tp_pct,
                             }
                         )
