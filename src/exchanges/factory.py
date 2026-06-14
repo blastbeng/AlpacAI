@@ -60,6 +60,13 @@ def get_pro_exchange() -> ccxt_pro.Exchange:
     exchange = exchange_class(config)
     exchange.timeout = settings.EXCHANGE_TIMEOUT
 
+    # Increase WebSocket ping interval to reduce keepalive timeouts
+    if exchange_id == "kucoin":
+        exchange.options["wsPingInterval"] = 30000   # 30 seconds (default is often 10s)
+    elif exchange_id == "binance":
+        exchange.options["wsPingInterval"] = 30000
+    # Add other exchanges as needed
+
     if settings.TRADING_MODE == "paper":
         if exchange.has.get("sandbox", False):
             exchange.set_sandbox_mode(True)

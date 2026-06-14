@@ -22,9 +22,29 @@ class WebSocketManager:
         self._task: Optional[asyncio.Task] = None
         self._reconnect_lock = asyncio.Lock()
 
+    def _setup_exception_handler(self):
+        """Replace the event loop's exception handler so unhandled futures are logged cleanly."""
+        loop = asyncio.get_event_loop()
+        original_handler = loop.get_exception_handler()
+
+        def handle_exception(loop, context):
+            msg = context.get("message")
+            exception = context.get("exception")
+            if exception and "timed out due to a ping-pong keepalive" in str(exception):
+                logger.warning(f"WebSocket keepalive timeout: {exception}")
+            elif isinstance(exception, Exception):
+                logger.warning(f"Unhandled WebSocket future exception: {exception}")
+            elif original_handler:
+                original_handler(loop, context)
+            else:
+                loop.default_exception_handler(context)
+
+        loop.set_exception_handler(handle_exception)
+
     async def start(self):
         """Start the WebSocket watch loop."""
         self._running = True
+        self._setup_exception_handler()
         self._task = asyncio.create_task(self._watch_loop())
 
     async def _reconnect(self):
@@ -39,14 +59,19 @@ class WebSocketManager:
 
                 # 1. Cancel all existing watch tasks EXCEPT the current task and the main loop task
                 current_task = asyncio.current_task()
-                all_watch_tasks = (
-                    list(self._order_book_tasks.values())
-                    + list(self._ticker_tasks.values())
-                    + list(self._trade_tasks.values())
-                )
+                all_watch_tasks = [
+                    task
+                    for task in (
+                        list(self._order_book_tasks.values())
+                        + list(self._ticker_tasks.values())
+                        + list(self._trade_tasks.values())
+                    )
+                    if task is not None and task is not current_task and task is not self._task
+                ]
                 for task in all_watch_tasks:
-                    if task is not current_task and task is not self._task:
-                        task.cancel()
+                    task.cancel()
+                if all_watch_tasks:
+                    await asyncio.gather(*all_watch_tasks, return_exceptions=True)
 
                 # 2. Clear cached data and task dictionaries
                 self.tickers.clear()
