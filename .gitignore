@@ -218,3 +218,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .aider*
+data/*
+data/paper.db
+data/notifications.jsonl
