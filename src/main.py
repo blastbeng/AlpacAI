@@ -19,7 +19,7 @@ logging.basicConfig(
 if settings.LOG_LEVEL.upper() != "DEBUG":
     logging.getLogger("httpx").setLevel(logging.WARNING)
 else:
-    logging.getLogger("httpx").setLevel(logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.DEBUG)
 
 if not check_redis_connection():
     logging.critical("Redis is not reachable. Exiting.")
