@@ -552,4 +552,22 @@ def compute_all_indicators(
         ind['ichimoku'] = compute_ichimoku(highs, lows, closes, tenkan_period=ichimoku_tenkan, kijun_period=ichimoku_kijun, senkou_b_period=ichimoku_senkou_b)
         ind['donchian_channels'] = compute_donchian_channels(highs, lows, period=donchian_period)
 
+        # VWAP
+        ind['vwap'] = compute_vwap(candles)
+
+        # Parabolic SAR
+        ind['parabolic_sar'] = compute_parabolic_sar(highs, lows)
+
+        # Keltner Channels
+        ind['keltner_channels'] = compute_keltner_channels(closes, highs, lows)
+
+        # Pivot Points (from the previous completed candle)
+        if len(candles) >= 2:
+            prev_high = candles[-2][2]
+            prev_low = candles[-2][3]
+            prev_close = candles[-2][4]
+            ind['pivot_points'] = compute_pivot_points(prev_high, prev_low, prev_close)
+        else:
+            ind['pivot_points'] = None
+
     return ind
