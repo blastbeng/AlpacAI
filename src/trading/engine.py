@@ -656,7 +656,7 @@ class TradingEngine:
 
     async def _backfill_ohlcv(self, symbol: str, timeframe: str, start_ms: int, end_ms: int, max_candles: int = None, ignore_existing: bool = False):
         """Fetch and store all missing OHLCV candles between start_ms and end_ms."""
-        logger.info(f"Backfill started for {symbol} {timeframe}: {start_ms} → {end_ms}")
+        logger.debug(f"Backfill started for {symbol} {timeframe}: {start_ms} → {end_ms}")
         if ignore_existing:
             since = start_ms
         else:
@@ -703,9 +703,9 @@ class TradingEngine:
             await asyncio.sleep(0.2)
 
         if total_inserted >= max_candles:
-            logger.info(f"Backfill partial for {symbol} {timeframe}: {total_inserted} candles inserted (limit reached)")
+            logger.debug(f"Backfill partial for {symbol} {timeframe}: {total_inserted} candles inserted (limit reached)")
         else:
-            logger.info(f"Backfill complete for {symbol} {timeframe}: {total_inserted} candles inserted")
+            logger.debug(f"Backfill complete for {symbol} {timeframe}: {total_inserted} candles inserted")
 
     async def _fill_gaps(self, symbol: str, timeframe: str):
         """Detect and fill gaps in stored OHLCV data for a symbol/timeframe."""
