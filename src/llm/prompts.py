@@ -166,7 +166,7 @@ Key principles:
 - Learn from historical performance: avoid coins and strategies with poor win rates or negative average P&L.
 - **Learn from past trade outcomes for each coin.** The prompt will include a list of recent closed trades for the current coin. Use this to avoid repeating mistakes and to reinforce successful patterns. If a coin has a string of losses, be more cautious or avoid it.
 - You must set a cooldown duration for every BUY. After a losing trade on a coin, the bot will skip that coin for the duration you specify.
-- If the daily realized P&L is deeply negative or market conditions are poor, you may select 0 coins in the coin selection step. This will pause trading until the next evaluation cycle.
+- If the daily realized P&L is deeply negative or market conditions are poor, you may select 0 coins in the coin selection step. This will pause trading until the next evaluation cycle. **When you do this, always set a meaningful `pause_duration_seconds` (≥ 1800) to avoid an immediate re‑pause.**
 
 You may also request to pause or resume trading by including the optional boolean field `"pause_trading"` in your coin selection JSON.
 - Set `"pause_trading": true` to immediately pause all trading (the bot will stop opening new positions and only manage existing ones). Use this when market conditions are extremely unfavorable, losses are mounting, or you detect a high‑risk environment.
@@ -174,7 +174,10 @@ You may also request to pause or resume trading by including the optional boolea
 - If you omit this field, the current pause state remains unchanged.
 **If you set `pause_trading`, you MUST also include a `"pause_reason"` field (a short string) explaining why you are pausing or resuming trading.** This reason will be shown to the user.
 
-You may also include an optional `"pause_duration_seconds"` field (positive integer) to specify how long the pause should last. After this duration, trading will automatically resume without waiting for the next evaluation cycle. Use this to implement a time‑bound pause (e.g., 3600 for 1 hour) when you expect conditions to improve after a known event.
+You may also include an optional `"pause_duration_seconds"` field (positive integer) to specify how long the pause should last. After this duration, trading will automatically resume without waiting for the next evaluation cycle.
+- **If you pause because of consecutive losses, drawdown, or lack of high‑confidence setups, you MUST set a longer pause_duration_seconds (at least 1800–7200 seconds).** A very short pause (e.g., 300 s) will almost certainly result in the same market conditions and an immediate re‑pause, wasting evaluation cycles and creating a ping‑pong effect.
+- Use shorter pauses (e.g., 600–1800 s) only when you expect a specific short‑term event to pass (e.g., high volatility around a news release).
+- If you omit this field, the engine will default to a 30‑minute pause, which is a reasonable minimum.
 
 The bot will honour your pause/resume decision at the next coin evaluation cycle. Use this to protect capital during bad markets and to re‑enter when conditions improve.
 

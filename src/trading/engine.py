@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 COIN_REVALUATION_INTERVAL = 900  # seconds (15 minutes)
 DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no coins (10 minutes)
 MIN_COIN_REVALUATION_INTERVAL = 300  # seconds (5 minutes) – prevents rapid toggling
-MIN_LLM_PAUSE_DURATION = 300  # seconds – LLM cannot resume before this
+MIN_LLM_PAUSE_DURATION = 1800  # seconds (30 min) – LLM cannot resume before this
 MAX_STOP_LOSS_REVIEWS = 10   # force-sell after this many consecutive stop-loss reviews
 MAX_TAKE_PROFIT_REVIEWS = 10   # force-sell after this many consecutive take-profit reviews
 
@@ -234,6 +234,8 @@ class TradingEngine:
                                     for key in pause_keys:
                                         await asyncio.to_thread(self.redis.delete, key)
                                     self._reeval_trigger.set()
+                                    await asyncio.to_thread(self.redis.set, "trading:last_auto_resume", str(time.time()))
+                                    await asyncio.to_thread(self.redis.setex, "trading:auto_resume_cooldown", 600, "1")
                                     if self.notifier:
                                         await self.notifier.send_notification(
                                             "⏰ Trading auto‑resumed after maximum pause duration (no LLM‑set duration).",
@@ -265,6 +267,8 @@ class TradingEngine:
                                     for key in pause_keys:
                                         await asyncio.to_thread(self.redis.delete, key)
                                     self._reeval_trigger.set()
+                                    await asyncio.to_thread(self.redis.set, "trading:last_auto_resume", str(time.time()))
+                                    await asyncio.to_thread(self.redis.setex, "trading:auto_resume_cooldown", 600, "1")
                                     if self.notifier:
                                         reason_text = f" (was paused: {stored_reason})" if stored_reason else ""
                                         await self.notifier.send_notification(
@@ -1718,6 +1722,25 @@ class TradingEngine:
             if 'max_tenure_hours' in entry:
                 coin_max_tenure[entry['symbol']] = entry['max_tenure_hours']
 
+        # --- Warn if trading was recently auto-resumed ---
+        auto_resume_note = ""
+        last_auto_resume_raw = await asyncio.to_thread(self.redis.get, "trading:last_auto_resume")
+        if last_auto_resume_raw:
+            try:
+                last_auto_resume_ts = float(last_auto_resume_raw)
+                seconds_since = now - last_auto_resume_ts
+                if seconds_since < self._coin_revaluation_interval * 2:
+                    minutes_since = seconds_since / 60
+                    auto_resume_note = (
+                        f"\n**NOTE:** Trading was auto‑resumed {minutes_since:.1f} minutes ago after a pause. "
+                        "Market conditions may not have changed significantly. "
+                        "Consider whether conditions have actually improved enough to justify trading. "
+                        "If you decide to pause again, set a longer `pause_duration_seconds` (e.g., 1800–7200) "
+                        "to allow conditions to evolve; a very short pause will likely lead to the same outcome.\n"
+                    )
+            except (ValueError, TypeError):
+                pass
+
         prompt = build_coin_selection_prompt(
             available_pairs=sample_pairs,
             current_coins=self.current_coins,
@@ -1753,6 +1776,8 @@ class TradingEngine:
             coin_max_tenure=coin_max_tenure,
             full_market_breadth=full_market_breadth,
         )
+        if auto_resume_note:
+            prompt += "\n" + auto_resume_note
         # Build a market snapshot dict for caching
         market_snapshot = {
             "available_pairs": sample_pairs,
@@ -1942,6 +1967,15 @@ class TradingEngine:
                     else:
                         logger.warning(f"Unrecognised pause_trading string: {pause_trading}")
                         pause_trading = None
+
+                # --- Auto-resume cooldown: ignore pause requests shortly after an auto-resume ---
+                cooldown_active = await asyncio.to_thread(self.redis.get, "trading:auto_resume_cooldown")
+                if cooldown_active and pause_trading is True:
+                    logger.info(
+                        "Ignoring LLM pause request because auto‑resume cooldown is active "
+                        "(trading was recently auto‑resumed)."
+                    )
+                    pause_trading = None  # treat as "no decision"
 
                 skip_resume = False
                 if pause_trading is not None:
@@ -2243,12 +2277,21 @@ class TradingEngine:
             reason_raw = await asyncio.to_thread(self.redis.get, "trading:pause_reason")
             pause_reason = reason_raw.decode() if isinstance(reason_raw, bytes) else (reason_raw or "")
 
-            # Build a concise prompt
+            # Build a richer prompt with performance context
+            perf = self._compute_performance_metrics()
+            daily_pnl = perf["equity_curve"].get("daily_pnl", 0.0)
+            total_pnl = perf["equity_curve"].get("total_pnl", 0.0)
+            consecutive_losses = perf["equity_curve"].get("consecutive_losses", 0)
+            drawdown_pct = perf["equity_curve"].get("drawdown_pct", 0.0)
+
             prompt_parts = [
                 "Trading is currently paused.",
             ]
             if pause_reason:
                 prompt_parts.append(f"Pause reason: {pause_reason}")
+            prompt_parts.append(f"Account P&L: daily={daily_pnl:.4f}, total={total_pnl:.4f}, drawdown={drawdown_pct:.2f}%")
+            if consecutive_losses > 0:
+                prompt_parts.append(f"Consecutive losing trades: {consecutive_losses}")
             if fear_greed:
                 prompt_parts.append(f"Fear & Greed Index: {fear_greed['value']} ({fear_greed['classification']})")
             if btc_price:
@@ -2262,10 +2305,29 @@ class TradingEngine:
             if altcoin_season:
                 prompt_parts.append(f"Altcoin Season Index: {altcoin_season['value']} ({altcoin_season['description']})")
 
+            # Check if this is a recent auto-resume situation
+            last_auto_resume_raw = await asyncio.to_thread(self.redis.get, "trading:last_auto_resume")
+            if last_auto_resume_raw:
+                try:
+                    last_auto_resume_ts = float(last_auto_resume_raw)
+                    seconds_since = time.time() - last_auto_resume_ts
+                    if seconds_since < 3600:  # within the last hour
+                        minutes_since = seconds_since / 60
+                        prompt_parts.append(
+                            f"Trading was auto‑resumed {minutes_since:.1f} minutes ago. "
+                            "Market conditions may not have changed significantly. "
+                            "Only resume if there is clear, concrete improvement in the data above."
+                        )
+                except (ValueError, TypeError):
+                    pass
+
             prompt = (
                 "\n".join(prompt_parts)
                 + "\n\nShould we resume trading now? Reply with a JSON object: "
                 '{"resume_trading": true/false, "reason": "short explanation"}'
+                + "\n\n**Important:** Only resume if you see specific, high‑confidence opportunities. "
+                "If conditions are still poor, keep trading paused. "
+                "If you are unsure, it is safer to remain paused."
             )
 
             try:
