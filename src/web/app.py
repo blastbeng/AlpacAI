@@ -202,9 +202,9 @@ async def ohlcv(symbol: str, timeframe: str = "1h", limit: int = 24):
 @app.get("/api/ticker/{symbol:path}")
 async def ticker(symbol: str):
     engine = get_engine()
-    exchange = engine.exchange
-    try:
-        ticker_data = await asyncio.to_thread(_fetch_ticker_with_retry, exchange, symbol)
+    # 1) Try the WebSocket cache first – no exchange call
+    ticker_data = engine.ws_manager.get_ticker(symbol)
+    if ticker_data is not None:
         return {
             "symbol": symbol,
             "last": ticker_data.get("last"),
@@ -212,16 +212,61 @@ async def ticker(symbol: str):
             "ask": ticker_data.get("ask"),
             "change_24h": ticker_data.get("percentage"),
         }
-    except Exception as e:
-        logger.warning(f"Ticker fetch failed for {symbol}: {e}")
-        return {
-            "symbol": symbol,
-            "error": str(e),
-            "last": None,
-            "bid": None,
-            "ask": None,
-            "change_24h": None,
-        }
+
+    # 2) Fallback only if WebSocket is down AND we have no cached data
+    if not engine.ws_manager.healthy:
+        logger.warning(f"WebSocket unhealthy, falling back to REST for {symbol}")
+        try:
+            ticker_data = await asyncio.to_thread(
+                _fetch_ticker_with_retry, engine.exchange, symbol
+            )
+            return {
+                "symbol": symbol,
+                "last": ticker_data.get("last"),
+                "bid": ticker_data.get("bid"),
+                "ask": ticker_data.get("ask"),
+                "change_24h": ticker_data.get("percentage"),
+            }
+        except Exception as e:
+            logger.warning(f"Ticker fetch failed for {symbol}: {e}")
+            return {
+                "symbol": symbol,
+                "error": str(e),
+                "last": None,
+                "bid": None,
+                "ask": None,
+                "change_24h": None,
+            }
+
+    # 3) WebSocket is healthy but no ticker yet (symbol just subscribed)
+    return {
+        "symbol": symbol,
+        "last": None,
+        "bid": None,
+        "ask": None,
+        "change_24h": None,
+    }
+
+@app.get("/api/tickers")
+async def tickers(symbols: str = ""):
+    """Return cached tickers for a comma-separated list of symbols."""
+    engine = get_engine()
+    if not symbols:
+        return {}
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    result = {}
+    for sym in symbol_list:
+        t = engine.ws_manager.get_ticker(sym)
+        if t:
+            result[sym] = {
+                "last": t.get("last"),
+                "bid": t.get("bid"),
+                "ask": t.get("ask"),
+                "change_24h": t.get("percentage"),
+            }
+        else:
+            result[sym] = {"last": None, "bid": None, "ask": None, "change_24h": None}
+    return result
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

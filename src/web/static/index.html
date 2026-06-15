@@ -750,21 +750,24 @@
         async function fetchPositionPrices() {
             const symbols = Object.keys(positionsMap);
             if (symbols.length === 0) return;
-            const promises = symbols.map(sym =>
-                fetch(`/api/ticker/${encodeURIComponent(sym)}`)
-                    .then(res => res.json())
-                    .then(ticker => ({ sym, ticker }))
-                    .catch(() => ({ sym, ticker: null }))
-            );
-            const results = await Promise.all(promises);
+            const symList = symbols.join(',');
+            let tickersMap = {};
+            try {
+                const resp = await fetch(`/api/tickers?symbols=${encodeURIComponent(symList)}`);
+                tickersMap = await resp.json();
+            } catch (e) {
+                console.error('Batch ticker fetch failed', e);
+                return;
+            }
             let totalUnrealizedPnl = 0;
             let totalValue = 0;
-            for (const { sym, ticker } of results) {
+            for (const sym of symbols) {
                 const entry = positionsMap[sym];
                 if (!entry) continue;
                 const row = entry.row;
                 const curPriceCell = row.cells[4];   // Current Price
                 const unrealPnlCell = row.cells[5];  // Unrealized P&L
+                const ticker = tickersMap[sym];
                 let curPrice = null;
                 if (ticker && ticker.last !== undefined && ticker.last !== null) {
                     curPrice = ticker.last;
