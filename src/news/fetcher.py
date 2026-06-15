@@ -810,10 +810,27 @@ def _fetch_coinmarketcap(symbol: str) -> List[Dict[str, str]]:
         }
         headers = {"X-CMC_PRO_API_KEY": settings.COINMARKETCAP_API_KEY}
         response = httpx.get(url, params=params, headers=headers, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
-        response.raise_for_status()
-        data = response.json()
+
+        # CoinMarketCap may return HTTP 200 with an error in the JSON body,
+        # or a 4xx status with a JSON error. Parse the body first.
+        try:
+            data = response.json()
+        except (ValueError, json.JSONDecodeError):
+            # If JSON parsing fails, fall back to HTTP status check
+            response.raise_for_status()
+            return []
+
+        status_info = data.get("status", {})
+        error_code = status_info.get("error_code", 0)
+        if error_code != 0:
+            error_msg = status_info.get("error_message", "Unknown error")
+            logger.warning(
+                f"CoinMarketCap API error for {symbol}: code={error_code} message={error_msg}"
+            )
+            return []
+
         articles = []
-        for item in data.get("data", []):
+        for item in data.get("data", [])[:settings.COINMARKETCAP_MAX_ARTICLES]:
             title = item.get("title", "")
             summary = item.get("content", "") or item.get("description", "")
             text = f"{title} {summary}"
