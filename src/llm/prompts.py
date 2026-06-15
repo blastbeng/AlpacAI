@@ -1267,6 +1267,18 @@ Maximum coins to trade: {max_coins}
                 if ind.get('donchian_channels') is not None:
                     dc = ind['donchian_channels']
                     lines.append(f"  Donchian: Upper={dc['upper']:.4f} Middle={dc['middle']:.4f} Lower={dc['lower']:.4f}")
+                if ind.get('atr') is not None:
+                    lines.append(f"  ATR(14)={ind['atr']:.6f}")
+                if ind.get('vwap') is not None:
+                    lines.append(f"  VWAP={ind['vwap']:.6f}")
+                if ind.get('parabolic_sar') is not None:
+                    lines.append(f"  Parabolic SAR={ind['parabolic_sar']:.6f}")
+                if ind.get('keltner_channels') is not None:
+                    kc = ind['keltner_channels']
+                    lines.append(f"  Keltner: Upper={kc['upper']:.6f} Middle={kc['middle']:.6f} Lower={kc['lower']:.6f}")
+                if ind.get('pivot_points') is not None:
+                    pp = ind['pivot_points']
+                    lines.append(f"  Pivot Points: P={pp['pivot']:.6f} R1={pp['r1']:.6f} S1={pp['s1']:.6f} R2={pp['r2']:.6f} S2={pp['s2']:.6f}")
                 prompt += "\n".join(lines) + "\n"
         prompt += (
             "Use these indicators across timeframes to confirm signals. "
