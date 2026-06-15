@@ -1356,6 +1356,17 @@ class TradingEngine:
         else:
             sample_pairs = available_pairs[:settings.COIN_SELECTION_MAX_PAIRS]
 
+        # Remove fully excluded symbols from the candidate pool
+        sample_pairs = [
+            sym for sym in sample_pairs
+            if not any(
+                entry.split("/")[0] == sym.split("/")[0] and
+                entry.split("/")[1] == sym.split("/")[1] and
+                len(entry.split("/")) == 2
+                for entry in settings.EXCLUDED_PAIRS
+            )
+        ]
+
         tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_pairs)
 
         # --- Limit candidate pool to top N by 24h volume ---
@@ -1945,6 +1956,12 @@ class TradingEngine:
                         seen.add(sym)
                         deduped.append(entry)
 
+                # Remove excluded pairs
+                deduped = [
+                    e for e in deduped
+                    if not self._is_excluded(e["symbol"], e["timeframe"])
+                ]
+
                 # Use the LLM's chosen number of coins to update effective_max_coins
                 if llm_max_coins is not None and isinstance(llm_max_coins, int) and 0 <= llm_max_coins <= self.max_coins:
                     self.effective_max_coins = llm_max_coins
@@ -2119,6 +2136,8 @@ class TradingEngine:
                         continue
                 min_cost = market_limits.get(sym, {}).get('min_cost', 0)
                 if per_coin_budget >= min_cost:
+                    if self._is_excluded(sym, default_tf):
+                        continue
                     fallback_coins.append({"symbol": sym, "timeframe": default_tf})
                 if len(fallback_coins) >= self.effective_max_coins:
                     break
@@ -5962,6 +5981,22 @@ class TradingEngine:
                 )
         except Exception as e:
             logger.error(f"Dust sweep failed for {symbol}: {e}")
+
+    def _is_excluded(self, symbol: str, timeframe: str) -> bool:
+        """Return True if (symbol, timeframe) is in the EXCLUDED_PAIRS list."""
+        for entry in settings.EXCLUDED_PAIRS:
+            parts = entry.split("/")
+            if len(parts) == 2:
+                # "SYMBOL" or "SYMBOL/*" → exclude all timeframes
+                if parts[0] == symbol.split("/")[0] and parts[1] == symbol.split("/")[1]:
+                    return True
+            elif len(parts) == 3:
+                # "SYMBOL/TIMEFRAME" → exclude only that specific timeframe
+                if (parts[0] == symbol.split("/")[0] and
+                    parts[1] == symbol.split("/")[1] and
+                    parts[2] == timeframe):
+                    return True
+        return False
 
     async def _remove_coin_if_paused(self, symbol: str):
         """If trading is paused, remove the symbol from current_coins to prevent new signals."""

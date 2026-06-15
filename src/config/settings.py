@@ -53,6 +53,27 @@ class Settings(BaseSettings):
             raise ValueError("COIN_SELECTION_TOP_VOLUME_LIMIT must be at least 1")
         return v
 
+    # Excluded coin pairs / timeframes from coin selection.
+    # Format: "SYMBOL" or "SYMBOL/*" to exclude all timeframes,
+    #         "SYMBOL/TIMEFRAME" to exclude only that timeframe.
+    EXCLUDED_PAIRS: list[str] = []
+
+    @field_validator("EXCLUDED_PAIRS")
+    @classmethod
+    def validate_excluded_pairs(cls, v: list[str]) -> list[str]:
+        if not isinstance(v, list):
+            raise ValueError("EXCLUDED_PAIRS must be a list of strings")
+        for item in v:
+            if not isinstance(item, str):
+                raise ValueError("Each item in EXCLUDED_PAIRS must be a string")
+            # Basic format check: either "SYM/SYM" or "SYM/SYM/TF"
+            parts = item.split("/")
+            if len(parts) not in (2, 3):
+                raise ValueError(
+                    f"Invalid EXCLUDED_PAIRS entry '{item}': must be 'SYMBOL' or 'SYMBOL/TIMEFRAME'"
+                )
+        return v
+
     # Maximum number of consecutive "keep paused" LLM decisions before the engine
     # force‑resumes trading with a reduced risk multiplier.
     PAUSE_MAX_CONSECUTIVE_KEEP: int = 3
