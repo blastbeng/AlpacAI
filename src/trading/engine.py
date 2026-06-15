@@ -4492,6 +4492,16 @@ class TradingEngine:
         avg_win = (gross_profit / len(wins)) if wins else 0.0
         avg_loss = (gross_loss / len(losses)) if losses else 0.0
 
+        # Sanitize non-finite floats for JSON serialization
+        def _sanitize_float(value):
+            if isinstance(value, float) and not math.isfinite(value):
+                return None
+            return value
+
+        profit_factor = _sanitize_float(profit_factor)
+        avg_win = _sanitize_float(avg_win)
+        avg_loss = _sanitize_float(avg_loss)
+
         return {
             'current_balance': total_balance,
             'initial_balance': self.initial_balance,
