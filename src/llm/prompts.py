@@ -908,6 +908,13 @@ def build_strategy_prompt(
     stop_loss_review_count: int = 0,
     take_profit_triggered: bool = False,
     take_profit_review_count: int = 0,
+    partial_tp_triggered: bool = False,
+    partial_tp_review_count: int = 0,
+    partial_tp_triggered_levels: Optional[List[int]] = None,
+    dust_sweep_triggered: bool = False,
+    dust_sweep_review_count: int = 0,
+    max_partial_tp_reviews: int = 10,
+    max_dust_sweep_reviews: int = 10,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific coin."""
     current_price = ticker.get("last") if ticker else None
@@ -1668,5 +1675,29 @@ Use this data to decide whether to BUY, SELL, or HOLD. If the coin has a poor wi
             "**If you output HOLD without a new `take_profit_pct`, the engine will force-sell the position.**\n"
             "Choose the option that you believe will maximise profit given the current "
             "market conditions, indicators, and order book.\n"
+        )
+    # --- Partial take-profit triggered ---
+    if partial_tp_triggered:
+        levels_str = ", ".join(str(i) for i in partial_tp_triggered_levels) if partial_tp_triggered_levels else "unknown"
+        prompt += (
+            f"\n**⚠️ PARTIAL TAKE‑PROFIT TRIGGERED (review {partial_tp_review_count}/{max_partial_tp_reviews}):** "
+            f"Partial take‑profit level(s) {levels_str} for {symbol} have been reached.\n"
+            "You must decide immediately:\n"
+            "- **Execute**: let the partial sell(s) happen as originally planned. "
+            "Output HOLD **without** changing the `partial_take_profit_levels` array.\n"
+            "- **Adjust**: output HOLD and provide an **updated** `partial_take_profit_levels` array "
+            "with a new `take_profit_pct` for the triggered level(s), or remove them entirely.\n"
+            "- **Sell All**: output SELL to close the **entire** position.\n"
+            "If you output HOLD without updating `partial_take_profit_levels`, the partial sell(s) will execute.\n"
+        )
+    # --- Dust sweep triggered ---
+    if dust_sweep_triggered:
+        prompt += (
+            f"\n**🧹 DUST SWEEP TRIGGERED (review {dust_sweep_review_count}/{max_dust_sweep_reviews}):** "
+            f"The remaining position size for {symbol} is below the minimum trade amount and cannot be sold normally.\n"
+            "You must decide immediately:\n"
+            "- **Sell Dust**: output SELL to sell the remaining dust (a market sell will be attempted).\n"
+            "- **Hold**: output HOLD to keep the dust. It may become tradeable again if the price rises.\n"
+            "If you output HOLD, the dust will be kept. If you output SELL, the dust will be sold.\n"
         )
     return prompt

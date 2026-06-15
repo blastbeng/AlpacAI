@@ -2615,12 +2615,23 @@ class TradingEngine:
         # --- Take-profit triggered flag ---
         take_profit_triggered = False
         take_profit_review_count = 0
+        # --- Partial TP and dust sweep triggers ---
+        partial_tp_triggered = False
+        partial_tp_review_count = 0
+        partial_tp_triggered_levels = []
+        dust_sweep_triggered = False
+        dust_sweep_review_count = 0
         if symbol in self.positions:
             pos = self.positions[symbol]
             stop_loss_triggered = pos.get("_stop_loss_triggered", False)
             stop_loss_review_count = pos.get("_stop_loss_review_count", 0)
             take_profit_triggered = pos.get("_take_profit_triggered", False)
             take_profit_review_count = pos.get("_take_profit_review_count", 0)
+            partial_tp_triggered = pos.get("_partial_tp_triggered", False) or pos.get("_partial_tp_triggered_single", False)
+            partial_tp_review_count = pos.get("_partial_tp_review_count", 0) or pos.get("_partial_tp_single_review_count", 0)
+            partial_tp_triggered_levels = pos.get("_partial_tp_triggered_levels", [])
+            dust_sweep_triggered = pos.get("_dust_sweep_triggered", False)
+            dust_sweep_review_count = pos.get("_dust_sweep_review_count", 0)
 
         try:
             ticker = self.ws_manager.get_ticker(symbol)
@@ -3252,6 +3263,13 @@ class TradingEngine:
                 stop_loss_review_count=stop_loss_review_count,
                 take_profit_triggered=take_profit_triggered,
                 take_profit_review_count=take_profit_review_count,
+                partial_tp_triggered=partial_tp_triggered,
+                partial_tp_review_count=partial_tp_review_count,
+                partial_tp_triggered_levels=partial_tp_triggered_levels if partial_tp_triggered_levels else None,
+                dust_sweep_triggered=dust_sweep_triggered,
+                dust_sweep_review_count=dust_sweep_review_count,
+                max_partial_tp_reviews=settings.MAX_PARTIAL_TP_REVIEWS,
+                max_dust_sweep_reviews=settings.MAX_DUST_SWEEP_REVIEWS,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-coin)
@@ -3390,7 +3408,7 @@ class TradingEngine:
             except asyncio.TimeoutError:
                 logger.warning(f"LLM strategy call timed out for {symbol}.")
                 # If a critical decision is pending, force a SELL immediately to protect capital.
-                if max_hold_expired or stop_loss_triggered or take_profit_triggered:
+                if max_hold_expired or stop_loss_triggered or take_profit_triggered or partial_tp_triggered or dust_sweep_triggered:
                     reason = "LLM timeout"
                     if max_hold_expired:
                         reason = "Max hold expired, LLM timeout"
@@ -3398,6 +3416,10 @@ class TradingEngine:
                         reason = "Stop-loss triggered, LLM timeout"
                     elif take_profit_triggered:
                         reason = "Take-profit triggered, LLM timeout"
+                    elif partial_tp_triggered:
+                        reason = "Partial TP triggered, LLM timeout"
+                    elif dust_sweep_triggered:
+                        reason = "Dust sweep triggered, LLM timeout"
                     logger.warning(f"Forcing SELL for {symbol} due to {reason}")
                     if self.notifier:
                         await self.notifier.send_notification(
@@ -3426,7 +3448,7 @@ class TradingEngine:
             if response is None:
                 logger.warning(f"LLM returned None for {symbol}.")
                 # If a critical decision is pending, force a SELL immediately to protect capital.
-                if max_hold_expired or stop_loss_triggered or take_profit_triggered:
+                if max_hold_expired or stop_loss_triggered or take_profit_triggered or partial_tp_triggered or dust_sweep_triggered:
                     reason = "LLM returned None"
                     if max_hold_expired:
                         reason = "Max hold expired, LLM returned None"
@@ -3434,6 +3456,10 @@ class TradingEngine:
                         reason = "Stop-loss triggered, LLM returned None"
                     elif take_profit_triggered:
                         reason = "Take-profit triggered, LLM returned None"
+                    elif partial_tp_triggered:
+                        reason = "Partial TP triggered, LLM returned None"
+                    elif dust_sweep_triggered:
+                        reason = "Dust sweep triggered, LLM returned None"
                     logger.warning(f"Forcing SELL for {symbol} due to {reason}")
                     if self.notifier:
                         await self.notifier.send_notification(
@@ -3811,6 +3837,68 @@ class TradingEngine:
                     self.positions[symbol].pop("_take_profit_triggered", None)
                     self.positions[symbol].pop("_take_profit_review_count", None)
                 # Continue to the normal SELL execution below (do not return)
+
+            # --- Handle partial TP triggered ---
+            if partial_tp_triggered and signal.action == "HOLD":
+                new_levels = params.get("partial_take_profit_levels") if params else None
+                if new_levels is not None:
+                    # LLM provided updated levels – apply them and clear triggers
+                    self.positions[symbol]["partial_take_profit_levels"] = new_levels
+                    self.positions[symbol].pop("_partial_tp_triggered", None)
+                    self.positions[symbol].pop("_partial_tp_triggered_single", None)
+                    self.positions[symbol].pop("_partial_tp_review_count", None)
+                    self.positions[symbol].pop("_partial_tp_single_review_count", None)
+                    self.positions[symbol].pop("_partial_tp_triggered_levels", None)
+                    self.positions[symbol]["partial_tp_levels_triggered"] = []
+                    self.positions[symbol]["partial_tp_depth_wait_start"] = {}
+                    logger.info(f"LLM updated partial TP levels for {symbol}")
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"🔄 {symbol}: LLM adjusted partial TP levels – holding.",
+                            summary={"symbol": symbol, "action": "HOLD", "reason": "Partial TP levels adjusted by LLM"}
+                        )
+                    return
+                else:
+                    # LLM did not provide new levels – execute the triggered partial sell(s)
+                    logger.info(f"LLM did not update partial TP levels for {symbol}, executing triggered level(s)")
+                    if self.positions[symbol].get("_partial_tp_triggered_single"):
+                        await self._execute_partial_tp_single(symbol, current_price, None, ticker)
+                        self.positions[symbol].pop("_partial_tp_triggered_single", None)
+                        self.positions[symbol].pop("_partial_tp_single_review_count", None)
+                    if self.positions[symbol].get("_partial_tp_triggered"):
+                        for lvl in self.positions[symbol].get("_partial_tp_triggered_levels", []):
+                            await self._execute_partial_tp_level(symbol, lvl, current_price, None, ticker)
+                        self.positions[symbol].pop("_partial_tp_triggered", None)
+                        self.positions[symbol].pop("_partial_tp_review_count", None)
+                        self.positions[symbol].pop("_partial_tp_triggered_levels", None)
+                    return
+
+            elif partial_tp_triggered and signal.action == "SELL":
+                # LLM decided to sell the entire position – clear partial TP flags and let normal SELL proceed
+                self.positions[symbol].pop("_partial_tp_triggered", None)
+                self.positions[symbol].pop("_partial_tp_triggered_single", None)
+                self.positions[symbol].pop("_partial_tp_review_count", None)
+                self.positions[symbol].pop("_partial_tp_single_review_count", None)
+                self.positions[symbol].pop("_partial_tp_triggered_levels", None)
+                # continue to normal SELL execution below
+
+            # --- Handle dust sweep triggered ---
+            if dust_sweep_triggered and signal.action == "HOLD":
+                self.positions[symbol].pop("_dust_sweep_triggered", None)
+                self.positions[symbol].pop("_dust_sweep_review_count", None)
+                logger.info(f"LLM decided to hold dust for {symbol}")
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"🧹 {symbol}: LLM decided to keep dust – holding.",
+                        summary={"symbol": symbol, "action": "HOLD", "reason": "Dust kept by LLM"}
+                    )
+                return
+            elif dust_sweep_triggered and signal.action == "SELL":
+                self.positions[symbol].pop("_dust_sweep_triggered", None)
+                self.positions[symbol].pop("_dust_sweep_review_count", None)
+                logger.info(f"LLM decided to sell dust for {symbol}")
+                await self._sweep_dust(symbol)
+                return
 
             # Compute stop-loss percentage for max risk cap (needed for slippage check)
             sl_pct = None
@@ -4481,203 +4569,116 @@ class TradingEngine:
                             if "partial_tp_depth_wait_start" in pos:
                                 pos["partial_tp_depth_wait_start"].pop(i, None)
 
-                            sell_amount = original_amount * lvl_frac
-                            # Ensure we don't sell more than current position
-                            sell_amount = min(sell_amount, pos["amount"])
-                            if sell_amount <= 0:
-                                triggered.append(i)
-                                pos["partial_tp_levels_triggered"] = triggered
-                                continue
-                            logger.info(
-                                f"Partial TP level {i} for {symbol}: selling {sell_amount:.6f} "
-                                f"({lvl_frac:.0%} of original) at {current_price:.4f}"
-                            )
-                            if self.notifier:
-                                await self.notifier.send_notification(
-                                    f"🔸 Partial TP [{i}] {symbol}: selling {sell_amount:.6f} @ {current_price:.4f}",
-                                    summary={
-                                        "symbol": symbol,
-                                        "action": "SELL",
-                                        "reason": f"Partial take-profit level {i}",
-                                        "price": current_price,
-                                        "amount": sell_amount,
-                                        "exit_reason": f"partial_take_profit_level_{i}",
-                                    }
-                                )
-                            try:
-                                order = await asyncio.to_thread(
-                                    self.trader.create_market_sell_order, symbol, sell_amount
-                                )
-                            except Exception as e:
-                                logger.error(f"Partial sell failed for {symbol}: {e}")
-                                triggered.append(i)
-                                pos["partial_tp_levels_triggered"] = triggered
+                            # --- Instead of executing immediately, set a trigger flag for LLM review ---
+                            # Check if we are already waiting for LLM on this level
+                            triggered_levels = pos.setdefault("_partial_tp_triggered_levels", [])
+                            if i in triggered_levels:
+                                continue  # already pending
+
+                            review_count = pos.get("_partial_tp_review_count", 0) + 1
+                            if review_count > settings.MAX_PARTIAL_TP_REVIEWS:
+                                # Force execute
+                                logger.info(f"Partial TP level {i} for {symbol}: max reviews reached, executing.")
+                                await self._execute_partial_tp_level(symbol, i, current_price, None, ticker)
+                                # After execution, the level is marked triggered; clear the review flags for this level
+                                pos.pop("_partial_tp_triggered", None)
+                                pos.pop("_partial_tp_review_count", None)
+                                pos["_partial_tp_triggered_levels"] = [x for x in pos.get("_partial_tp_triggered_levels", []) if x != i]
                                 continue
 
-                            # Compute realized P&L for the sold portion
-                            fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
-                            fee = order.get('fee', {})
-                            fee_cost = float(fee.get('cost', 0.0) or 0.0)
-                            fee_currency = fee.get('currency', '')
-                            if fee_cost == 0.0:
-                                fee_cost = order['cost'] * fee_rate
-                                fee_currency = symbol.split('/')[1]
-                                order['fee'] = {'cost': fee_cost, 'currency': fee_currency}
-                            net_quote = order['cost'] - (fee_cost if fee_currency == symbol.split('/')[1] else 0.0)
-                            cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
-                            net_base = pos.get("net_base", pos["amount"])
-                            prorated_cost_basis = cost_basis * (sell_amount / net_base) if net_base > 0 else 0.0
-                            realized_pnl = net_quote - prorated_cost_basis
-
-                            trade = {
-                                "symbol": symbol,
-                                "side": "sell",
-                                "amount": sell_amount,
-                                "price": order["price"],
-                                "cost": order["cost"],
-                                "fee": order["fee"],
-                                "timestamp": order["timestamp"],
-                                "exit_reason": f"partial_take_profit_level_{i}",
-                                "realized_pnl": realized_pnl,
-                                "cost_basis": prorated_cost_basis,
-                                "strategy_type": pos.get("strategy_type", "unknown"),
-                                "timeframe": pos.get("timeframe"),
-                                "hold_time_seconds": (order["timestamp"] - pos["timestamp"]) / 1000.0 if "timestamp" in pos else None,
-                            }
-                            self.trade_history.append(trade)
-                            await asyncio.to_thread(insert_trade, trade)
-
-                            # Update position
-                            pos["amount"] -= sell_amount
-                            pos["cost_basis"] -= prorated_cost_basis
-                            pos["net_base"] -= sell_amount
-                            if pos["net_base"] > 0:
-                                pos["price"] = pos["cost_basis"] / pos["net_base"]
-                            else:
-                                self.positions.pop(symbol, None)
-                                logger.info(f"Position fully closed by partial TP levels for {symbol}")
-                                await self._remove_coin_if_paused(symbol)
-                                if settings.TRADING_MODE == "paper":
-                                    await asyncio.to_thread(save_paper_balances, self.trader.balances)
-                                break
-
-                            triggered.append(i)
-                            pos["partial_tp_levels_triggered"] = triggered
-
-                            if settings.TRADING_MODE == "paper":
-                                await asyncio.to_thread(save_paper_balances, self.trader.balances)
-
+                            # Set trigger and ask LLM
+                            pos["_partial_tp_triggered"] = True
+                            pos["_partial_tp_review_count"] = review_count
+                            triggered_levels.append(i)
+                            self._last_strategy_eval.pop(symbol, None)  # force immediate re‑eval
+                            logger.info(f"Partial TP level {i} triggered for {symbol} – asking LLM (review {review_count})")
                             if self.notifier:
-                                pnl_pct = (realized_pnl / prorated_cost_basis * 100) if prorated_cost_basis > 0 else 0.0
                                 await self.notifier.send_notification(
-                                    f"🔸 Partial TP [{i}] {symbol}: sold {sell_amount:.6f} @ {order['price']:.4f} | "
-                                    f"P&L: {realized_pnl:+.4f} ({pnl_pct:+.2f}%) | Remaining: {pos['amount']:.6f}",
-                                    summary={
-                                        "symbol": symbol,
-                                        "action": "SELL",
-                                        "reason": f"Partial take-profit level {i} executed",
-                                        "price": order["price"],
-                                        "amount": sell_amount,
-                                        "realized_pnl": realized_pnl,
-                                        "exit_reason": f"partial_take_profit_level_{i}",
-                                    }
+                                    f"🔸 Partial TP level {i} triggered for {symbol} – consulting LLM...",
+                                    summary={"symbol": symbol, "action": "HOLD", "reason": f"Partial TP level {i} triggered – awaiting LLM"}
                                 )
-                            if symbol in self.positions:
-                                await self._sweep_dust(symbol)
+                            break  # only handle one new trigger per cycle; others will be picked up after LLM responds
                         else:
                             # Price dropped below TP level – reset depth wait timer
                             if "partial_tp_depth_wait_start" in pos:
                                 pos["partial_tp_depth_wait_start"].pop(i, None)
                 else:
-                    # Single partial TP (existing logic, unchanged)
+                    # Single partial TP – trigger LLM review instead of immediate execution
                     partial_tp_pct = pos.get("partial_take_profit_pct")
                     partial_tp_fraction = pos.get("partial_take_profit_fraction")
                     if (
                         partial_tp_pct is not None
                         and partial_tp_fraction is not None
                         and not pos.get("partial_tp_triggered", False)
+                        and not pos.get("_partial_tp_triggered_single")
                     ):
                         entry_price = pos["price"]
                         if current_price >= entry_price * (1 + partial_tp_pct):
-                            sell_amount = pos["amount"] * partial_tp_fraction
-                            logger.info(
-                                f"Partial take-profit triggered for {symbol}: selling {sell_amount:.6f} "
-                                f"({partial_tp_fraction:.0%}) at {current_price:.4f}"
-                            )
-                            if self.notifier:
-                                await self.notifier.send_notification(
-                                    f"🔸 Partial TP {symbol}: selling {sell_amount:.6f} @ {current_price:.4f}"
-                                )
-                            try:
-                                order = await asyncio.to_thread(
-                                    self.trader.create_market_sell_order, symbol, sell_amount
-                                )
-                            except Exception as e:
-                                logger.error(f"Partial sell failed for {symbol}: {e}")
-                                pos["partial_tp_triggered"] = True
-                                continue
-
-                            fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
-                            fee = order.get('fee', {})
-                            fee_cost = float(fee.get('cost', 0.0) or 0.0)
-                            fee_currency = fee.get('currency', '')
-                            if fee_cost == 0.0:
-                                fee_cost = order['cost'] * fee_rate
-                                fee_currency = symbol.split('/')[1]
-                                order['fee'] = {'cost': fee_cost, 'currency': fee_currency}
-                            net_quote = order['cost'] - (fee_cost if fee_currency == symbol.split('/')[1] else 0.0)
-                            cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
-                            net_base = pos.get("net_base", pos["amount"])
-                            prorated_cost_basis = cost_basis * (sell_amount / net_base) if net_base > 0 else 0.0
-                            realized_pnl = net_quote - prorated_cost_basis
-
-                            trade = {
-                                "symbol": symbol,
-                                "side": "sell",
-                                "amount": sell_amount,
-                                "price": order["price"],
-                                "cost": order["cost"],
-                                "fee": order["fee"],
-                                "timestamp": order["timestamp"],
-                                "exit_reason": "partial_take_profit",
-                                "realized_pnl": realized_pnl,
-                                "cost_basis": prorated_cost_basis,
-                                "strategy_type": pos.get("strategy_type", "unknown"),
-                                "timeframe": pos.get("timeframe"),
-                                "hold_time_seconds": (order["timestamp"] - pos["timestamp"]) / 1000.0 if "timestamp" in pos else None,
-                            }
-                            self.trade_history.append(trade)
-                            await asyncio.to_thread(insert_trade, trade)
-
-                            pos["amount"] -= sell_amount
-                            pos["cost_basis"] -= prorated_cost_basis
-                            pos["net_base"] -= sell_amount
-                            if pos["net_base"] > 0:
-                                pos["price"] = pos["cost_basis"] / pos["net_base"]
+                            review_count = pos.get("_partial_tp_single_review_count", 0) + 1
+                            if review_count > settings.MAX_PARTIAL_TP_REVIEWS:
+                                logger.info(f"Single partial TP for {symbol}: max reviews reached, executing.")
+                                await self._execute_partial_tp_single(symbol, current_price, None, ticker)
+                                pos.pop("_partial_tp_triggered_single", None)
+                                pos.pop("_partial_tp_single_review_count", None)
                             else:
-                                self.positions.pop(symbol, None)
-                                logger.warning(f"Partial TP closed entire position for {symbol} unexpectedly.")
-                                await self._remove_coin_if_paused(symbol)
-                                continue
+                                pos["_partial_tp_triggered_single"] = True
+                                pos["_partial_tp_single_review_count"] = review_count
+                                self._last_strategy_eval.pop(symbol, None)
+                                logger.info(f"Single partial TP triggered for {symbol} – asking LLM (review {review_count})")
+                                if self.notifier:
+                                    await self.notifier.send_notification(
+                                        f"🔸 Partial TP triggered for {symbol} – consulting LLM...",
+                                        summary={"symbol": symbol, "action": "HOLD", "reason": "Partial TP triggered – awaiting LLM"}
+                                    )
 
-                            pos["partial_tp_triggered"] = True
+                # --- Dust sweep check (if not already triggered) ---
+                if not pos.get("_dust_sweep_triggered"):
+                    base = symbol.split("/")[0]
+                    quote = symbol.split("/")[1]
+                    market = self.exchange.markets.get(symbol, {})
+                    limits = market.get("limits", {})
+                    min_amount = limits.get("amount", {}).get("min")
+                    min_cost = limits.get("cost", {}).get("min")
+                    amount = pos["amount"]
+                    is_dust = False
+                    if min_amount is not None and amount < float(min_amount):
+                        is_dust = True
+                    elif min_cost is not None and amount * current_price < float(min_cost):
+                        is_dust = True
 
-                            if settings.TRADING_MODE == "paper":
-                                await asyncio.to_thread(save_paper_balances, self.trader.balances)
-
-                            if pos.get("stop_loss") is not None and pos["stop_loss"] < entry_price:
-                                pos["stop_loss"] = entry_price
-                                logger.debug(f"Stop moved to breakeven after partial TP for {symbol}")
-
+                    if is_dust:
+                        review_count = pos.get("_dust_sweep_review_count", 0) + 1
+                        if review_count > settings.MAX_DUST_SWEEP_REVIEWS:
+                            logger.info(f"Dust sweep max reviews reached for {symbol}, force sweeping.")
+                            await self._sweep_dust(symbol)
+                        else:
+                            pos["_dust_sweep_triggered"] = True
+                            pos["_dust_sweep_review_count"] = review_count
+                            self._last_strategy_eval.pop(symbol, None)
+                            logger.info(f"Dust condition triggered for {symbol} – asking LLM (review {review_count})")
                             if self.notifier:
-                                pnl_pct = (realized_pnl / prorated_cost_basis * 100) if prorated_cost_basis > 0 else 0.0
                                 await self.notifier.send_notification(
-                                    f"🔸 Partial TP {symbol}: sold {sell_amount:.6f} @ {order['price']:.4f} | "
-                                    f"P&L: {realized_pnl:+.4f} ({pnl_pct:+.2f}%) | Remaining: {pos['amount']:.6f}"
+                                    f"🧹 Dust sweep triggered for {symbol} – consulting LLM...",
+                                    summary={"symbol": symbol, "action": "HOLD", "reason": "Dust sweep triggered – awaiting LLM"}
                                 )
-
-                            if symbol in self.positions:
-                                await self._sweep_dust(symbol)
+                else:
+                    # If dust was previously triggered but condition no longer holds, clear it
+                    base = symbol.split("/")[0]
+                    quote = symbol.split("/")[1]
+                    market = self.exchange.markets.get(symbol, {})
+                    limits = market.get("limits", {})
+                    min_amount = limits.get("amount", {}).get("min")
+                    min_cost = limits.get("cost", {}).get("min")
+                    amount = pos["amount"]
+                    is_dust = False
+                    if min_amount is not None and amount < float(min_amount):
+                        is_dust = True
+                    elif min_cost is not None and amount * current_price < float(min_cost):
+                        is_dust = True
+                    if not is_dust:
+                        pos.pop("_dust_sweep_triggered", None)
+                        pos.pop("_dust_sweep_review_count", None)
+                        logger.info(f"Dust condition cleared for {symbol}")
 
                 # --- News sentiment exit ---
                 news_threshold = pos.get("news_sentiment_exit_threshold")

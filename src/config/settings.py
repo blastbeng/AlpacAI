@@ -75,6 +75,12 @@ class Settings(BaseSettings):
             raise ValueError("PAUSE_FORCE_RESUME_RISK_MULTIPLIER must be between 0.0 and 1.0")
         return v
 
+    # Maximum number of consecutive partial take-profit reviews before force-executing
+    MAX_PARTIAL_TP_REVIEWS: int = 10
+
+    # Maximum number of consecutive dust sweep reviews before force-selling
+    MAX_DUST_SWEEP_REVIEWS: int = 10
+
     # Fallback coin selection: minimum 24h quote volume (in base currency) required
     # for a coin to be considered when the LLM returns no coins.
     # Set to 0 to disable the filter.
