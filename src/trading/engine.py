@@ -3409,7 +3409,7 @@ class TradingEngine:
             }
             market_hash = compute_market_hash(market_snapshot)
             # Determine whether we even need to call the LLM, and if so which model to use
-            is_critical = max_hold_expired or stop_loss_triggered or take_profit_triggered
+            is_critical = max_hold_expired or stop_loss_triggered or take_profit_triggered or partial_tp_triggered or dust_sweep_triggered
             has_position = symbol in self.positions
 
             if self._should_skip_llm_eval(
@@ -4218,56 +4218,56 @@ class TradingEngine:
                 )
 
             if validated.action != "HOLD":
-                # --- Entry condition check (only for BUY) ---
-                if validated.action == "BUY" and validated.entry_condition is not None:
-                    etype = validated.entry_condition.get("type")
-                    if etype == "delay":
-                        # Delay entries are simple time-based waits – schedule directly
-                        delay_sec = validated.entry_condition.get("delay_seconds", 0)
-                        logger.info(f"Scheduling delayed BUY for {symbol} in {delay_sec}s")
-                        asyncio.create_task(
-                            self._execute_delayed_entry(symbol, validated, assigned_tf, delay_sec)
+                if trading_paused and validated.action == "BUY":
+                    logger.info(f"Ignoring BUY signal for {symbol}: trading is paused.")
+                else:
+                    # --- Entry condition check (only for BUY) ---
+                    if validated.action == "BUY" and validated.entry_condition is not None:
+                        etype = validated.entry_condition.get("type")
+                        if etype == "delay":
+                            # Delay entries are simple time-based waits – schedule directly
+                            delay_sec = validated.entry_condition.get("delay_seconds", 0)
+                            logger.info(f"Scheduling delayed BUY for {symbol} in {delay_sec}s")
+                            asyncio.create_task(
+                                self._execute_delayed_entry(symbol, validated, assigned_tf, delay_sec)
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⏳ Delayed entry for {symbol} – executing in {delay_sec}s.",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "WAIT",
+                                        "reason": "Delay entry scheduled",
+                                        "delay_seconds": delay_sec,
+                                    }
+                                )
+                            return  # do NOT execute now
+
+                        timeout = validated.entry_condition.get("timeout_seconds", 300)
+                        deadline = time.time() + timeout
+                        # Store for background checking – do NOT block the main loop
+                        self._pending_entries[symbol] = {
+                            "signal": validated,
+                            "deadline": deadline,
+                            "timeframe": assigned_tf,
+                            "condition": validated.entry_condition,
+                        }
+                        logger.info(
+                            f"Queued entry condition for {symbol} (type={etype}, deadline in {timeout}s). "
+                            f"Will monitor in background."
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"⏳ Delayed entry for {symbol} – executing in {delay_sec}s.",
+                                f"⏳ Waiting for entry condition on {symbol} "
+                                f"(type={etype}, timeout {timeout}s).",
                                 summary={
                                     "symbol": symbol,
                                     "action": "WAIT",
-                                    "reason": "Delay entry scheduled",
-                                    "delay_seconds": delay_sec,
+                                    "reason": "Entry condition pending",
                                 }
                             )
                         return  # do NOT execute now
 
-                    timeout = validated.entry_condition.get("timeout_seconds", 300)
-                    deadline = time.time() + timeout
-                    # Store for background checking – do NOT block the main loop
-                    self._pending_entries[symbol] = {
-                        "signal": validated,
-                        "deadline": deadline,
-                        "timeframe": assigned_tf,
-                        "condition": validated.entry_condition,
-                    }
-                    logger.info(
-                        f"Queued entry condition for {symbol} (type={etype}, deadline in {timeout}s). "
-                        f"Will monitor in background."
-                    )
-                    if self.notifier:
-                        await self.notifier.send_notification(
-                            f"⏳ Waiting for entry condition on {symbol} "
-                            f"(type={etype}, timeout {timeout}s).",
-                            summary={
-                                "symbol": symbol,
-                                "action": "WAIT",
-                                "reason": "Entry condition pending",
-                            }
-                        )
-                    return  # do NOT execute now
-
-                if trading_paused:
-                    logger.info(f"Ignoring {validated.action} signal for {symbol}: trading is paused.")
-                else:
                     await self._execute_signal(symbol, validated, timeframe=assigned_tf, atr=atr, spread_pct=spread_pct, order_book=order_book)
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}", exc_info=True)
