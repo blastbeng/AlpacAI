@@ -1,8 +1,10 @@
 import asyncio
+import copy
 import logging
 import signal
 import sys
 import uvicorn
+import uvicorn.config
 from src.web.app import app
 from src.config.settings import settings
 from src.database import init_db, get_telegram_chat_id, set_telegram_chat_id
@@ -63,11 +65,16 @@ async def main():
     set_engine(engine)
 
     # Start the web server immediately so the dashboard can connect
+    # Customize uvicorn logging: keep internal logs at LOG_LEVEL, but make access logs DEBUG
+    log_config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
+    log_config["loggers"]["uvicorn.access"]["level"] = "DEBUG"
+    log_config["loggers"]["uvicorn"]["level"] = settings.LOG_LEVEL.upper()
+
     config = uvicorn.Config(
         app,
         host=settings.WEB_HOST,
         port=settings.WEB_PORT,
-        log_level=settings.LOG_LEVEL.lower(),
+        log_config=log_config,
     )
     server = uvicorn.Server(config)
     server_task = asyncio.create_task(server.serve())
