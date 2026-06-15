@@ -15,6 +15,12 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
+# Suppress httpx INFO logs (HTTP request/response lines) unless LOG_LEVEL is DEBUG
+if settings.LOG_LEVEL.upper() != "DEBUG":
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+else:
+    logging.getLogger("httpx").setLevel(logging.INFO)
+
 if not check_redis_connection():
     logging.critical("Redis is not reachable. Exiting.")
     sys.exit(1)
