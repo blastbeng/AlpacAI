@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from src.config.settings import settings
 from src.utils.redis_client import get_redis_client, check_redis_connection
+from src.utils.retry import retry_on_rate_limit
 from src.llm.prompts import get_cached_news_summary
 
 app = FastAPI(title="Crypto Trading Bot")
@@ -28,6 +29,11 @@ def get_engine():
     if _engine is None:
         raise HTTPException(status_code=503, detail="Engine not initialized")
     return _engine
+
+@retry_on_rate_limit(max_retries=3, base_delay=1.0)
+def _fetch_ticker_with_retry(exchange, symbol: str):
+    """Fetch ticker with built-in rate-limit retry. Runs in a sync thread."""
+    return exchange.fetch_ticker(symbol)
 
 @app.get("/")
 async def root():
@@ -189,7 +195,7 @@ async def ticker(symbol: str):
     engine = get_engine()
     exchange = engine.exchange
     try:
-        ticker_data = await asyncio.to_thread(exchange.fetch_ticker, symbol)
+        ticker_data = await asyncio.to_thread(_fetch_ticker_with_retry, exchange, symbol)
         return {
             "symbol": symbol,
             "last": ticker_data.get("last"),
@@ -198,7 +204,15 @@ async def ticker(symbol: str):
             "change_24h": ticker_data.get("percentage"),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning(f"Ticker fetch failed for {symbol}: {e}")
+        return {
+            "symbol": symbol,
+            "error": str(e),
+            "last": None,
+            "bid": None,
+            "ask": None,
+            "change_24h": None,
+        }
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
