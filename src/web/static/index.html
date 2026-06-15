@@ -381,7 +381,7 @@
             </div>
 
             <div class="card card-full">
-                <h2>📰 News</h2>
+                <h2>📰 News <button id="btn-refresh-news" style="margin-left:12px; background:var(--accent); color:#fff; border:none; padding:4px 12px; border-radius:6px; cursor:pointer; font-size:0.85rem;">🔄 Refresh</button></h2>
                 <div id="news">-</div>
             </div>
         </div>
@@ -640,22 +640,6 @@
                     }
                 });
 
-            // News
-            fetch('/api/news')
-                .then(res => res.json())
-                .then(news => {
-                    const newsDiv = document.getElementById('news');
-                    if (news && Object.keys(news).length > 0) {
-                        let html = '';
-                        for (const [symbol, summary] of Object.entries(news)) {
-                            html += `<strong>📰 ${symbol}</strong><br>${summary}<br><br>`;
-                        }
-                        newsDiv.innerHTML = html;
-                    } else {
-                        newsDiv.textContent = 'No news available.';
-                    }
-                });
-
             // Closed Trades
             fetch('/api/history?limit=50')
                 .then(res => res.json())
@@ -855,6 +839,26 @@
         });
         document.getElementById('btn-reload').addEventListener('click', () => {
             fetch('/api/reload', { method: 'POST' }).then(() => alert('Settings reloaded.'));
+        });
+        document.getElementById('btn-refresh-news').addEventListener('click', () => {
+            const newsDiv = document.getElementById('news');
+            newsDiv.textContent = 'Loading...';
+            fetch('/api/news')
+                .then(res => res.json())
+                .then(news => {
+                    if (news && Object.keys(news).length > 0) {
+                        let html = '';
+                        for (const [symbol, summary] of Object.entries(news)) {
+                            html += `<strong>📰 ${symbol}</strong><br>${summary}<br><br>`;
+                        }
+                        newsDiv.innerHTML = html;
+                    } else {
+                        newsDiv.textContent = 'No news available.';
+                    }
+                })
+                .catch(() => {
+                    newsDiv.textContent = 'Failed to load news.';
+                });
         });
 
         connect();
