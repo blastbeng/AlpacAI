@@ -30,6 +30,7 @@ def _get_ollama_response(prompt: str, system_prompt: str = "", model: str = None
         "temperature": temperature if temperature is not None else settings.LLM_TEMPERATURE,
     }
 
+    logger.info("LLM request (ollama): model=%s, system_prompt=%.200s..., prompt=%.500s...", model, system_prompt, prompt)
     try:
         timeout = httpx.Timeout(
             connect=10.0,
@@ -41,6 +42,7 @@ def _get_ollama_response(prompt: str, system_prompt: str = "", model: str = None
             response = client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
+            logger.info("LLM response (ollama): %.500s...", data["message"]["content"])
             return data["message"]["content"]
     except httpx.HTTPError as e:
         raise RuntimeError(f"Ollama request failed: {e}") from e
@@ -70,6 +72,7 @@ def _get_openai_response(prompt: str, system_prompt: str = "", model: str = None
         "temperature": temperature if temperature is not None else settings.LLM_TEMPERATURE,
     }
 
+    logger.info("LLM request (openai): model=%s, system_prompt=%.200s..., prompt=%.500s...", model, system_prompt, prompt)
     try:
         timeout = httpx.Timeout(
             connect=10.0,
@@ -81,6 +84,7 @@ def _get_openai_response(prompt: str, system_prompt: str = "", model: str = None
             response = client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
+            logger.info("LLM response (openai): %.500s...", data["choices"][0]["message"]["content"])
             return data["choices"][0]["message"]["content"]
     except httpx.HTTPError as e:
         raise RuntimeError(f"OpenAI request failed: {e}") from e

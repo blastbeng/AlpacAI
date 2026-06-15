@@ -64,10 +64,12 @@ def get_cached_llm_response(
             data = json.loads(cached)
             if isinstance(data, dict) and "response" in data:
                 logger.debug("LLM cache hit for key %s", cache_key[:32])
+                logger.info("LLM cache hit: key=%.32s, model_type=%s", cache_key, model_type)
                 return data
         except (json.JSONDecodeError, TypeError):
             pass  # fall through to re-fetch
 
+    logger.info("LLM cache miss: model_type=%s, system_prompt=%.200s..., prompt=%.500s...", model_type, system_prompt, prompt)
     # --- Primary call ---
     response_text = None
     used_provider = provider
@@ -119,6 +121,7 @@ def get_cached_llm_response(
         logger.warning("LLM returned None response; not caching.")
         return None
 
+    logger.info("LLM response cached: %.500s...", response_text)
     # Store in cache as JSON
     cache_data = json.dumps({
         "response": response_text,
