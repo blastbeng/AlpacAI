@@ -12,6 +12,16 @@ from src.utils.redis_client import get_redis_client, check_redis_connection
 from src.trading.engine import TradingEngine
 from src.news.fetcher import test_rss_feeds
 
+
+class HealthEndpointFilter(logging.Filter):
+    """Downgrade uvicorn access logs for /health to DEBUG level."""
+    def filter(self, record):
+        request_line = getattr(record, 'request_line', '')
+        if '/health' in request_line:
+            record.levelno = logging.DEBUG
+            record.levelname = 'DEBUG'
+        return True
+
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -69,6 +79,14 @@ async def main():
     log_config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
     log_config["loggers"]["uvicorn.access"]["level"] = "DEBUG"
     log_config["loggers"]["uvicorn"]["level"] = settings.LOG_LEVEL.upper()
+
+    # Add the health endpoint filter
+    log_config["filters"] = {
+        "health_filter": {
+            "()": "src.main.HealthEndpointFilter"
+        }
+    }
+    log_config["loggers"]["uvicorn.access"]["filters"] = ["health_filter"]
 
     config = uvicorn.Config(
         app,
