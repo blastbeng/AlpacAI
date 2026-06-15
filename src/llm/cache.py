@@ -69,7 +69,7 @@ def get_cached_llm_response(
         except (json.JSONDecodeError, TypeError):
             pass  # fall through to re-fetch
 
-    logger.info("LLM cache miss: model_type=%s, system_prompt=%.200s..., prompt=%.500s...", model_type, system_prompt, prompt)
+    logger.debug("LLM cache miss: model_type=%s, system_prompt=%.200s..., prompt=%.500s...", model_type, system_prompt, prompt)
     # --- Primary call ---
     response_text = None
     used_provider = provider
