@@ -2277,6 +2277,14 @@ class TradingEngine:
             reason_raw = await asyncio.to_thread(self.redis.get, "trading:pause_reason")
             pause_reason = reason_raw.decode() if isinstance(reason_raw, bytes) else (reason_raw or "")
 
+            # --- Consecutive "keep paused" counter ---
+            keep_key = "trading:pause:keep_count"
+            keep_count_raw = await asyncio.to_thread(self.redis.get, keep_key)
+            try:
+                keep_count = int(keep_count_raw) if keep_count_raw else 0
+            except (ValueError, TypeError):
+                keep_count = 0
+
             # Build a richer prompt with performance context
             perf = self._compute_performance_metrics()
             daily_pnl = perf["equity_curve"].get("daily_pnl", 0.0)
@@ -2321,13 +2329,34 @@ class TradingEngine:
                 except (ValueError, TypeError):
                     pass
 
+            # --- Consecutive keep warning and recovery nudge ---
+            max_keep = settings.PAUSE_MAX_CONSECUTIVE_KEEP
+            if keep_count > 0:
+                prompt_parts.append(
+                    f"You have chosen to keep trading paused {keep_count} time(s) in a row. "
+                    f"If you keep it paused {max_keep} times consecutively, the engine will "
+                    f"force‑resume trading with a reduced global risk multiplier of "
+                    f"{settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER} to attempt recovery."
+                )
+
+            prompt_parts.append(
+                "If the account is in drawdown or has consecutive losses, consider resuming "
+                "with a **reduced global risk multiplier** (e.g., 0.3–0.5) instead of staying "
+                "paused indefinitely. This allows the bot to cautiously seek small profitable "
+                "trades to recover, while limiting downside. You can provide an optional "
+                "`global_risk_multiplier` field in your JSON response (0.0–1.0) to set the "
+                "risk level upon resume. If you omit it, the current multiplier (or 1.0) will be used."
+            )
+
             prompt = (
                 "\n".join(prompt_parts)
                 + "\n\nShould we resume trading now? Reply with a JSON object: "
-                '{"resume_trading": true/false, "reason": "short explanation"}'
+                '{"resume_trading": true/false, "reason": "short explanation", '
+                '"global_risk_multiplier": 0.0-1.0 (optional)}'
                 + "\n\n**Important:** Only resume if you see specific, high‑confidence opportunities. "
-                "If conditions are still poor, keep trading paused. "
-                "If you are unsure, it is safer to remain paused."
+                "If conditions are still poor, you may keep trading paused, but remember that "
+                "staying paused forever prevents any recovery. A cautious resume with a low risk "
+                "multiplier is often better than doing nothing."
             )
 
             try:
@@ -2361,10 +2390,17 @@ class TradingEngine:
                     for key in pause_keys:
                         await asyncio.to_thread(self.redis.delete, key)
                     await asyncio.to_thread(self.redis.delete, fail_key)
+                    # --- Also reset keep counter and set force‑resume risk multiplier ---
+                    await asyncio.to_thread(self.redis.delete, keep_key)
+                    await asyncio.to_thread(
+                        self.redis.setex, "trading:global_risk_multiplier", 3600,
+                        str(settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER)
+                    )
                     self._reeval_trigger.set()
                     if self.notifier:
                         await self.notifier.send_notification(
-                            "▶️ Trading auto‑resumed because LLM could not be reached for pause decision.",
+                            "▶️ Trading auto‑resumed because LLM could not be reached for pause decision. "
+                            f"Global risk multiplier set to {settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER}.",
                             summary={"action": "RESUME", "reason": "LLM pause-resume failures exceeded limit"}
                         )
                 return
@@ -2403,6 +2439,23 @@ class TradingEngine:
                     except (ValueError, TypeError):
                         pass
 
+                # --- Apply optional global_risk_multiplier from LLM ---
+                global_mult_raw = decision.get("global_risk_multiplier")
+                applied_mult = None
+                if global_mult_raw is not None:
+                    try:
+                        mult_val = float(global_mult_raw)
+                        if 0.0 <= mult_val <= 1.0:
+                            await asyncio.to_thread(
+                                self.redis.setex, "trading:global_risk_multiplier", 3600, str(mult_val)
+                            )
+                            logger.info(f"LLM set global risk multiplier on resume: {mult_val}")
+                            applied_mult = mult_val
+                        else:
+                            logger.warning(f"Invalid global_risk_multiplier in resume decision: {global_mult_raw}")
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid global_risk_multiplier value: {global_mult_raw}")
+
                 # Resume trading
                 pause_keys = [
                     "trading:paused",
@@ -2414,25 +2467,68 @@ class TradingEngine:
                 ]
                 for key in pause_keys:
                     await asyncio.to_thread(self.redis.delete, key)
+                # Reset the keep counter
+                await asyncio.to_thread(self.redis.delete, keep_key)
                 logger.info("LLM decided to resume trading.")
                 self._reeval_trigger.set()
                 if self.notifier:
                     reason_text = f" – {reason}" if reason else ""
+                    mult_text = f" (risk multiplier: {applied_mult})" if applied_mult is not None else ""
                     await self.notifier.send_notification(
-                        f"▶️ Trading resumed by LLM decision{reason_text}",
+                        f"▶️ Trading resumed by LLM decision{reason_text}{mult_text}",
                         summary={"action": "RESUME", "reason": f"LLM resume request: {reason}" if reason else "LLM resume request", "model_type": "actuator"}
                     )
             elif resume_trading is False:
                 # LLM wants to stay paused – optionally update reason
                 if reason:
                     await asyncio.to_thread(self.redis.set, "trading:pause_reason", reason)
-                logger.info(f"LLM decided to keep trading paused. Reason: {reason}")
-                if self.notifier:
-                    reason_text = f" – {reason}" if reason else ""
-                    await self.notifier.send_notification(
-                        f"⏸️ LLM decided to keep trading paused{reason_text}",
-                        summary={"action": "PAUSE", "reason": f"LLM keep paused: {reason}" if reason else "LLM keep paused", "model_type": "actuator"}
+
+                # Increment consecutive keep counter
+                new_keep_count = await asyncio.to_thread(self.redis.incr, keep_key)
+                # Set a TTL so it doesn't persist forever (e.g., 24h)
+                await asyncio.to_thread(self.redis.expire, keep_key, 86400)
+
+                if new_keep_count >= settings.PAUSE_MAX_CONSECUTIVE_KEEP:
+                    logger.warning(
+                        f"LLM kept trading paused {new_keep_count} times consecutively – "
+                        f"forcing resume with risk multiplier {settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER}."
                     )
+                    # Force resume
+                    pause_keys = [
+                        "trading:paused",
+                        "trading:pause_source",
+                        "trading:pause_start",
+                        "trading:pause_duration",
+                        "trading:pause_reason",
+                        "trading:llm_pause_time",
+                    ]
+                    for key in pause_keys:
+                        await asyncio.to_thread(self.redis.delete, key)
+                    await asyncio.to_thread(self.redis.delete, keep_key)
+                    await asyncio.to_thread(
+                        self.redis.setex, "trading:global_risk_multiplier", 3600,
+                        str(settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER)
+                    )
+                    self._reeval_trigger.set()
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"▶️ Trading force‑resumed after {new_keep_count} consecutive pauses. "
+                            f"Global risk multiplier set to {settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER}.",
+                            summary={
+                                "action": "RESUME",
+                                "reason": f"Force resume after {new_keep_count} consecutive keep-paused decisions",
+                                "model_type": "actuator",
+                            }
+                        )
+                else:
+                    logger.info(f"LLM decided to keep trading paused. Reason: {reason} (keep count: {new_keep_count}/{settings.PAUSE_MAX_CONSECUTIVE_KEEP})")
+                    if self.notifier:
+                        reason_text = f" – {reason}" if reason else ""
+                        await self.notifier.send_notification(
+                            f"⏸️ LLM decided to keep trading paused{reason_text} "
+                            f"({new_keep_count}/{settings.PAUSE_MAX_CONSECUTIVE_KEEP} consecutive keeps)",
+                            summary={"action": "PAUSE", "reason": f"LLM keep paused: {reason}" if reason else "LLM keep paused", "model_type": "actuator"}
+                        )
             else:
                 logger.warning(f"Invalid resume_trading value in LLM response: {resume_trading}")
 
