@@ -763,18 +763,27 @@
                 const entry = positionsMap[sym];
                 if (!entry) continue;
                 const row = entry.row;
-                const curPriceCell = row.cells[4];   // Current Price is now column index 4
-                const unrealPnlCell = row.cells[5];  // Unrealized P&L is index 5
+                const curPriceCell = row.cells[4];   // Current Price
+                const unrealPnlCell = row.cells[5];  // Unrealized P&L
+                let curPrice = null;
                 if (ticker && ticker.last !== undefined && ticker.last !== null) {
-                    const curPrice = ticker.last;
+                    curPrice = ticker.last;
                     curPriceCell.textContent = curPrice.toFixed(4);
+                } else {
+                    // Fallback to the last displayed price (if it's a number)
+                    const displayed = curPriceCell.textContent;
+                    if (displayed && displayed !== '...') {
+                        curPrice = parseFloat(displayed);
+                    }
+                }
+                if (curPrice !== null && !isNaN(curPrice)) {
                     const unrealPnl = (curPrice - entry.entry) * entry.amount;
                     unrealPnlCell.textContent = unrealPnl.toFixed(4);
                     unrealPnlCell.className = unrealPnl >= 0 ? 'green' : 'red';
                     totalUnrealizedPnl += unrealPnl;
                     totalValue += curPrice * entry.amount;
                 }
-                // If ticker data is missing, keep the previous values
+                // If no price available, keep previous values (both row and total skip)
             }
             // Update total row in tfoot
             const tfoot = document.querySelector('#positions-table tfoot');
