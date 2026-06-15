@@ -64,6 +64,9 @@ class RateLimiter:
 # Global rate limiter instance, initialized lazily to avoid import order issues.
 _rate_limiter: Optional[RateLimiter] = None
 
+# Sources that have returned a permanent error and should be skipped for the rest of the run.
+_permanently_disabled_sources: set = set()
+
 
 def _get_rate_limiter() -> RateLimiter:
     global _rate_limiter
@@ -75,33 +78,34 @@ def _get_rate_limiter() -> RateLimiter:
 def _get_enabled_sources() -> List[str]:
     """Return a list of source names that are enabled based on configured credentials."""
     sources = []
-    if settings.NEWS_API_KEY:
+    if settings.NEWS_API_KEY and "newsapi" not in _permanently_disabled_sources:
         sources.append("newsapi")
-    if settings.TWITTER_BEARER_TOKEN:
+    if settings.TWITTER_BEARER_TOKEN and "twitter" not in _permanently_disabled_sources:
         sources.append("twitter")
-    if settings.REDDIT_CLIENT_ID and settings.REDDIT_CLIENT_SECRET:
+    if settings.REDDIT_CLIENT_ID and settings.REDDIT_CLIENT_SECRET and "reddit" not in _permanently_disabled_sources:
         sources.append("reddit")
-    if settings.FACEBOOK_PAGE_ACCESS_TOKEN and settings.FACEBOOK_PAGE_ID:
+    if settings.FACEBOOK_PAGE_ACCESS_TOKEN and settings.FACEBOOK_PAGE_ID and "facebook" not in _permanently_disabled_sources:
         sources.append("facebook")
-    if settings.YOUTUBE_API_KEY:
+    if settings.YOUTUBE_API_KEY and "youtube" not in _permanently_disabled_sources:
         sources.append("youtube")
-    if settings.CRYPTOPANIC_API_KEY:
+    if settings.CRYPTOPANIC_API_KEY and "cryptopanic" not in _permanently_disabled_sources:
         sources.append("cryptopanic")
-    if settings.CRYPTOCOMPARE_API_KEY:
+    if settings.CRYPTOCOMPARE_API_KEY and "cryptocompare" not in _permanently_disabled_sources:
         sources.append("cryptocompare")
-    if settings.LUNARCRUSH_API_KEY:
+    if settings.LUNARCRUSH_API_KEY and "lunarcrush" not in _permanently_disabled_sources:
         sources.append("lunarcrush")
-    if settings.SANTIMENT_API_KEY:
+    if settings.SANTIMENT_API_KEY and "santiment" not in _permanently_disabled_sources:
         sources.append("santiment")
-    if settings.MESSARI_API_KEY:
+    if settings.MESSARI_API_KEY and "messari" not in _permanently_disabled_sources:
         sources.append("messari")
-    if settings.COINMARKETCAP_API_KEY:
+    if settings.COINMARKETCAP_API_KEY and "coinmarketcap" not in _permanently_disabled_sources:
         sources.append("coinmarketcap")
     # Google News is free
-    sources.append("googlenews")
-    if settings.STOCKTWITS_API_KEY:
+    if "googlenews" not in _permanently_disabled_sources:
+        sources.append("googlenews")
+    if settings.STOCKTWITS_API_KEY and "stocktwits" not in _permanently_disabled_sources:
         sources.append("stocktwits")
-    if settings.RSS_FEEDS:
+    if settings.RSS_FEEDS and "rss" not in _permanently_disabled_sources:
         sources.append("rss")
     logger.debug(f"News sources auto-enabled: {sources}")
     return sources
@@ -797,7 +801,7 @@ def _fetch_messari(symbol: str) -> List[Dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 def _fetch_coinmarketcap(symbol: str) -> List[Dict[str, str]]:
-    if not settings.COINMARKETCAP_API_KEY:
+    if not settings.COINMARKETCAP_API_KEY or "coinmarketcap" in _permanently_disabled_sources:
         return []
     try:
         _get_rate_limiter().wait("coinmarketcap")
@@ -827,6 +831,14 @@ def _fetch_coinmarketcap(symbol: str) -> List[Dict[str, str]]:
             logger.warning(
                 f"CoinMarketCap API error for {symbol}: code={error_code} message={error_msg}"
             )
+            # Permanently disable this source if the error indicates a plan/credential issue.
+            if error_code in (1002, 1006, 1007, 1008):  # common permanent errors
+                if "coinmarketcap" not in _permanently_disabled_sources:
+                    _permanently_disabled_sources.add("coinmarketcap")
+                    logger.warning(
+                        "CoinMarketCap source permanently disabled due to API error "
+                        f"(code={error_code}). It will not be used again this run."
+                    )
             return []
 
         articles = []
