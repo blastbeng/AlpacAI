@@ -11,6 +11,9 @@ services:
       - TZ=Europe/Rome
       - PUID=1000
       - PGID=1000
+    privileged: true
+    sysctls:
+      - vm.overcommit_memory=1
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
