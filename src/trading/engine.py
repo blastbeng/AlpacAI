@@ -1363,7 +1363,7 @@ class TradingEngine:
         sample_pairs = sorted(sample_pairs, key=_volume, reverse=True)[:settings.COIN_SELECTION_TOP_VOLUME_LIMIT]
 
         # --- Fetch order books for these top coins to compute real spread/depth for scalping score ---
-        top_n_for_ob = min(20, len(sample_pairs))
+        top_n_for_ob = min(50, len(sample_pairs))
         top_by_vol = sample_pairs[:top_n_for_ob]  # already sorted by volume
         coin_spreads: Dict[str, float] = {}
         coin_depths: Dict[str, float] = {}
@@ -1501,7 +1501,7 @@ class TradingEngine:
                     }
 
         # Use the already volume‑sorted sample_pairs for OHLCV fetch (limit to 20 to avoid rate limits)
-        sorted_by_vol = sample_pairs[:20]
+        sorted_by_vol = sample_pairs[:50]
 
         # Fetch multi-timeframe OHLCV for these coins
         ohlcv_data = {}

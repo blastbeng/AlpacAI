@@ -358,7 +358,7 @@ def build_coin_selection_prompt(
     """Build a prompt to ask the LLM which coins to trade."""
     # Summarize tickers and limits for the prompt
     ticker_summary = {}
-    for symbol in available_pairs[:50]:
+    for symbol in available_pairs:
         if symbol in tickers:
             t = tickers[symbol]
             limits = market_limits.get(symbol, {})
@@ -377,7 +377,7 @@ def build_coin_selection_prompt(
     # Build OHLCV summary if provided
     ohlcv_summary = {}
     if ohlcv_data:
-        for symbol in available_pairs[:50]:
+        for symbol in available_pairs:
             if symbol in ohlcv_data:
                 tf_data = ohlcv_data[symbol]
                 summary = {}
@@ -402,7 +402,7 @@ def build_coin_selection_prompt(
     news_section = ""
     if settings.NEWS_ENABLED:
         news_lines = []
-        pairs_to_check = available_pairs[:20]
+        pairs_to_check = available_pairs[:50]
         for pair in pairs_to_check:
             base = pair.split("/")[0] if "/" in pair else pair
             articles = get_news_for_symbol(base, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
@@ -512,7 +512,7 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
     )
     if coin_scores:
         prompt += "\nScalping suitability scores (0-1, higher = better for quick small profits):\n"
-        for sym in available_pairs[:50]:
+        for sym in available_pairs:
             if sym in coin_scores:
                 prompt += f"  {sym}: {coin_scores[sym]:.3f}\n"
         prompt += (
@@ -537,7 +537,7 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
         )
     if coin_spreads or coin_depths:
         prompt += "\nOrder book metrics for top coins (lower spread & higher depth = better for scalping):\n"
-        for sym in available_pairs[:50]:
+        for sym in available_pairs:
             parts = []
             if sym in coin_spreads:
                 parts.append(f"spread={coin_spreads[sym]:.3f}%")
@@ -653,7 +653,7 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
         )
     if volume_trends:
         prompt += "\nVolume trend (24h volume relative to recent average):\n"
-        for sym in available_pairs[:50]:
+        for sym in available_pairs:
             if sym in volume_trends and volume_trends[sym] is not None:
                 prompt += f"  {sym}: {volume_trends[sym]:.2f}x\n"
         prompt += (

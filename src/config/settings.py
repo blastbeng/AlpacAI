@@ -26,11 +26,11 @@ class Settings(BaseSettings):
     MAX_COINS: int = 10
 
     # Coin selection
-    COIN_SELECTION_MAX_PAIRS: int = 100          # max pairs to include in the LLM prompt
+    COIN_SELECTION_MAX_PAIRS: int = 200          # max pairs to include in the LLM prompt
     COIN_SELECTION_MIN_SENTIMENT: float = -1.0   # minimum aggregate sentiment compound to consider a coin (-1.0 = no filter)
 
     # Limit coin selection to top N by 24h volume (reduces noise)
-    COIN_SELECTION_TOP_VOLUME_LIMIT: int = 30
+    COIN_SELECTION_TOP_VOLUME_LIMIT: int = 100
 
     @field_validator("TRADING_MODE")
     @classmethod
