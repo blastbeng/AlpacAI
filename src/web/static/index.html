@@ -326,6 +326,17 @@
                     <button id="btn-sell-all" style="background:var(--red);">💸 Sell All</button>
                     <button id="btn-reload" style="background:#6e7681;">🔄 Reload Settings</button>
                 </div>
+                <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+                    <label for="update-interval" style="color: var(--text-secondary); font-size: 0.9rem;">🔄 Update Interval:</label>
+                    <select id="update-interval" style="background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 0.9rem;">
+                        <option value="3000">3s</option>
+                        <option value="5000">5s</option>
+                        <option value="10000" selected>10s</option>
+                        <option value="15000">15s</option>
+                        <option value="30000">30s</option>
+                        <option value="60000">60s</option>
+                    </select>
+                </div>
             </div>
 
             <div class="card">
@@ -619,62 +630,7 @@
                 }
             }
 
-            // Risk Metrics
-            fetch('/api/risk')
-                .then(res => res.json())
-                .then(risk => {
-                    const riskDiv = document.getElementById('risk');
-                    if (risk && risk.current_balance !== undefined) {
-                        riskDiv.innerHTML = `
-                            💰 Balance: ${risk.current_balance?.toFixed(2)} ${risk.base_currency}<br>
-                            📈 P&L: <span class="${risk.total_pnl >= 0 ? 'green' : 'red'}">${risk.total_pnl?.toFixed(2)} (${risk.total_pnl_pct?.toFixed(2)}%)</span><br>
-                            📉 Max Drawdown: ${risk.max_drawdown_pct?.toFixed(2)}%<br>
-                            📊 Open Positions: ${risk.open_positions_count}<br>
-                            💸 Exposure: ${risk.total_exposure?.toFixed(2)} ${risk.base_currency}<br>
-                            🏦 Largest Position: ${risk.largest_position_exposure_pct?.toFixed(1)}%<br>
-                            🛑 Total Stop Risk: ${risk.total_stop_loss_risk?.toFixed(2)} ${risk.base_currency}<br>
-                            🎯 Win Rate: ${risk.win_rate?.toFixed(1)}%<br>
-                            📐 Profit Factor: ${risk.profit_factor === Infinity ? '∞' : risk.profit_factor?.toFixed(2)}<br>
-                            ✅ Avg Win: ${risk.avg_win?.toFixed(2)} | ❌ Avg Loss: ${risk.avg_loss?.toFixed(2)}
-                        `;
-                    }
-                });
 
-            // Closed Trades
-            fetch('/api/history?limit=50')
-                .then(res => res.json())
-                .then(history => {
-                    const histBody = document.querySelector('#history-table tbody');
-                    histBody.innerHTML = '';
-                    if (history && history.length > 0) {
-                        history.forEach(t => {
-                            const row = histBody.insertRow();
-                            row.insertCell().textContent = new Date(t.timestamp).toLocaleString();
-                            row.insertCell().textContent = t.symbol;
-                            row.insertCell().textContent = t.side?.toUpperCase();
-                            row.insertCell().textContent = t.amount?.toFixed(6);
-                            row.insertCell().textContent = t.price?.toFixed(4);
-                            const fee = t.fee;
-                            const feeStr = fee && fee.cost ? `${fee.cost?.toFixed(6)} ${fee.currency}` : '-';
-                            row.insertCell().textContent = feeStr;
-                            const pnlCell = row.insertCell();
-                            if (t.realized_pnl !== undefined) {
-                                pnlCell.textContent = t.realized_pnl?.toFixed(4);
-                                pnlCell.className = t.realized_pnl >= 0 ? 'green' : 'red';
-                            } else {
-                                pnlCell.textContent = '-';
-                            }
-                            row.insertCell().textContent = t.exit_reason || '';
-                        });
-                    } else {
-                        const row = histBody.insertRow();
-                        const cell = row.insertCell();
-                        cell.colSpan = 8;
-                        cell.textContent = '📭 No closed trades yet';
-                        cell.style.textAlign = 'center';
-                        cell.style.color = 'var(--text-secondary)';
-                    }
-                });
         }
 
         // Theme toggle
@@ -708,6 +664,76 @@
         const chartTitle = document.getElementById('chart-title');
         let currentSymbol = null;
         const positionsMap = {}; // symbol -> { row, amount, entry, stopLoss, takeProfit, trailing }
+        let updateIntervalMs = 10000;  // default 10 seconds
+        let refreshTimer = null;
+
+        function updateRiskUI(risk) {
+            const riskDiv = document.getElementById('risk');
+            if (risk && risk.current_balance !== undefined) {
+                riskDiv.innerHTML = `
+                    💰 Balance: ${risk.current_balance?.toFixed(2)} ${risk.base_currency}<br>
+                    📈 P&L: <span class="${risk.total_pnl >= 0 ? 'green' : 'red'}">${risk.total_pnl?.toFixed(2)} (${risk.total_pnl_pct?.toFixed(2)}%)</span><br>
+                    📉 Max Drawdown: ${risk.max_drawdown_pct?.toFixed(2)}%<br>
+                    📊 Open Positions: ${risk.open_positions_count}<br>
+                    💸 Exposure: ${risk.total_exposure?.toFixed(2)} ${risk.base_currency}<br>
+                    🏦 Largest Position: ${risk.largest_position_exposure_pct?.toFixed(1)}%<br>
+                    🛑 Total Stop Risk: ${risk.total_stop_loss_risk?.toFixed(2)} ${risk.base_currency}<br>
+                    🎯 Win Rate: ${risk.win_rate?.toFixed(1)}%<br>
+                    📐 Profit Factor: ${risk.profit_factor === Infinity ? '∞' : risk.profit_factor?.toFixed(2)}<br>
+                    ✅ Avg Win: ${risk.avg_win?.toFixed(2)} | ❌ Avg Loss: ${risk.avg_loss?.toFixed(2)}
+                `;
+            }
+        }
+
+        function updateHistoryUI(history) {
+            const histBody = document.querySelector('#history-table tbody');
+            histBody.innerHTML = '';
+            if (history && history.length > 0) {
+                history.forEach(t => {
+                    const row = histBody.insertRow();
+                    row.insertCell().textContent = new Date(t.timestamp).toLocaleString();
+                    row.insertCell().textContent = t.symbol;
+                    row.insertCell().textContent = t.side?.toUpperCase();
+                    row.insertCell().textContent = t.amount?.toFixed(6);
+                    row.insertCell().textContent = t.price?.toFixed(4);
+                    const fee = t.fee;
+                    const feeStr = fee && fee.cost ? `${fee.cost?.toFixed(6)} ${fee.currency}` : '-';
+                    row.insertCell().textContent = feeStr;
+                    const pnlCell = row.insertCell();
+                    if (t.realized_pnl !== undefined) {
+                        pnlCell.textContent = t.realized_pnl?.toFixed(4);
+                        pnlCell.className = t.realized_pnl >= 0 ? 'green' : 'red';
+                    } else {
+                        pnlCell.textContent = '-';
+                    }
+                    row.insertCell().textContent = t.exit_reason || '';
+                });
+            } else {
+                const row = histBody.insertRow();
+                const cell = row.insertCell();
+                cell.colSpan = 8;
+                cell.textContent = '📭 No closed trades yet';
+                cell.style.textAlign = 'center';
+                cell.style.color = 'var(--text-secondary)';
+            }
+        }
+
+        async function refreshData() {
+            await fetchPositionPrices();
+            fetch('/api/risk')
+                .then(res => res.json())
+                .then(risk => updateRiskUI(risk))
+                .catch(() => {});
+            fetch('/api/history?limit=50')
+                .then(res => res.json())
+                .then(history => updateHistoryUI(history))
+                .catch(() => {});
+        }
+
+        function startRefreshTimer() {
+            if (refreshTimer) clearInterval(refreshTimer);
+            refreshTimer = setInterval(refreshData, updateIntervalMs);
+        }
 
         async function fetchPositionPrices() {
             const symbols = Object.keys(positionsMap);
@@ -759,7 +785,13 @@
             }
         }
 
-        setInterval(fetchPositionPrices, 5000);
+        startRefreshTimer();
+        refreshData();  // immediate first load
+
+        document.getElementById('update-interval').addEventListener('change', (e) => {
+            updateIntervalMs = parseInt(e.target.value, 10);
+            startRefreshTimer();
+        });
 
         closeBtn.onclick = () => {
             modal.style.display = 'none';
