@@ -575,13 +575,23 @@
             if (data.profit) {
                 const p = data.profit;
                 const cur = p.base_currency || '';
+                const totalWallet = (p.current_balance || 0) + (p.open_value || 0);
+                const pnlSign = p.total_pnl >= 0 ? '+' : '';
+                const pnlPctSign = p.pnl_percent >= 0 ? '+' : '';
+                const wins = p.wins ?? 0;
+                const losses = p.losses ?? 0;
+                const winRate = (p.win_rate ?? 0) * 100;
                 profitDiv.innerHTML = `
                     💱 Base Currency: ${cur}<br><br>
-                    💵 Initial: ${p.initial_balance?.toFixed(2)}<br>
-                    💰 Current: ${p.current_balance?.toFixed(2)}<br>
-                    📦 Open Value: ${p.open_value?.toFixed(2)}<br>
-                    🧾 Fees Paid: ${p.total_fees?.toFixed(2)}<br>
-                    📊 P&L: <span class="${p.total_pnl >= 0 ? 'green' : 'red'}">${p.total_pnl?.toFixed(2)} (${p.pnl_percent?.toFixed(2)}%)</span>
+                    💵 Initial Balance:  ${p.initial_balance?.toFixed(6)}<br>
+                    🏦 Current Balance:  ${p.current_balance?.toFixed(6)}<br>
+                    📊 Open Positions:   ${p.open_value?.toFixed(6)}<br>
+                    💼 Total Wallet:     ${totalWallet.toFixed(6)}<br>
+                    🧾 Fees Paid:        ${p.total_fees?.toFixed(6)}<br>
+                    📈 Total P&L: <span class="${p.total_pnl >= 0 ? 'green' : 'red'}">${pnlSign}${p.total_pnl?.toFixed(6)}  (${pnlPctSign}${p.pnl_percent?.toFixed(2)}%)</span><br>
+                    <br>
+                    🏆 Wins: ${wins}  💔 Losses: ${losses}<br>
+                    📊 Win Rate: ${winRate.toFixed(1)}%
                 `;
             }
 
