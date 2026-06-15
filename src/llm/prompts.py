@@ -289,6 +289,30 @@ You will also receive a summary of the most recent individual trades (last 20). 
 - "news_sentiment_exit_threshold": an optional float between -1.0 and 1.0 (e.g., -0.5). If set, the bot will monitor the aggregate news sentiment for this coin. If the compound score drops below this threshold while the position is open, the position will be closed immediately. Use this to exit on strongly negative news.
 - "strategy_interval_seconds": an optional positive integer (e.g., 60, 120, 300). If set, the bot will re‑evaluate the strategy for this coin every N seconds instead of the default interval. Use shorter intervals (60‑120s) for scalping very small percentages, and longer intervals (300‑600s) for swing trades. If omitted, the global default applies.
 
+**Entry Condition (REQUIRED for every BUY):**
+You MUST include an `entry_condition` object in your JSON output for every BUY action.
+This is how you tell the bot the **exact moment** to enter the trade.
+If you omit this field, the trade will be executed immediately at the current market price,
+which is rarely optimal and often leads to poor entries.
+Only omit it if you are absolutely certain that the current price is the perfect entry point
+(e.g., a confirmed breakout with strong volume).
+
+The object must have a `"type"` field and, except for `"delay"`, a `"timeout_seconds"` field.
+Supported types:
+- `"limit_price"`: wait for the price to drop to or below `"price"`.
+  Example: {"type": "limit_price", "price": 1.23, "timeout_seconds": 300}
+- `"rsi_threshold"`: wait for RSI(14) to fall below `"rsi_below"`.
+  Example: {"type": "rsi_threshold", "rsi_below": 30, "timeout_seconds": 600}
+- `"order_book_depth"`: wait until the cumulative ask volume within 1% of the mid price is at least `"min_ask_volume"` (in base currency).
+  Example: {"type": "order_book_depth", "min_ask_volume": 500, "timeout_seconds": 300}
+- `"delay"`: simply wait `"delay_seconds"` before executing. Use this only when you want to delay entry by a fixed amount of time (e.g., to let a candle close).
+  Example: {"type": "delay", "delay_seconds": 60}
+- `"indicator_combo"`: wait until ALL listed indicator conditions are met.
+  Example: {"type": "indicator_combo", "conditions": [ {"indicator": "rsi", "threshold": 30, "direction": "below"}, {"indicator": "macd_hist", "threshold": 0, "direction": "above"} ], "timeout_seconds": 600}
+
+If a timeout expires without the condition being met, the trade is skipped entirely.
+Use this to ensure you only enter at a favorable price or when a specific signal fires.
+
 The bot will NOT use any default values for required parameters. If you omit any required parameter, the trade will be skipped. Optional parameters are not required; if omitted, the bot will use its standard behavior.
 """
 
@@ -735,10 +759,12 @@ Use this historical data to select coins that have been profitable in the past, 
                 "Only trade if you see clear setups.\n"
             )
     prompt += (
-        "\n**Entry Condition (optional):**\n"
-        "You may include an `entry_condition` object in your JSON output for BUY actions. "
-        "If you omit this field, the trade will be executed immediately at the current market price. "
-        "Use it to wait for a better price, a specific indicator signal, or sufficient liquidity.\n"
+        "\n**Entry Condition (REQUIRED for every BUY):**\n"
+        "You MUST include an `entry_condition` object in your JSON output for every BUY action. "
+        "This tells the bot the **exact moment** to enter the trade. "
+        "If you omit this field, the trade will be executed immediately at the current market price, "
+        "which is rarely optimal. Only omit it if you are absolutely certain that the current price "
+        "is the perfect entry point (e.g., a confirmed breakout with strong volume).\n"
         "The object must have a `\"type\"` field and, except for `\"delay\"`, a `\"timeout_seconds\"` field.\n"
         "Supported types:\n"
         "- `\"limit_price\"`: wait for the price to drop to or below `\"price\"`.\n"
@@ -752,11 +778,13 @@ Use this historical data to select coins that have been profitable in the past, 
         "- `\"indicator_combo\"`: wait until ALL listed indicator conditions are met.\n"
         "  Example: {\"type\": \"indicator_combo\", \"conditions\": [ {\"indicator\": \"rsi\", \"threshold\": 30, \"direction\": \"below\"}, {\"indicator\": \"macd_hist\", \"threshold\": 0, \"direction\": \"above\"} ], \"timeout_seconds\": 600}\n"
         "If a timeout expires without the condition being met, the trade is skipped entirely. "
-        "Only use this when you have a specific entry signal; otherwise omit it to execute immediately.\n"
-        "\n**Final reminder:** If you are unsure about the right stop distance, "
-        "use a wider stop and a smaller position size. "
+        "Use this to ensure you only enter at a favorable price or when a specific signal fires.\n"
+        "\n**Final reminders:**\n"
+        "- If you are unsure about the right stop distance, use a wider stop and a smaller position size. "
         "It is far better to miss a trade than to take an unnecessary loss. "
         "Tight stops are the #1 cause of losing trades – avoid them.\n"
+        "- **Always include an `entry_condition` for BUY orders.** This is how you control the exact entry timing. "
+        "Without it, the bot buys immediately at the current price, which is rarely the best entry.\n"
     )
     return prompt
 
