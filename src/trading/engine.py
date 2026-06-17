@@ -2598,7 +2598,8 @@ class TradingEngine:
             ticker = self.ws_manager.get_ticker(symbol)
             if ticker is None:
                 async with self._exchange_semaphore:
-                    ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [symbol])
+                    ticker = quotes.get(symbol)
             current_price = ticker['last']
             order_book = self.ws_manager.get_order_book(symbol)
             if order_book is None:
