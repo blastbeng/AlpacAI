@@ -4253,8 +4253,9 @@ class TradingEngine:
             try:
                 ticker = self.ws_manager.get_ticker(symbol)
                 if ticker is None:
-                    ticker = self.exchange.fetch_ticker(symbol)
-                current_price = ticker['last']
+                    tickers_map = get_tickers(self.data_client, [symbol])
+                    ticker = tickers_map.get(symbol.split("/")[0])
+                current_price = ticker['last'] if ticker else pos['price']
             except Exception:
                 current_price = pos['price']  # fallback to entry price
 
