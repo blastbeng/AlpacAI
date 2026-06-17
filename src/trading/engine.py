@@ -76,7 +76,7 @@ class TradingEngine:
         self.redis = get_redis_client()
         self._exchange_semaphore = asyncio.Semaphore(3)  # max 3 concurrent API calls
 
-        self.trader = LiveTrader(self.trading_client)
+        self.trader = LiveTrader(self.exchange)
 
         self.current_symbols: List[Dict[str, str]] = []   # each dict: {"symbol": ..., "timeframe": ...}
         self.positions: Dict[str, Dict[str, Any]] = {}  # symbol -> position info
