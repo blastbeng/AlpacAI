@@ -173,7 +173,7 @@ class TradingEngine:
         while self._running:
             if self._reevaluate_running:
                 logger.warning("Coin re-evaluation still running; skipping this cycle.")
-                await asyncio.sleep(self._coin_revaluation_interval)
+                await asyncio.sleep(self._symbol_reevaluation_interval)
                 continue
             self._reevaluate_running = True
             try:
@@ -192,7 +192,7 @@ class TradingEngine:
             finally:
                 self._reevaluate_running = False
             try:
-                await asyncio.wait_for(self._reeval_trigger.wait(), timeout=self._coin_revaluation_interval)
+                await asyncio.wait_for(self._reeval_trigger.wait(), timeout=self._symbol_reevaluation_interval)
             except asyncio.TimeoutError:
                 pass
             self._reeval_trigger.clear()
@@ -1218,7 +1218,7 @@ class TradingEngine:
 
     async def _reevaluate_symbols(self):
         """Use LLM to select which symbols to trade."""
-        async with self._coin_reeval_lock:
+        async with self._symbol_reeval_lock:
             return await self._reevaluate_symbols_impl()
 
     async def _reevaluate_symbols_impl(self):
@@ -1229,7 +1229,7 @@ class TradingEngine:
         last_key = "trading:last_coin_eval"
         last_eval = await asyncio.to_thread(self.redis.get, last_key)
         now = time.time()
-        if last_eval and (now - float(last_eval)) < self._coin_revaluation_interval and self.current_symbols:
+        if last_eval and (now - float(last_eval)) < self._symbol_reevaluation_interval and self.current_symbols:
             return
 
         old_coins = list(self.current_symbols)
@@ -1661,7 +1661,7 @@ class TradingEngine:
             try:
                 last_auto_resume_ts = float(last_auto_resume_raw)
                 seconds_since = now - last_auto_resume_ts
-                if seconds_since < self._coin_revaluation_interval * 2:
+                if seconds_since < self._symbol_reevaluation_interval * 2:
                     minutes_since = seconds_since / 60
                     auto_resume_note = (
                         f"\n**NOTE:** Trading was auto‑resumed {minutes_since:.1f} minutes ago after a pause. "
@@ -2032,7 +2032,7 @@ class TradingEngine:
                         logger.warning(f"Invalid global_risk_multiplier: {global_risk_mult}")
 
                 existing_coins = {c['symbol']: c for c in self.current_symbols}
-                for coin in deduped[: self.effective_max_coins]:
+                for coin in deduped[: self.effective_max_symbols]:
                     if coin['symbol'] in existing_coins and 'entry_time' in existing_coins[coin['symbol']]:
                         coin['entry_time'] = existing_coins[coin['symbol']]['entry_time']
                     else:
@@ -2040,7 +2040,7 @@ class TradingEngine:
                     # Preserve max_tenure_hours from existing coin if LLM didn't specify it
                     if 'max_tenure_hours' not in coin and coin['symbol'] in existing_coins and 'max_tenure_hours' in existing_coins[coin['symbol']]:
                         coin['max_tenure_hours'] = existing_coins[coin['symbol']]['max_tenure_hours']
-                self.current_symbols = deduped[: self.effective_max_coins]
+                self.current_symbols = deduped[: self.effective_max_symbols]
 
                 # If LLM explicitly chose zero coins, respect that and don't fall back to volume-based selection
                 if not deduped or self.effective_max_symbols == 0:
@@ -2207,7 +2207,7 @@ class TradingEngine:
 
     async def _check_pause_resume_decision(self):
         """When trading is paused, ask the LLM whether to resume (lightweight)."""
-        async with self._coin_reeval_lock:
+        async with self._symbol_reeval_lock:
             # Only run if actually paused
             paused_raw = await asyncio.to_thread(self.redis.get, "trading:paused")
             if not paused_raw or paused_raw != b"1":
