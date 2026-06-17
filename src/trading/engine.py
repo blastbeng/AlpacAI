@@ -1022,8 +1022,9 @@ class TradingEngine:
                 try:
                     ticker = self.ws_manager.get_ticker(symbol)
                     if ticker is None:
-                        ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
-                    current_price = ticker['last']
+                        tickers_map = get_tickers(self.data_client, [symbol])
+                        ticker = tickers_map.get(symbol.split("/")[0])
+                    current_price = ticker['last'] if ticker else pos.get("price", 0.0)
                 except Exception:
                     current_price = pos.get("price", 0.0)  # fallback to entry price
                 cost = sold_amount * current_price
