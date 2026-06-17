@@ -57,9 +57,9 @@ from src.database import load_trading_state, save_trading_state, delete_trading_
 
 logger = logging.getLogger(__name__)
 
-COIN_REVALUATION_INTERVAL = 3600  # seconds (60 minutes)
+SYMBOL_REEVALUATION_INTERVAL = 3600  # seconds (60 minutes)
 DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no coins (10 minutes)
-MIN_COIN_REVALUATION_INTERVAL = 300  # seconds (5 minutes) – prevents rapid toggling
+MIN_SYMBOL_REEVALUATION_INTERVAL = 300  # seconds (5 minutes) – prevents rapid toggling
 MIN_LLM_PAUSE_DURATION = 3600  # seconds (60 min) – LLM cannot resume before this
 MAX_STOP_LOSS_REVIEWS = 10   # force-sell after this many consecutive stop-loss reviews
 MAX_TAKE_PROFIT_REVIEWS = 10   # force-sell after this many consecutive take-profit reviews
@@ -89,7 +89,7 @@ class TradingEngine:
         else:
             self.trader = LiveTrader(self.exchange)
 
-        self.current_coins: List[Dict[str, str]] = []   # each dict: {"symbol": ..., "timeframe": ...}
+        self.current_symbols: List[Dict[str, str]] = []   # each dict: {"symbol": ..., "timeframe": ...}
         self.positions: Dict[str, Dict[str, Any]] = {}  # symbol -> position info
         self.trade_history: List[Dict[str, Any]] = []
         self.initial_balance: float = 0.0
@@ -97,7 +97,7 @@ class TradingEngine:
         self.cooldown_durations: Dict[str, float] = {}  # symbol -> cooldown seconds set by LLM
         self._last_strategy_eval: Dict[str, float] = {}   # symbol -> timestamp of last strategy evaluation
         self._strategy_intervals: Dict[str, float] = {}    # symbol -> custom interval in seconds
-        self._coin_revaluation_interval = COIN_REVALUATION_INTERVAL
+        self._symbol_reevaluation_interval = SYMBOL_REEVALUATION_INTERVAL
         self.notifier = None
         self._load_state()
         # Restore paper simulator state from trade history
@@ -118,10 +118,10 @@ class TradingEngine:
 
         # Track quote currency spent in the current cycle to avoid over-allocating
         self._cycle_spent = 0.0
-        self._coin_first_seen: Dict[str, float] = {}  # symbol -> timestamp when first added
+        self._symbol_first_seen: Dict[str, float] = {}  # symbol -> timestamp when first added
         self._market_breadth: Optional[Dict[str, Any]] = None
         self._risk_lock = asyncio.Lock()
-        self._coin_reeval_lock = asyncio.Lock()
+        self._symbol_reeval_lock = asyncio.Lock()
         self._reeval_trigger = asyncio.Event()
         self._running = True
         self._last_state_save = 0
@@ -141,7 +141,7 @@ class TradingEngine:
         """Attach a notification service (e.g., TelegramBot)."""
         self.notifier = notifier
 
-    def trigger_coin_reevaluation(self):
+    def trigger_symbol_reevaluation(self):
         """Signal the periodic reevaluate loop to run immediately."""
         self._reeval_trigger.set()
 
