@@ -31,12 +31,3 @@ def get_streaming_client() -> StockDataStream:
         url_override=settings.ALPACA_DATA_URL,
     )
 
-# Keep the old names for backward compatibility during migration.
-# They will be removed once the engine is fully adapted.
-def get_exchange():
-    """Temporary wrapper: returns the trading client (used for orders/account)."""
-    return get_trading_client()
-
-def get_pro_exchange():
-    """Temporary wrapper: returns the streaming client (used for WebSocket)."""
-    return get_streaming_client()

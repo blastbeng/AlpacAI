@@ -168,34 +168,3 @@ def get_bars_range(
     except Exception as e:
         logger.warning(f"Failed to fetch bars range for {symbol} {timeframe}: {e}")
         return []
-
-
-# Keep old names for backward compatibility during migration.
-# They will be removed once the engine is fully adapted.
-def get_tradable_symbols(trading_client: TradingClient) -> List[str]:
-    """Return a list of trading symbols (e.g., 'AAPL/USD') for all tradable US equities."""
-    symbols = get_tradable_assets(trading_client)
-    return [f"{sym}/USD" for sym in symbols]
-
-
-def get_tickers(exchange, symbols: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Temporary wrapper: returns quotes for given symbols (pair format 'SYM/USD' → plain 'SYM')."""
-    if symbols is None:
-        return {}
-    # Strip "/USD" suffix to get plain Alpaca symbols
-    plain_symbols = [s.split("/")[0] if "/" in s else s for s in symbols]
-    return get_quotes(exchange, plain_symbols)
-
-
-def get_order_book(exchange, symbol: str, limit: int = 20) -> Dict[str, Any]:
-    """Temporary wrapper: returns simulated order book (pair format 'SYM/USD' → plain 'SYM')."""
-    plain_symbol = symbol.split("/")[0] if "/" in symbol else symbol
-    return get_order_book(exchange, plain_symbol, limit)
-
-
-def get_multi_timeframe_ohlcv(
-    exchange, symbol: str, timeframes: List[str], limit: int = 24
-) -> Dict[str, List[List[float]]]:
-    """Temporary wrapper: returns multi-timeframe bars (pair format 'SYM/USD' → plain 'SYM')."""
-    plain_symbol = symbol.split("/")[0] if "/" in symbol else symbol
-    return get_multi_timeframe_bars(exchange, plain_symbol, timeframes, limit)

@@ -9,9 +9,9 @@ from typing import Dict, List, Optional, Any
 
 from src.config.settings import settings
 from src.exchanges.fees import get_fee_rate
-from src.exchanges.factory import get_exchange, get_pro_exchange, get_data_client
+from src.exchanges.factory import get_trading_client, get_streaming_client, get_data_client
 from src.exchanges.ws_manager import WebSocketManager
-from src.exchanges.market_data import get_tradable_symbols, get_tickers, get_order_book, get_multi_timeframe_ohlcv, get_quotes, get_bars_range
+from src.exchanges.market_data import get_tradable_assets, get_quotes, get_order_book, get_multi_timeframe_bars, get_bars_range
 from src.trading.paper_simulator import PaperSimulator
 from src.trading.live_trader import LiveTrader
 from src.llm.cache import get_cached_llm_response, compute_market_hash
@@ -67,9 +67,9 @@ MAX_TAKE_PROFIT_REVIEWS = 10   # force-sell after this many consecutive take-pro
 
 class TradingEngine:
     def __init__(self):
-        self.exchange = get_exchange()
+        self.exchange = get_trading_client()
         self.data_client = get_data_client()
-        self.pro_exchange = get_pro_exchange()
+        self.pro_exchange = get_streaming_client()
         self.ws_manager = WebSocketManager(self.pro_exchange, [])
         self.base_currency = settings.BASE_CURRENCY
         self.max_symbols = settings.MAX_SYMBOLS
@@ -295,15 +295,14 @@ class TradingEngine:
                 continue
             self._full_breadth_running = True
             try:
-                available_pairs = await asyncio.to_thread(
-                    get_tradable_symbols, self.exchange
-                )
+                plain_assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
+                available_pairs = [f"{sym}/USD" for sym in plain_assets]
                 if available_pairs:
                     # Limit to 500 pairs to avoid excessive API calls
                     breadth_pairs = available_pairs[:500]
-                    breadth_tickers = await asyncio.to_thread(
-                        get_tickers, self.exchange, breadth_pairs
-                    )
+                    plain_breadth = [s.split("/")[0] for s in breadth_pairs]
+                    raw_breadth = await asyncio.to_thread(get_quotes, self.data_client, plain_breadth)
+                    breadth_tickers = {pair: raw_breadth.get(pair.split("/")[0], {}) for pair in breadth_pairs}
                     positive_count = sum(
                         1 for sym in breadth_pairs
                         if (breadth_tickers.get(sym, {}).get('percentage') or 0) > 0
@@ -504,13 +503,14 @@ class TradingEngine:
                 current_symbols = {entry["symbol"] for entry in self.current_symbols}
                 symbols_to_refresh = set()
                 try:
-                    available_pairs = await asyncio.to_thread(
-                        get_tradable_symbols, self.exchange
-                    )
+                    plain_assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
+                    available_pairs = [f"{sym}/USD" for sym in plain_assets]
                     # Fetch tickers for a subset to determine top volume coins
                     # (limit to 200 to avoid excessive API calls)
                     sample_for_vol = available_pairs[:200]
-                    tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_for_vol)
+                    plain_sample = [s.split("/")[0] for s in sample_for_vol]
+                    raw_quotes = await asyncio.to_thread(get_quotes, self.data_client, plain_sample)
+                    tickers = {pair: raw_quotes.get(pair.split("/")[0], {}) for pair in sample_for_vol}
                     def _vol(sym):
                         t = tickers.get(sym, {})
                         return t.get('quoteVolume', 0) or 0
@@ -979,7 +979,8 @@ class TradingEngine:
     async def _reconcile_positions(self):
         """Detect and handle external changes: delisted coins, externally sold positions."""
         # --- Delisted coins ---
-        available_pairs = await asyncio.to_thread(get_tradable_symbols, self.exchange)
+        plain_assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
+        available_pairs = [f"{sym}/USD" for sym in plain_assets]
         for entry in list(self.current_symbols):
             coin = entry["symbol"]
             if coin not in available_pairs:
@@ -1022,7 +1023,7 @@ class TradingEngine:
                 try:
                     ticker = self.ws_manager.get_ticker(symbol)
                     if ticker is None:
-                        tickers_map = get_tickers(self.data_client, [symbol])
+                        tickers_map = get_quotes(self.data_client, [symbol.split("/")[0]])
                         ticker = tickers_map.get(symbol.split("/")[0])
                     current_price = ticker['last'] if ticker else pos.get("price", 0.0)
                 except Exception:
@@ -1233,7 +1234,8 @@ class TradingEngine:
             return
 
         old_symbols = list(self.current_symbols)
-        available_pairs = await asyncio.to_thread(get_tradable_symbols, self.exchange)
+        plain_assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
+        available_pairs = [f"{sym}/USD" for sym in plain_assets]
         if not available_pairs:
             logger.warning("No available pairs found.")
             return
@@ -1296,7 +1298,9 @@ class TradingEngine:
             )
         ]
 
-        tickers = await asyncio.to_thread(get_tickers, self.data_client, sample_pairs)
+        plain_sample = [s.split("/")[0] for s in sample_pairs]
+        raw_quotes = await asyncio.to_thread(get_quotes, self.data_client, plain_sample)
+        tickers = {pair: raw_quotes.get(pair.split("/")[0], {}) for pair in sample_pairs}
 
         # --- Limit candidate pool to top N by 24h volume ---
         def _volume(sym):
@@ -1311,7 +1315,7 @@ class TradingEngine:
         symbol_depths: Dict[str, float] = {}
         for sym in top_by_vol:
             try:
-                ob = await asyncio.to_thread(get_order_book, self.data_client, sym, 5)
+                ob = await asyncio.to_thread(get_order_book, self.data_client, sym.split("/")[0], 5)
                 bids = ob.get('bids', [])
                 asks = ob.get('asks', [])
                 if bids and asks:
@@ -1441,7 +1445,7 @@ class TradingEngine:
             async def fetch_ohlcv_for_symbol(sym):
                 try:
                     data = await asyncio.to_thread(
-                        get_multi_timeframe_ohlcv, self.data_client, sym, settings.OHLCV_TIMEFRAMES, limit=50
+                        get_multi_timeframe_bars, self.data_client, sym.split("/")[0], settings.OHLCV_TIMEFRAMES, limit=50
                     )
                     return sym, data
                 except Exception as e:
@@ -2224,7 +2228,7 @@ class TradingEngine:
             vix = await self._fetch_vix()
             spy_price = None
             try:
-                tickers_map = get_tickers(self.data_client, ["SPY"])
+                tickers_map = get_quotes(self.data_client, ["SPY"])
                 spy_ticker = tickers_map.get("SPY")
                 spy_price = spy_ticker.get("last") if spy_ticker else None
             except Exception:
@@ -2603,7 +2607,7 @@ class TradingEngine:
             order_book = self.ws_manager.get_order_book(symbol)
             if order_book is None:
                 async with self._exchange_semaphore:
-                    order_book = await asyncio.to_thread(get_order_book, self.data_client, symbol, 20)
+                    order_book = await asyncio.to_thread(get_order_book, self.data_client, symbol.split("/")[0], 20)
             # Fetch recent trades for micro-momentum and liquidity assessment
             recent_trades_raw = self.ws_manager.get_trades(symbol)
 
@@ -2632,7 +2636,7 @@ class TradingEngine:
                 try:
                     async with self._exchange_semaphore:
                         ohlcv_data = await asyncio.to_thread(
-                            get_multi_timeframe_ohlcv, self.data_client, symbol, settings.OHLCV_TIMEFRAMES, limit=100
+                            get_multi_timeframe_bars, self.data_client, symbol.split("/")[0], settings.OHLCV_TIMEFRAMES, limit=100
                         )
                 except Exception as e:
                     logger.warning(f"OHLCV fetch failed for {symbol}: {e}")
@@ -4200,7 +4204,7 @@ class TradingEngine:
             try:
                 ticker = self.ws_manager.get_ticker(sym)
                 if ticker is None:
-                    tickers_map = get_tickers(self.data_client, [sym])
+                    tickers_map = get_quotes(self.data_client, [sym.split("/")[0]])
                     ticker = tickers_map.get(sym.split("/")[0])
                 price = ticker['last']
                 open_value += pos['amount'] * price
@@ -4257,7 +4261,7 @@ class TradingEngine:
             try:
                 ticker = self.ws_manager.get_ticker(symbol)
                 if ticker is None:
-                    tickers_map = get_tickers(self.data_client, [symbol])
+                    tickers_map = get_quotes(self.data_client, [symbol.split("/")[0]])
                     ticker = tickers_map.get(symbol.split("/")[0])
                 current_price = ticker['last'] if ticker else pos['price']
             except Exception:
@@ -4445,7 +4449,7 @@ class TradingEngine:
                     if not self.ws_manager.healthy:
                         # Fallback to REST when WebSocket is down
                         try:
-                            tickers_map = get_tickers(self.data_client, [symbol])
+                            tickers_map = get_quotes(self.data_client, [symbol.split("/")[0]])
                             ticker = tickers_map.get(symbol.split("/")[0])
                         except Exception:
                             continue
@@ -4542,7 +4546,7 @@ class TradingEngine:
                                 try:
                                     ob = self.ws_manager.get_order_book(symbol)
                                     if ob is None:
-                                        ob = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
+                                        ob = await asyncio.to_thread(get_order_book, self.data_client, symbol.split("/")[0], 20)
                                 except Exception as e:
                                     logger.warning(f"Could not fetch order book for depth check on {symbol}: {e}")
                                     ob = None
@@ -5633,7 +5637,7 @@ class TradingEngine:
             try:
                 async with self._exchange_semaphore:
                     ohlcv = await asyncio.to_thread(
-                        get_multi_timeframe_ohlcv, self.data_client, symbol, [timeframe], limit=50
+                        get_multi_timeframe_bars, self.data_client, symbol.split("/")[0], [timeframe], limit=50
                     )
             except Exception:
                 return False
@@ -5649,7 +5653,7 @@ class TradingEngine:
             if ob is None:
                 try:
                     async with self._exchange_semaphore:
-                        ob = await asyncio.to_thread(get_order_book, self.data_client, symbol, 20)
+                        ob = await asyncio.to_thread(get_order_book, self.data_client, symbol.split("/")[0], 20)
                 except Exception:
                     return False
             if ob:
