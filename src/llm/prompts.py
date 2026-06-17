@@ -431,7 +431,7 @@ Your available {base_currency} balance: {base_balance:.2f}
 Maximum number of stocks to trade: {max_coins}
 Budget per stock: {per_coin_budget:.2f} {base_currency}
 Available timeframes: {json.dumps(settings.OHLCV_TIMEFRAMES)}
-Currently tracked coins (with assigned timeframes): {json.dumps(current_coins) if current_coins else "None"}"""
+Currently tracked stocks (with assigned timeframes): {json.dumps(current_coins) if current_coins else "None"}"""
 
     # --- Open positions summary ---
     if open_positions:
@@ -453,27 +453,27 @@ Currently tracked coins (with assigned timeframes): {json.dumps(current_coins) i
         )
 
     if coin_tenure:
-        prompt += "\n**Coin tenure (how long each coin has been continuously tracked, in seconds):**\n"
+        prompt += "\n**Stock tenure (how long each stock has been continuously tracked, in seconds):**\n"
         for sym, sec in coin_tenure.items():
             prompt += f"  {sym}: {sec:.0f}s\n"
         prompt += (
-            "Coins that have been tracked for longer periods allow the bot to accumulate more "
+            "Stocks that have been tracked for longer periods allow the bot to accumulate more "
             "historical data and refine strategies. Frequent changes disrupt this learning process. "
-            "Therefore, **prefer to keep coins that are already in the list** unless there is a strong "
+            "Therefore, **prefer to keep stocks that are already in the list** unless there is a strong "
             "reason to drop them (e.g., delisting, severe negative sentiment, consistent losses, "
-            "or budget constraints). Only replace a coin if the new candidate is clearly superior.\n"
+            "or budget constraints). Only replace a stock if the new candidate is clearly superior.\n"
         )
     if coin_max_tenure:
-        prompt += "\n**Current max tenure per coin (hours, if set):**\n"
+        prompt += "\n**Current max tenure per stock (hours, if set):**\n"
         for sym, hours in coin_max_tenure.items():
             if hours is not None:
                 prompt += f"  {sym}: {hours:.1f}h\n"
         prompt += (
-            "You may optionally set a `max_tenure_hours` for each coin you select. "
-            "If set, the bot will force-sell the coin after it has been in the portfolio for that many hours. "
-            "Use this to rotate out of coins that may become stagnant. "
-            "If you omit this field, the coin will have no tenure limit (it can stay indefinitely). "
-            "If you keep a coin that already has a max tenure, you may change it or keep it as is.\n"
+            "You may optionally set a `max_tenure_hours` for each stock you select. "
+            "If set, the bot will force-sell the stock after it has been in the portfolio for that many hours. "
+            "Use this to rotate out of stocks that may become stagnant. "
+            "If you omit this field, the stock will have no tenure limit (it can stay indefinitely). "
+            "If you keep a stock that already has a max tenure, you may change it or keep it as is.\n"
         )
 
     prompt += f"""
@@ -491,13 +491,13 @@ Each symbol can only appear once in your selection. Choose the single best timef
 **Output ONLY the raw JSON object. Do NOT wrap it in ```json fences. Do NOT include any text before or after the JSON.**
 
 Return a JSON object with the following fields:
-- "coins": a JSON array of objects, each with "symbol" and "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h"). Each object may optionally include "max_tenure_hours" (a positive float, hours) to force-sell the coin after that many hours in the portfolio. Omit or set to null for no limit.
-- "max_coins": an integer between 0 and {max_coins} indicating how many coins you actually want to trade. Set to 0 to pause trading. This must equal the length of the "coins" array.
-- "reasoning": a short string (max 200 characters) explaining why you selected these specific coins and timeframes. This will be shown to the user, so make it informative.
+- "coins": a JSON array of objects, each with "symbol" and "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h"). Each object may optionally include "max_tenure_hours" (a positive float, hours) to force-sell the stock after that many hours in the portfolio. Omit or set to null for no limit.
+- "max_coins": an integer between 0 and {max_coins} indicating how many stocks you actually want to trade. Set to 0 to pause trading. This must equal the length of the "coins" array.
+- "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
-You may optionally include "coin_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the coin list.
+You may optionally include "coin_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.
 
-Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hours": 48}}, {{"symbol": "ETH/USDT", "timeframe": "15m"}}], "max_coins": 2, "reasoning": "BTC shows strong uptrend on 1h with high volume; ETH has bullish MACD crossover on 15m.", "coin_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
+Example: {{"coins": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours": 48}}, {{"symbol": "MSFT", "timeframe": "15m"}}], "max_coins": 2, "reasoning": "AAPL shows strong uptrend on 1h with high volume; MSFT has bullish MACD crossover on 15m.", "coin_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
     # --- Enhanced pause/resume guidance ---
     if trading_paused:
         prompt += (
@@ -512,15 +512,15 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
             "\n**Trading is currently ACTIVE.**\n"
             "You may pause trading by setting `\"pause_trading\": true` if conditions warrant.\n"
             "However, do NOT pause solely because of a bad market index (e.g., high fear, low breadth). "
-            "First, check the **Top Profit Opportunities** section below. If there are coins with high scalping scores (>0.7), "
+            "First, check the **Top Profit Opportunities** section below. If there are stocks with high scalping scores (>0.7), "
             "strong positive sentiment, and clear technical signals, you may still trade them profitably even in a down market.\n"
             "Only pause if NO such opportunities exist, or if the account is in significant drawdown with no high‑confidence setups.\n"
         )
     prompt += (
         "\n**When deciding to pause or resume, also consider the news sentiment data provided below.** "
         "Broadly negative and deteriorating sentiment across the market may warrant a pause; "
-        "improving sentiment or strong positive sentiment on specific coins may support resuming.\n"
-        "- **Before pausing, check the \"Top Profit Opportunities\" section.** If any coin has a scalping score > 0.7 and positive sentiment, do NOT pause – trade that coin with reduced size if necessary.\n"
+        "improving sentiment or strong positive sentiment on specific stocks may support resuming.\n"
+        "- **Before pausing, check the \"Top Profit Opportunities\" section.** If any stock has a scalping score > 0.7 and positive sentiment, do NOT pause – trade that stock with reduced size if necessary.\n"
         "- Only pause if NO such opportunities exist, or if the account is in significant drawdown with no high‑confidence setups.\n"
         "- Avoid pausing solely because of a bad market index (e.g., high fear, low breadth). A fearful market often presents the best buying opportunities.\n"
     )
@@ -545,12 +545,12 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
                 f"change_24h={opp['change_24h']}%{sent_str}\n"
             )
         prompt += (
-            "These are the coins with the highest scalping suitability scores. "
+            "These are the stocks with the highest scalping suitability scores. "
             "Even if the overall market looks bad, one or more of these may still offer a profitable scalp. "
-            "Use this list to decide whether to pause or to trade a reduced number of coins.\n"
+            "Use this list to decide whether to pause or to trade a reduced number of stocks.\n"
         )
     if coin_spreads or coin_depths:
-        prompt += "\nOrder book metrics for top coins (lower spread & higher depth = better for scalping):\n"
+        prompt += "\nOrder book metrics for top stocks (lower spread & higher depth = better for scalping):\n"
         for sym in available_pairs:
             parts = []
             if sym in coin_spreads:
@@ -559,7 +559,7 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
                 parts.append(f"depth={coin_depths[sym]:.2f}")
             if parts:
                 prompt += f"  {sym}: {', '.join(parts)}\n"
-        prompt += "Prefer coins with spread < 0.2% and high depth for scalping very small percentages.\n"
+        prompt += "Prefer stocks with spread < 0.2% and high depth for scalping very small percentages.\n"
     if ohlcv_summary:
         prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
     if correlation_matrix:
@@ -570,19 +570,19 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
         prompt += (
             "\nPairwise correlation matrix (Pearson correlation of daily returns, range -1 to +1):\n"
             f"{json.dumps(trimmed, indent=2)}\n"
-            "Use this to diversify your selection. Coins with correlation > 0.7 move very similarly – "
-            "avoid selecting too many highly correlated coins, as they concentrate risk. "
-            "Prefer coins with low or negative correlation to your existing selections to spread risk.\n"
+            "Use this to diversify your selection. Stocks with correlation > 0.7 move very similarly – "
+            "avoid selecting too many highly correlated stocks, as they concentrate risk. "
+            "Prefer stocks with low or negative correlation to your existing selections to spread risk.\n"
         )
     if historical_ohlcv_summary:
         prompt += (
             "\nHistorical OHLCV summary from database (up to 30 days, price change %, high, low, volume, candle count):\n"
             f"{json.dumps(historical_ohlcv_summary, indent=2)}\n"
-            "Use this longer-term data to assess sustained trends and avoid coins in prolonged decline. "
-            "Prefer coins with consistent upward momentum over the full period.\n"
+            "Use this longer-term data to assess sustained trends and avoid stocks in prolonged decline. "
+            "Prefer stocks with consistent upward momentum over the full period.\n"
         )
     if coin_indicators:
-        prompt += "\nTechnical indicators for candidate coins:\n"
+        prompt += "\nTechnical indicators for candidate stocks:\n"
         for sym, tf_indicators in coin_indicators.items():
             lines = [f"{sym}:"]
             for tf, ind in tf_indicators.items():
@@ -674,14 +674,14 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
     if market_breadth:
         prompt += (
             f"\nMarket breadth: {market_breadth['positive_pct']}% of {market_breadth['total_count']} "
-            f"candidate coins have a positive 24h change ({market_breadth['positive_count']} positive).\n"
+            f"candidate stocks have a positive 24h change ({market_breadth['positive_count']} positive).\n"
             "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
             "Use this to gauge overall market participation and adjust your coin selection and risk parameters accordingly.\n"
         )
     if full_market_breadth:
         prompt += (
-            f"\nFull market breadth (all available pairs): {full_market_breadth['positive_pct']}% of "
-            f"{full_market_breadth['total_count']} pairs have a positive 24h change "
+            f"\nFull market breadth (all available stocks): {full_market_breadth['positive_pct']}% of "
+            f"{full_market_breadth['total_count']} stocks have a positive 24h change "
             f"({full_market_breadth['positive_count']} positive).\n"
             "This is a broader measure than the candidate‑only breadth. "
             "Use it to confirm the overall market health. "
@@ -691,9 +691,9 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
     if news_section:
         prompt += f"\n{news_section}\n"
     prompt += (
-        "\n**Sentiment is a critical factor in coin selection.** "
-        "Prefer coins with a positive aggregate sentiment (compound > 0.1). "
-        "Avoid coins with strongly negative sentiment (compound < -0.2) unless there is overwhelming technical evidence. "
+        "\n**Sentiment is a critical factor in stock selection.** "
+        "Prefer stocks with a positive aggregate sentiment (compound > 0.1). "
+        "Avoid stocks with strongly negative sentiment (compound < -0.2) unless there is overwhelming technical evidence. "
         "Use sentiment to gauge market hype and potential short‑term momentum.\n"
     )
     if performance:
