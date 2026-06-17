@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Base currency
     BASE_CURRENCY: str = "USD"
 
+    # Benchmark symbol for relative strength and market trend (e.g., SPY, QQQ)
+    BENCHMARK_SYMBOL: str = "SPY"
+
     # Max symbols to trade simultaneously
     MAX_SYMBOLS: int = 10
 
@@ -92,17 +95,8 @@ class Settings(BaseSettings):
             raise ValueError("OHLCV_TIMEFRAMES must be a list of strings")
         return v
 
-    # Fear & Greed Index (crypto – disabled by default for stocks)
-    FEAR_GREED_ENABLED: bool = False
-    FEAR_GREED_CACHE_TTL_SECONDS: int = 3600
 
-    # Global market data (crypto – disabled by default)
-    GLOBAL_MARKET_DATA_CACHE_TTL_SECONDS: int = 1800
 
-    # Altcoin Season Index (crypto – disabled by default)
-    ALTCOIN_SEASON_ENABLED: bool = False
-    ALTCOIN_SEASON_CACHE_TTL_SECONDS: int = 3600
-    CMC_API_KEY: Optional[str] = None
 
     @field_validator("LLM_PROVIDER")
     @classmethod
@@ -328,14 +322,6 @@ class Settings(BaseSettings):
     STOCKTWITS_API_KEY: Optional[str] = None
     STOCKTWITS_MAX_POSTS: int = 5
 
-    # Crypto-specific news source limits (ignored if keys not set)
-    CRYPTOPANIC_MAX_POSTS: int = 5
-    CRYPTOCOMPARE_MAX_ARTICLES: int = 5
-    LUNARCRUSH_MAX_ARTICLES: int = 5
-    SANTIMENT_MAX_ARTICLES: int = 5
-    MESSARI_MAX_ARTICLES: int = 5
-    # (crypto-specific – will be removed in a later step)
-    COINMARKETCAP_MAX_ARTICLES: int = 5
 
     # Rate limiting for news providers
     NEWS_RATE_LIMIT_ENABLED: bool = True
