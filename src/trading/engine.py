@@ -47,9 +47,9 @@ from src.indicators import (
     compute_all_indicators,
 )
 try:
-    from src.news.fetcher import discover_trending_coins
+    from src.news.fetcher import discover_trending_stocks
 except ImportError:
-    discover_trending_coins = None
+    discover_trending_stocks = None
 from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm, LLMStrategy
 from src.strategies.validator import validate_signal
@@ -1327,10 +1327,10 @@ class TradingEngine:
             return
 
         # --- News-driven coin discovery: add trending coins not in the top 50 ---
-        if settings.NEWS_ENABLED and settings.NEWS_COIN_DISCOVERY_ENABLED and discover_trending_coins is not None:
+        if settings.NEWS_ENABLED and settings.NEWS_COIN_DISCOVERY_ENABLED and discover_trending_stocks is not None:
             try:
                 discovered = await asyncio.to_thread(
-                    discover_trending_coins,
+                    discover_trending_stocks,
                     self.base_currency,
                     available_pairs,
                     max_coins=settings.NEWS_COIN_DISCOVERY_MAX_COINS,

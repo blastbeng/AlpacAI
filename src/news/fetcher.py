@@ -131,19 +131,19 @@ def _is_relevant(symbol: str, title: str, summary: str) -> bool:
     # Must mention the symbol at least once
     if sym_lower not in text:
         return False
-    # Crypto‑specific keywords that indicate relevance
-    crypto_keywords = [
-        "crypto", "bitcoin", "ethereum", "blockchain", "defi", "nft",
-        "altcoin", "token", "exchange", "trading", "bullish", "bearish",
-        "price", "market", "volume", "breakout", "support", "resistance",
-        "whale", "accumulation", "dump", "pump", "regulation", "sec",
-        "binance", "coinbase", "bybit", "kraken", "ftx",
+    # Stock/ETF‑specific keywords that indicate relevance
+    stock_keywords = [
+        "stock", "equity", "etf", "market", "trading", "bullish", "bearish",
+        "price", "volume", "breakout", "support", "resistance",
+        "earnings", "revenue", "dividend", "sector", "index",
+        "fed", "interest rate", "inflation", "gdp", "jobs report",
+        "analyst", "upgrade", "downgrade", "ipo", "merger", "acquisition",
     ]
-    # Score: +2 for symbol in title, +1 for each crypto keyword found
+    # Score: +2 for symbol in title, +1 for each stock keyword found
     score = 0
     if sym_lower in title.lower():
         score += 2
-    for kw in crypto_keywords:
+    for kw in stock_keywords:
         if kw in text:
             score += 1
     # Require at least 3 points (symbol in title + one keyword, or three keywords)
@@ -271,7 +271,7 @@ def get_aggregate_sentiment(symbol: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def discover_trending_coins(
+def discover_trending_stocks(
     base_currency: str,
     existing_pairs: List[str],
     max_coins: int = 5,
@@ -279,54 +279,56 @@ def discover_trending_coins(
     min_articles: int = 3,
 ) -> List[str]:
     """
-    Scan recent news for coins not in existing_pairs that have strong positive sentiment.
-    Returns a list of trading pair strings (e.g., ["DOGE/USDT", "SHIB/USDT"]).
+    Discover trending stocks not already in existing_pairs by looking at
+    top daily gainers among tradable assets and filtering by positive news sentiment.
     """
-    if not settings.NEWS_ENABLED:
+    if not settings.NEWS_ENABLED or not settings.NEWS_COIN_DISCOVERY_ENABLED:
         return []
 
-    # Fetch top 100 coins by market cap from CoinGecko (free, no key)
+    from src.exchanges.factory import get_data_client
+    from src.exchanges.market_data import get_quotes
+
+    data_client = get_data_client()
+    # Use a subset of existing_pairs to avoid excessive API calls (max 200)
+    sample = existing_pairs[:200]
+    if not sample:
+        return []
+
     try:
-        url = "https://api.coingecko.com/api/v3/coins/markets"
-        params = {
-            "vs_currency": "usd",
-            "order": "market_cap_desc",
-            "per_page": 100,
-            "page": 1,
-            "sparkline": "false",
-        }
-        response = httpx.get(url, params=params, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
-        response.raise_for_status()
-        coins_data = response.json()
+        quotes = get_quotes(data_client, sample)
     except Exception as e:
-        logger.warning(f"Failed to fetch coin list for discovery: {e}")
+        logger.warning(f"Failed to fetch quotes for stock discovery: {e}")
         return []
 
-    # Build a set of symbols already in the candidate pool (without the quote currency)
+    # Build list of (symbol, change_24h)
+    gainers = []
+    for sym in sample:
+        q = quotes.get(sym)
+        if q and q.get("change_24h") is not None:
+            gainers.append((sym, q["change_24h"]))
+    # Sort by change descending (biggest gainers first)
+    gainers.sort(key=lambda x: x[1], reverse=True)
+
     existing_symbols = {pair.split("/")[0].lower() for pair in existing_pairs}
-
     candidates = []
-    for coin in coins_data:
-        symbol = coin.get("symbol", "").upper()
-        if not symbol:
+    for sym, change in gainers:
+        if sym in existing_pairs:
             continue
-        pair = f"{symbol}/{base_currency}"
-        if pair in existing_pairs:
+        base = sym.split("/")[0] if "/" in sym else sym
+        if base.lower() in existing_symbols:
             continue
-        if symbol.lower() in existing_symbols:
-            continue
-
-        # Check news sentiment for this coin (use base coin for DB lookup)
-        base = pair.split("/")[0] if "/" in pair else pair
+        # Check news sentiment
         agg = get_aggregate_sentiment_from_db(base, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
         if agg and agg["total_articles"] >= min_articles and agg["avg_compound"] >= min_sentiment:
-            candidates.append((pair, agg["avg_compound"]))
+            candidates.append((sym, agg["avg_compound"]))
+        if len(candidates) >= max_coins:
+            break
 
     # Sort by sentiment descending and take top N
     candidates.sort(key=lambda x: x[1], reverse=True)
     discovered = [pair for pair, _ in candidates[:max_coins]]
     if discovered:
-        logger.info(f"News-driven coin discovery found: {discovered}")
+        logger.info(f"News-driven stock discovery found: {discovered}")
     return discovered
 
 
@@ -348,7 +350,7 @@ def _fetch_newsapi(symbol: str) -> List[Dict[str, str]]:
         logger.debug(f"Fetching NewsAPI for {symbol}...")
         url = "https://newsapi.org/v2/everything"
         params = {
-            "q": f"{symbol.split('/')[0]} crypto",
+            "q": f"{symbol.split('/')[0]} stock",
             "language": "en",
             "sortBy": "publishedAt",
             "pageSize": settings.NEWS_MAX_ARTICLES_PER_SYMBOL,
@@ -413,7 +415,7 @@ def _fetch_twitter(symbol: str) -> List[Dict[str, str]]:
         _get_rate_limiter().wait("twitter")
         logger.debug(f"Fetching Twitter for {symbol}...")
         client = tweepy.Client(bearer_token=settings.TWITTER_BEARER_TOKEN, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
-        query = f"${symbol.split('/')[0]} crypto -is:retweet lang:en"
+        query = f"${symbol.split('/')[0]} stock -is:retweet lang:en"
         tweets = client.search_recent_tweets(
             query=query,
             max_results=min(settings.NEWS_MAX_ARTICLES_PER_SYMBOL, 10),
@@ -462,7 +464,7 @@ def _fetch_reddit(symbol: str) -> List[Dict[str, str]]:
             timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS,
         )
         submissions = reddit.subreddit("all").search(
-            f"{symbol.split('/')[0]} crypto",
+            f"{symbol.split('/')[0]} stock",
             sort="relevance",
             time_filter="week",
             limit=settings.NEWS_MAX_ARTICLES_PER_SYMBOL,
@@ -545,7 +547,7 @@ def _fetch_youtube(symbol: str) -> List[Dict[str, str]]:
         url = "https://www.googleapis.com/youtube/v3/search"
         params = {
             "part": "snippet",
-            "q": f"{symbol.split('/')[0]} crypto",
+            "q": f"{symbol.split('/')[0]} stock",
             "type": "video",
             "maxResults": settings.YOUTUBE_MAX_RESULTS,
             "order": "date",
@@ -874,7 +876,7 @@ def _fetch_googlenews(symbol: str) -> List[Dict[str, str]]:
         _get_rate_limiter().wait("googlenews")
         logger.debug(f"Fetching Google News for {symbol}...")
         base = symbol.split("/")[0]
-        url = f"https://news.google.com/rss/search?q={base}+crypto&hl=en-US&gl=US&ceid=US:en"
+        url = f"https://news.google.com/rss/search?q={base}+stock&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(url)
         articles = []
         for entry in feed.entries[:settings.GOOGLE_NEWS_MAX_ARTICLES]:
