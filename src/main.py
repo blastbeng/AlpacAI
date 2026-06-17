@@ -84,12 +84,17 @@ async def main():
     server_task = asyncio.create_task(server.serve())
     logging.info(f"Web server started on {settings.WEB_HOST}:{settings.WEB_PORT}")
 
-    # Now set up Telegram (may take time) and start the engine loop
+    # Set up Telegram notifier (object only, no network call yet)
     if settings.TELEGRAM_BOT_TOKEN:
         from src.telegram.bot import TelegramBot
         telegram_bot = TelegramBot(engine)
         engine.set_notifier(telegram_bot)
 
+    # Start the engine as a background task immediately
+    engine_task = asyncio.create_task(engine.run())
+
+    # Now start the Telegram bot (if configured) – engine is already running
+    if settings.TELEGRAM_BOT_TOKEN:
         await telegram_bot.start()
         await telegram_bot.send_notification("🤖 AlpacAI started! Use the buttons below to control me.")
 
@@ -107,9 +112,6 @@ async def main():
         except NotImplementedError:
             # Windows doesn't support add_signal_handler
             signal.signal(sig, lambda s, f: _signal_handler())
-
-    # Start the engine as a background task
-    engine_task = asyncio.create_task(engine.run())
 
     # Wait for shutdown signal
     await shutdown_event.wait()
