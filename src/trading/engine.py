@@ -1,5 +1,4 @@
 import asyncio
-import httpx
 import json
 import logging
 import math
@@ -1522,18 +1521,17 @@ class TradingEngine:
             else:
                 sentiment_trend[base_coin] = None
 
-        # Overall market trend (use BTC/USDT as benchmark)
+        # Overall market trend (use SPY as benchmark)
         market_trend = None
-        btc_symbol = "BTC/USDT"
-        if btc_symbol in tickers:
-            btc_ticker = tickers[btc_symbol]
+        spy_symbol = "SPY"
+        if spy_symbol in tickers:
+            spy_ticker = tickers[spy_symbol]
             market_trend = {
-                "symbol": btc_symbol,
-                "change_24h": btc_ticker.get("percentage"),
-                "last": btc_ticker.get("last"),
+                "symbol": spy_symbol,
+                "change_24h": spy_ticker.get("percentage"),
+                "last": spy_ticker.get("last"),
             }
         elif sample_pairs:
-            # fallback to first available pair
             first = sample_pairs[0]
             if first in tickers:
                 t = tickers[first]
@@ -1543,26 +1541,6 @@ class TradingEngine:
                     "last": t.get("last"),
                 }
 
-        # Relative strength vs BTC
-        relative_strength_btc: Dict[str, Dict[str, Any]] = {}
-        btc_price = tickers.get("BTC/USDT", {}).get("last")
-        btc_change_24h = tickers.get("BTC/USDT", {}).get("percentage")
-        if btc_price and btc_price > 0:
-            for sym in sample_pairs:
-                t = tickers.get(sym, {})
-                coin_price = t.get("last")
-                if coin_price and coin_price > 0:
-                    ratio = coin_price / btc_price
-                    coin_change = t.get("percentage")
-                    if coin_change is not None and btc_change_24h is not None:
-                        # Relative performance: (1+coin_change)/(1+btc_change) - 1
-                        rel_perf = ((1 + coin_change / 100) / (1 + btc_change_24h / 100) - 1) * 100
-                    else:
-                        rel_perf = None
-                    relative_strength_btc[sym] = {
-                        "ratio": round(ratio, 8),
-                        "relative_24h_pct": round(rel_perf, 2) if rel_perf is not None else None,
-                    }
 
         # Use the already volume‑sorted sample_pairs for OHLCV fetch (limit to 20 to avoid rate limits)
         sorted_by_vol = sample_pairs[:50]
@@ -1723,9 +1701,6 @@ class TradingEngine:
                             correlation_matrix[sym_a][sym_b] = round(cov / (std_a * std_b), 3)
 
         perf = self._compute_performance_metrics()
-        fear_greed = await self._get_fear_greed_index()
-        global_market = await self._fetch_global_market_data()
-        altcoin_season = await self._fetch_altcoin_season_index()
         # Current trading session (US stock market)
         now_utc = datetime.now(timezone.utc)
         utc_hour = now_utc.hour
@@ -1768,13 +1743,10 @@ class TradingEngine:
 
         # Store market status in Redis for the web dashboard
         market_status = {
-            "fear_greed": fear_greed,
-            "global_market": global_market,
-            "altcoin_season": altcoin_season,
+            "vix": vix,
             "market_breadth": market_breadth,
             "full_market_breadth": full_market_breadth,
-            "btc_dominance": global_market.get("btc_dominance") if global_market else None,
-            "total_market_cap": global_market,
+            "spy_price": market_trend["last"] if market_trend else None,
             "timestamp": time.time(),
         }
         await asyncio.to_thread(self.redis.setex, "market:status", 3600, json.dumps(market_status))
@@ -1854,13 +1826,8 @@ class TradingEngine:
             "news_sentiment": news_sentiment,
             "coin_indicators": coin_indicators,
             "performance": perf,
-            "fear_greed": fear_greed,
-            "global_market": global_market,
-            "altcoin_season": altcoin_season,
             "session_info": session_info,
             "market_breadth": market_breadth,
-            "btc_dominance": global_market.get("btc_dominance") if global_market else None,
-            "total_market_cap": global_market if global_market else None,
             "trading_paused": trading_paused_bool,
             "open_positions": self.positions,
             "coin_tenure": coin_tenure,
@@ -1875,7 +1842,6 @@ class TradingEngine:
             "coin_depths": coin_depths,
             "historical_ohlcv_summary": historical_ohlcv_summary,
             "correlation_matrix": correlation_matrix,
-            "relative_strength_btc": relative_strength_btc,
             "sentiment_trend": sentiment_trend,
             "vix": vix,
             "top_opportunities": top_opportunities,
@@ -2368,9 +2334,13 @@ class TradingEngine:
                 return
 
             # Gather minimal market context
-            fear_greed = await self._get_fear_greed_index()
-            global_market = await self._fetch_global_market_data()
-            altcoin_season = await self._fetch_altcoin_season_index()
+            vix = await self._fetch_vix()
+            spy_price = None
+            try:
+                spy_ticker = await asyncio.to_thread(self.exchange.fetch_ticker, "SPY")
+                spy_price = spy_ticker.get("last")
+            except Exception:
+                pass
 
             # Market breadth from Redis (already computed by background task)
             full_market_breadth = None
@@ -2381,14 +2351,6 @@ class TradingEngine:
             except Exception:
                 pass
             market_breadth = getattr(self, '_market_breadth', None)
-
-            # BTC price for context
-            btc_price = None
-            try:
-                ticker = await asyncio.to_thread(self.exchange.fetch_ticker, "BTC/USDT")
-                btc_price = ticker.get("last")
-            except Exception:
-                pass
 
             # Current pause reason
             reason_raw = await asyncio.to_thread(self.redis.get, "trading:pause_reason")
@@ -2417,18 +2379,14 @@ class TradingEngine:
             prompt_parts.append(f"Account P&L: daily={daily_pnl:.4f}, total={total_pnl:.4f}, drawdown={drawdown_pct:.2f}%")
             if consecutive_losses > 0:
                 prompt_parts.append(f"Consecutive losing trades: {consecutive_losses}")
-            if fear_greed:
-                prompt_parts.append(f"Fear & Greed Index: {fear_greed['value']} ({fear_greed['classification']})")
-            if btc_price:
-                prompt_parts.append(f"BTC/USDT price: {btc_price}")
+            if vix is not None:
+                prompt_parts.append(f"VIX: {vix:.2f}")
+            if spy_price is not None:
+                prompt_parts.append(f"SPY price: {spy_price}")
             if market_breadth:
-                prompt_parts.append(f"Market breadth (top coins): {market_breadth['positive_pct']}% positive")
+                prompt_parts.append(f"Market breadth (top stocks): {market_breadth['positive_pct']}% positive")
             if full_market_breadth:
                 prompt_parts.append(f"Full market breadth: {full_market_breadth['positive_pct']}% positive")
-            if global_market and global_market.get("btc_dominance") is not None:
-                prompt_parts.append(f"BTC dominance: {global_market['btc_dominance']}%")
-            if altcoin_season:
-                prompt_parts.append(f"Altcoin Season Index: {altcoin_season['value']} ({altcoin_season['description']})")
 
             # Check if this is a recent auto-resume situation
             last_auto_resume_raw = await asyncio.to_thread(self.redis.get, "trading:last_auto_resume")
@@ -2753,28 +2711,6 @@ class TradingEngine:
                 async with self._exchange_semaphore:
                     ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
             current_price = ticker['last']
-            # Relative strength vs BTC for this coin
-            rel_strength_btc = None
-            try:
-                btc_ticker = self.ws_manager.get_ticker("BTC/USDT")
-                if btc_ticker is None:
-                    async with self._exchange_semaphore:
-                        btc_ticker = await asyncio.to_thread(self.exchange.fetch_ticker, "BTC/USDT")
-                btc_price = btc_ticker.get("last")
-                if btc_price and btc_price > 0 and ticker.get("last"):
-                    ratio = ticker["last"] / btc_price
-                    coin_change = ticker.get("percentage")
-                    btc_change = btc_ticker.get("percentage")
-                    if coin_change is not None and btc_change is not None:
-                        rel_perf = ((1 + coin_change / 100) / (1 + btc_change / 100) - 1) * 100
-                    else:
-                        rel_perf = None
-                    rel_strength_btc = {
-                        "ratio": round(ratio, 8),
-                        "relative_24h_pct": round(rel_perf, 2) if rel_perf is not None else None,
-                    }
-            except Exception:
-                pass
             order_book = self.ws_manager.get_order_book(symbol)
             if order_book is None:
                 async with self._exchange_semaphore:
@@ -3252,9 +3188,6 @@ class TradingEngine:
                 volume_trend_val = await self._compute_volume_trend(symbol, current_volume)
 
             remaining = max(0.0, base_balance - self._cycle_spent)
-            fear_greed = await self._get_fear_greed_index()
-            global_market = await self._fetch_global_market_data()
-            altcoin_season = await self._fetch_altcoin_season_index()
 
             # Fetch full market breadth from Redis (computed by background task)
             full_market_breadth = None
@@ -3450,8 +3383,6 @@ class TradingEngine:
                 "multi_tf_raw_candles": multi_tf_raw_candles,
                 "multi_tf_indicators": multi_tf_indicators,
                 "scalping_feasibility_score": scalping_score,
-                "fear_greed_index": fear_greed,
-                "relative_strength_btc": rel_strength_btc,
                 "vwap": vwap,
                 "vwap_multi_tf": vwap_multi_tf,
                 "session_info": session_info,
@@ -3463,9 +3394,6 @@ class TradingEngine:
                 "parabolic_sar": parabolic_sar,
                 "keltner_channels": keltner_channels,
                 "pivot_points": pivot_points,
-                "btc_dominance": global_market.get("btc_dominance") if global_market else None,
-                "total_market_cap": global_market if global_market else None,
-                "altcoin_season": altcoin_season,
                 "cvd": cvd,
                 "cvd_normalized": cvd_normalized,
                 "order_book_pressure_trend": order_book_pressure_trend,
