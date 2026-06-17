@@ -328,8 +328,8 @@ class TradingEngine:
         if not settings.NEWS_ENABLED:
             return ""
         try:
-            base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-            agg_sent = get_aggregate_sentiment_from_db(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+            base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
+            agg_sent = get_aggregate_sentiment_from_db(base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
             if not agg_sent:
                 return ""
 
@@ -389,8 +389,8 @@ class TradingEngine:
         if not settings.NEWS_ENABLED:
             return ""
         try:
-            base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-            articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+            base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
+            articles = get_news_for_symbol(base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
             if articles:
                 # Use the most recent article's title, truncated
                 title = articles[0].get("title", "")
@@ -435,10 +435,10 @@ class TradingEngine:
             return
         try:
             from src.news.fetcher import fetch_news_for_symbol
-            base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+            base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
             articles = await asyncio.to_thread(fetch_news_for_symbol, symbol)
             if articles:
-                await asyncio.to_thread(store_news_articles, base_coin, articles)
+                await asyncio.to_thread(store_news_articles, base_symbol, articles)
         except Exception as e:
             logger.debug(f"News fetch/store failed for {symbol}: {e}")
 
@@ -525,8 +525,8 @@ class TradingEngine:
                     try:
                         articles = await asyncio.to_thread(fetch_news_for_symbol, sym)
                         if articles:
-                            base_coin = sym.split("/")[0] if "/" in sym else sym
-                            await asyncio.to_thread(store_news_articles, base_coin, articles)
+                            base_symbol = sym.split("/")[0] if "/" in sym else sym
+                            await asyncio.to_thread(store_news_articles, base_symbol, articles)
                     except Exception as e:
                         logger.debug(f"News refresh failed for {sym}: {e}")
                     await asyncio.sleep(0.2)
@@ -1274,8 +1274,8 @@ class TradingEngine:
             filtered_pairs = []
             for sym in candidate_pairs:
                 try:
-                    base_coin = sym.split("/")[0] if "/" in sym else sym
-                    agg = await asyncio.to_thread(get_aggregate_sentiment_from_db, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+                    base_symbol = sym.split("/")[0] if "/" in sym else sym
+                    agg = await asyncio.to_thread(get_aggregate_sentiment_from_db, base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
                     if agg and agg["avg_compound"] >= settings.SYMBOL_SELECTION_MIN_SENTIMENT:
                         filtered_pairs.append(sym)
                     elif not agg:
@@ -1372,10 +1372,10 @@ class TradingEngine:
         if settings.NEWS_ENABLED:
             for sym in sample_pairs:
                 try:
-                    base_coin = sym.split("/")[0] if "/" in sym else sym
-                    agg = await asyncio.to_thread(get_aggregate_sentiment_from_db, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+                    base_symbol = sym.split("/")[0] if "/" in sym else sym
+                    agg = await asyncio.to_thread(get_aggregate_sentiment_from_db, base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
                     if agg:
-                        news_sentiment[base_coin] = agg
+                        news_sentiment[base_symbol] = agg
                 except Exception as e:
                     logger.debug(f"Could not fetch news sentiment for {sym}: {e}")
 
@@ -1387,10 +1387,10 @@ class TradingEngine:
             t = tickers.get(sym, {})
             change_24h = t.get('percentage')
             score = symbol_scores.get(sym, 0)
-            base_coin = sym.split("/")[0] if "/" in sym else sym
+            base_symbol = sym.split("/")[0] if "/" in sym else sym
             sentiment_val = None
-            if base_coin in news_sentiment:
-                sentiment_val = news_sentiment[base_coin].get("avg_compound")
+            if base_symbol in news_sentiment:
+                sentiment_val = news_sentiment[base_symbol].get("avg_compound")
             top_opportunities.append({
                 "symbol": sym,
                 "score": score,
@@ -1401,19 +1401,19 @@ class TradingEngine:
         # Sentiment trend (delta from previous cycle)
         sentiment_trend: Dict[str, Optional[float]] = {}
         for sym in sample_pairs:
-            base_coin = sym.split("/")[0] if "/" in sym else sym
+            base_symbol = sym.split("/")[0] if "/" in sym else sym
             current_compound = None
-            if base_coin in news_sentiment:
-                current_compound = news_sentiment[base_coin].get("avg_compound")
-            prev_key = f"sentiment:prev:{base_coin}"
+            if base_symbol in news_sentiment:
+                current_compound = news_sentiment[base_symbol].get("avg_compound")
+            prev_key = f"sentiment:prev:{base_symbol}"
             prev_raw = await asyncio.to_thread(self.redis.get, prev_key)
             prev_compound = float(prev_raw) if prev_raw else None
             if current_compound is not None:
                 await asyncio.to_thread(self.redis.setex, prev_key, settings.NEWS_CACHE_TTL_SECONDS, str(current_compound))
             if current_compound is not None and prev_compound is not None:
-                sentiment_trend[base_coin] = round(current_compound - prev_compound, 4)
+                sentiment_trend[base_symbol] = round(current_compound - prev_compound, 4)
             else:
-                sentiment_trend[base_coin] = None
+                sentiment_trend[base_symbol] = None
 
         # Overall market trend (use SPY as benchmark)
         market_trend = None
@@ -3050,9 +3050,9 @@ class TradingEngine:
             aggregate_sentiment = None
             if settings.NEWS_ENABLED:
                 try:
-                    base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+                    base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
                     aggregate_sentiment = await asyncio.to_thread(
-                        get_aggregate_sentiment_from_db, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS
+                        get_aggregate_sentiment_from_db, base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS
                     )
                 except Exception as e:
                     logger.debug(f"Could not fetch aggregate sentiment for {symbol}: {e}")
@@ -3060,9 +3060,9 @@ class TradingEngine:
             # Sentiment trend for this symbol
             sentiment_trend_val = None
             if aggregate_sentiment:
-                base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+                base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
                 current_compound = aggregate_sentiment.get("avg_compound")
-                prev_key = f"sentiment:prev:{base_coin}"
+                prev_key = f"sentiment:prev:{base_symbol}"
                 prev_raw = await asyncio.to_thread(self.redis.get, prev_key)
                 prev_compound = float(prev_raw) if prev_raw else None
                 if current_compound is not None:
@@ -4717,9 +4717,9 @@ class TradingEngine:
                 news_threshold = pos.get("news_sentiment_exit_threshold")
                 if news_threshold is not None and settings.NEWS_ENABLED:
                     try:
-                        base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+                        base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
                         agg = await asyncio.to_thread(
-                            get_aggregate_sentiment_from_db, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS
+                            get_aggregate_sentiment_from_db, base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS
                         )
                         if agg and agg["avg_compound"] < news_threshold:
                             logger.info(
