@@ -1040,6 +1040,10 @@ class TradingEngine:
         if "initial_balance" in state:
             self.initial_balance = float(state["initial_balance"])
         else:
+            # If paper mode, reset Alpaca paper account to configured balance before fetching
+            if settings.TRADING_MODE == "paper" and settings.ALPACA_PAPER:
+                logger.info(f"Resetting Alpaca paper account to {settings.PAPER_INITIAL_BALANCE} USD")
+                self.trader.reset_paper_balance(settings.PAPER_INITIAL_BALANCE)
             balance = self.trader.fetch_balance()
             self.initial_balance = balance.get(self.base_currency, 0.0)
             save_trading_state("initial_balance", self.initial_balance)
