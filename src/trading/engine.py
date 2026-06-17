@@ -2703,7 +2703,7 @@ class TradingEngine:
             for tf in settings.OHLCV_TIMEFRAMES:
                 if tf in multi_tf_raw_candles:
                     tf_atr = compute_atr(multi_tf_raw_candles[tf])
-                    if tf_atr > 0:
+                    if tf_atr is not None and tf_atr > 0:
                         atr_multi_tf[tf] = tf_atr
 
             # ATR Percentile (volatility context)
