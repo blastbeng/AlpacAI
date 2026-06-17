@@ -419,7 +419,7 @@ def build_stock_selection_prompt(
                 formatted = _format_news_for_prompt(articles)
                 news_lines.append(f"**{pair}**\n{formatted}")
         if news_lines:
-            news_section = "Recent news for top coins:\n\n" + "\n\n".join(news_lines)
+            news_section = "Recent news for top stocks:\n\n" + "\n\n".join(news_lines)
 
     prompt = f"""Current base currency: {base_currency}
 Your available {base_currency} balance: {base_balance:.2f}
@@ -486,20 +486,20 @@ Each symbol can only appear once in your selection. Choose the single best timef
 **Output ONLY the raw JSON object. Do NOT wrap it in ```json fences. Do NOT include any text before or after the JSON.**
 
 Return a JSON object with the following fields:
-- "coins": a JSON array of objects, each with "symbol" and "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h"). Each object may optionally include "max_tenure_hours" (a positive float, hours) to force-sell the stock after that many hours in the portfolio. Omit or set to null for no limit.
-- "max_coins": an integer between 0 and {max_symbols} indicating how many stocks you actually want to trade. Set to 0 to pause trading. This must equal the length of the "coins" array.
+- "stocks": a JSON array of objects, each with "symbol" and "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h"). Each object may optionally include "max_tenure_hours" (a positive float, hours) to force-sell the stock after that many hours in the portfolio. Omit or set to null for no limit.
+- "max_stocks": an integer between 0 and {max_symbols} indicating how many stocks you actually want to trade. Set to 0 to pause trading. This must equal the length of the "stocks" array.
 - "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
-You may optionally include "coin_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.
+You may optionally include "stock_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.
 
-Example: {{"coins": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours": 48}}, {{"symbol": "MSFT", "timeframe": "15m"}}], "max_coins": 2, "reasoning": "AAPL shows strong uptrend on 1h with high volume; MSFT has bullish MACD crossover on 15m.", "coin_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
+Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours": 48}}, {{"symbol": "MSFT", "timeframe": "15m"}}], "max_stocks": 2, "reasoning": "AAPL shows strong uptrend on 1h with high volume; MSFT has bullish MACD crossover on 15m.", "stock_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
     # --- Enhanced pause/resume guidance ---
     if trading_paused:
         prompt += (
             "\n**Trading is currently PAUSED.**\n"
             "You may resume trading by setting `\"pause_trading\": false` if you see clear profit opportunities.\n"
             "Do NOT resume just because market conditions have improved slightly; only resume if you identify specific "
-            "coins with strong setups (high scalping scores, positive sentiment, solid technicals) that are likely to be profitable.\n"
+            "stocks with strong setups (high scalping scores, positive sentiment, solid technicals) that are likely to be profitable.\n"
             "If you keep trading paused, include a `\"pause_reason\"` field explaining why.\n"
         )
     else:
@@ -525,7 +525,7 @@ Example: {{"coins": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours": 
             if sym in symbol_scores:
                 prompt += f"  {sym}: {symbol_scores[sym]:.3f}\n"
         prompt += (
-            "Prioritise coins with higher scores, but use your own judgement. "
+            "Prioritise stocks with higher scores, but use your own judgement. "
             "The score combines volume, volatility, spread, and momentum.\n"
         )
     # --- Top profit opportunities summary ---
@@ -628,7 +628,7 @@ Example: {{"coins": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours": 
         prompt += (
             f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
             "Use this to gauge typical market activity: Asian session often has lower volatility, "
-            "European and US sessions have higher volume and volatility. Adjust your coin selection "
+            "European and US sessions have higher volume and volatility. Adjust your stock selection "
             "and risk parameters accordingly.\n"
         )
     if news_sentiment:
@@ -662,16 +662,16 @@ Example: {{"coins": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours": 
         prompt += (
             "A ratio > 1.0 means current 24h volume is above the recent average; "
             "> 2.0 suggests a significant spike that often precedes large moves. "
-            "Use this to identify coins with unusual activity. "
-            "Prefer coins with elevated volume when looking for breakout or momentum trades; "
-            "be cautious with low-volume coins as moves may lack conviction.\n"
+            "Use this to identify stocks with unusual activity. "
+            "Prefer stocks with elevated volume when looking for breakout or momentum trades; "
+            "be cautious with low-volume stocks as moves may lack conviction.\n"
         )
     if market_breadth:
         prompt += (
             f"\nMarket breadth: {market_breadth['positive_pct']}% of {market_breadth['total_count']} "
             f"candidate stocks have a positive 24h change ({market_breadth['positive_count']} positive).\n"
             "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
-            "Use this to gauge overall market participation and adjust your coin selection and risk parameters accordingly.\n"
+            "Use this to gauge overall market participation and adjust your stock selection and risk parameters accordingly.\n"
         )
     if full_market_breadth:
         prompt += (
