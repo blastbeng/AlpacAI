@@ -670,7 +670,7 @@ def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
                 _get_rate_limiter().wait(feed_url)
                 logger.debug(f"Fetching RSS feed: {feed_url}")
                 headers = {
-                    "User-Agent": "Mozilla/5.0 (compatible; BengoBot/1.0; +https://github.com/your-repo)"
+                    "User-Agent": "Mozilla/5.0 (compatible; AlpacAI/1.0; +https://github.com/your-repo)"
                 }
                 # Retry on 429 with exponential backoff
                 max_retries = 3
@@ -737,7 +737,7 @@ def test_rss_feeds():
         try:
             resp = httpx.get(
                 url,
-                headers={"User-Agent": "Mozilla/5.0 (compatible; BengoBot/1.0; +https://github.com/your-repo)"},
+                headers={"User-Agent": "Mozilla/5.0 (compatible; AlpacAI/1.0; +https://github.com/your-repo)"},
                 timeout=10,
                 follow_redirects=True,
             )

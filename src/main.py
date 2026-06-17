@@ -105,7 +105,7 @@ async def main():
         engine.set_notifier(telegram_bot)
 
         await telegram_bot.start()
-        await telegram_bot.send_notification("🤖 Bengobot started! Use the buttons below to control me.")
+        await telegram_bot.send_notification("🤖 AlpacAI started! Use the buttons below to control me.")
 
     # Graceful shutdown handling
     shutdown_event = asyncio.Event()
