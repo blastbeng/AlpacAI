@@ -91,12 +91,19 @@ async def main():
         engine.set_notifier(telegram_bot)
 
     # Start the engine as a background task immediately
+    logging.info("Creating engine task...")
     engine_task = asyncio.create_task(engine.run())
 
-    # Now start the Telegram bot (if configured) – engine is already running
+    # Start Telegram bot as a background task so it never blocks the engine
+    telegram_task = None
     if settings.TELEGRAM_BOT_TOKEN:
-        await telegram_bot.start()
-        await telegram_bot.send_notification("🤖 AlpacAI started! Use the buttons below to control me.")
+        telegram_task = asyncio.create_task(telegram_bot.start())
+
+        async def _post_start():
+            await telegram_task
+            await telegram_bot.send_notification("🤖 AlpacAI started! Use the buttons below to control me.")
+
+        asyncio.create_task(_post_start())
 
     # Graceful shutdown handling
     shutdown_event = asyncio.Event()
@@ -124,6 +131,16 @@ async def main():
         await engine_task
     except asyncio.CancelledError:
         pass
+
+    # Stop Telegram bot if it was started
+    if telegram_task is not None:
+        telegram_task.cancel()
+        try:
+            await telegram_task
+        except asyncio.CancelledError:
+            pass
+        # Also run the bot's own cleanup
+        await telegram_bot.stop()
 
     # Stop the server
     server.should_exit = True
