@@ -1692,17 +1692,25 @@ class TradingEngine:
         fear_greed = await self._get_fear_greed_index()
         global_market = await self._fetch_global_market_data()
         altcoin_season = await self._fetch_altcoin_season_index()
-        # Current trading session
+        # Current trading session (US stock market)
         now_utc = datetime.now(timezone.utc)
         utc_hour = now_utc.hour
-        if 0 <= utc_hour < 7:
-            session_label = "Asian"
-        elif 7 <= utc_hour < 12:
-            session_label = "European"
-        elif 12 <= utc_hour < 20:
-            session_label = "US"
+        # Convert UTC to Eastern Time (approximate: ET = UTC - 5 normally, -4 during EDT)
+        # For simplicity, use UTC-5 (EST) year-round; the difference is minor for session detection.
+        et_hour = (utc_hour - 5) % 24
+        weekday = now_utc.weekday()  # 0=Monday, 6=Sunday
+        if weekday >= 5:  # Saturday or Sunday
+            session_label = "Closed (weekend)"
+        elif et_hour < 4:
+            session_label = "Closed (overnight)"
+        elif 4 <= et_hour < 9.5:
+            session_label = "Pre-market"
+        elif 9.5 <= et_hour < 16:
+            session_label = "Regular"
+        elif 16 <= et_hour < 20:
+            session_label = "After-hours"
         else:
-            session_label = "Low activity"
+            session_label = "Closed (overnight)"
         session_info = {"utc_hour": utc_hour, "session": session_label}
 
         # Market breadth: percentage of candidate coins with positive 24h change
@@ -3226,17 +3234,25 @@ class TradingEngine:
                     full_market_breadth = json.loads(full_breadth_raw)
             except Exception:
                 pass
-            # Current trading session
+            # Current trading session (US stock market)
             now_utc = datetime.now(timezone.utc)
             utc_hour = now_utc.hour
-            if 0 <= utc_hour < 7:
-                session_label = "Asian"
-            elif 7 <= utc_hour < 12:
-                session_label = "European"
-            elif 12 <= utc_hour < 20:
-                session_label = "US"
+            # Convert UTC to Eastern Time (approximate: ET = UTC - 5 normally, -4 during EDT)
+            # For simplicity, use UTC-5 (EST) year-round; the difference is minor for session detection.
+            et_hour = (utc_hour - 5) % 24
+            weekday = now_utc.weekday()  # 0=Monday, 6=Sunday
+            if weekday >= 5:  # Saturday or Sunday
+                session_label = "Closed (weekend)"
+            elif et_hour < 4:
+                session_label = "Closed (overnight)"
+            elif 4 <= et_hour < 9.5:
+                session_label = "Pre-market"
+            elif 9.5 <= et_hour < 16:
+                session_label = "Regular"
+            elif 16 <= et_hour < 20:
+                session_label = "After-hours"
             else:
-                session_label = "Low activity"
+                session_label = "Closed (overnight)"
             session_info = {"utc_hour": utc_hour, "session": session_label}
 
             # Fetch current global risk multiplier so the LLM can adjust position sizing
