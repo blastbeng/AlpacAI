@@ -1121,6 +1121,7 @@ class TradingEngine:
         asyncio.create_task(self._periodic_pause_check())
         asyncio.create_task(self._periodic_full_market_breadth())
         asyncio.create_task(self._check_pending_entries())
+        asyncio.create_task(self._cleanup_orphaned_orders())
 
         # Initial symbol selection and subscription update
         await self._reevaluate_symbols()
@@ -4884,6 +4885,7 @@ class TradingEngine:
                 return
             # Extract known parameters from the LLM's strategy_params (if any)
             params = signal.strategy_params or {}
+            fill_timeout = params.get("order_fill_timeout_seconds", settings.ORDER_FILL_TIMEOUT_SECONDS)
 
             # Use LLM-provided risk parameters directly (no hardcoded minimums)
             fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
@@ -5125,7 +5127,7 @@ class TradingEngine:
                 logger.warning(f"Could not verify/adjust min order size for {symbol}: {e}")
 
             try:
-                order = await asyncio.to_thread(self.trader.create_market_buy_order, symbol, amount)
+                order = await asyncio.to_thread(self.trader.create_market_buy_order, symbol, amount, fill_timeout)
                 logger.info(f"BUY {symbol}: {order}")
                 self._cycle_spent += order['cost']
                 # Update or create position
@@ -5269,6 +5271,8 @@ class TradingEngine:
                     )
 
         elif signal.action == "SELL":
+            params = signal.strategy_params or {}
+            fill_timeout = params.get("order_fill_timeout_seconds", settings.ORDER_FILL_TIMEOUT_SECONDS)
             # Fetch fee rate for this symbol
             fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
             # Determine the amount of base currency to sell
@@ -5347,7 +5351,7 @@ class TradingEngine:
                 logger.warning(f"Could not verify min sell size for {symbol}: {e}")
 
             try:
-                order = await asyncio.to_thread(self.trader.create_market_sell_order, symbol, gross_amount)
+                order = await asyncio.to_thread(self.trader.create_market_sell_order, symbol, gross_amount, fill_timeout)
                 logger.info(f"SELL {symbol}: {order}")
                 # Compute realized P&L
                 fee = order.get('fee', {})
@@ -5976,7 +5980,7 @@ class TradingEngine:
 
         try:
             order = await asyncio.to_thread(
-                self.trader.create_market_sell_order, symbol, sell_amount
+                self.trader.create_market_sell_order, symbol, sell_amount, settings.ORDER_FILL_TIMEOUT_SECONDS
             )
             logger.info(f"Partial TP SELL {symbol}: {sell_amount:.6f} @ {order.get('price', current_price):.4f}")
 
@@ -6118,7 +6122,7 @@ class TradingEngine:
 
         try:
             order = await asyncio.to_thread(
-                self.trader.create_market_sell_order, symbol, sell_amount
+                self.trader.create_market_sell_order, symbol, sell_amount, settings.ORDER_FILL_TIMEOUT_SECONDS
             )
             logger.info(f"Partial TP level {level_index} SELL {symbol}: {sell_amount:.6f} @ {order.get('price', current_price):.4f}")
 
@@ -6265,7 +6269,7 @@ class TradingEngine:
             return
 
         try:
-            order = await asyncio.to_thread(self.trader.create_market_sell_order, symbol, balance)
+            order = await asyncio.to_thread(self.trader.create_market_sell_order, symbol, balance, settings.ORDER_FILL_TIMEOUT_SECONDS)
             logger.info(f"Dust sweep: sold {balance} {base} from {symbol} – order {order.get('id')}")
 
             # Record the dust sale in trade history for consistency
@@ -6312,6 +6316,22 @@ class TradingEngine:
                 )
         except Exception as e:
             logger.error(f"Dust sweep failed for {symbol}: {e}")
+
+    async def _cleanup_orphaned_orders(self):
+        """Periodically cancel any open orders that are older than 10 minutes."""
+        await asyncio.sleep(120)  # initial delay
+        while self._running:
+            try:
+                open_orders = await asyncio.to_thread(self.trader.get_open_orders)
+                now = time.time()
+                for order in open_orders:
+                    created_at = order.get('timestamp', 0) / 1000.0  # ms to seconds
+                    if now - created_at > 600:  # 10 minutes
+                        logger.warning(f"Cancelling orphaned order {order['id']} for {order['symbol']} (open for {now - created_at:.0f}s).")
+                        await asyncio.to_thread(self.trader.cancel_order, order['id'])
+            except Exception as e:
+                logger.error(f"Orphaned order cleanup error: {e}")
+            await asyncio.sleep(300)  # every 5 minutes
 
     def _is_excluded(self, symbol: str, timeframe: str) -> bool:
         """Return True if (symbol, timeframe) is in the EXCLUDED_SYMBOLS list."""

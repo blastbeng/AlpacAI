@@ -46,7 +46,7 @@ class LiveTrader:
     # ------------------------------------------------------------------
     # Order placement
     # ------------------------------------------------------------------
-    def create_market_buy_order(self, symbol: str, quote_amount: float) -> Dict[str, Any]:
+    def create_market_buy_order(self, symbol: str, quote_amount: float, timeout: float = 60.0) -> Dict[str, Any]:
         """
         Place a market buy order using quote currency amount (USD).
         Waits for the order to fill before returning.
@@ -59,10 +59,10 @@ class LiveTrader:
             time_in_force=TimeInForce.DAY,
         )
         order = self.trading_client.submit_order(order_data)
-        filled_order = self._wait_for_order_fill(order.id, base)
+        filled_order = self._wait_for_order_fill(order.id, base, timeout)
         return self._order_to_dict(filled_order, symbol)
 
-    def create_market_sell_order(self, symbol: str, qty: float) -> Dict[str, Any]:
+    def create_market_sell_order(self, symbol: str, qty: float, timeout: float = 60.0) -> Dict[str, Any]:
         """Place a market sell order for a given quantity of shares. Waits for fill before returning."""
         base = symbol.split("/")[0]
         order_data = MarketOrderRequest(
@@ -72,7 +72,7 @@ class LiveTrader:
             time_in_force=TimeInForce.DAY,
         )
         order = self.trading_client.submit_order(order_data)
-        filled_order = self._wait_for_order_fill(order.id, base)
+        filled_order = self._wait_for_order_fill(order.id, base, timeout)
         return self._order_to_dict(filled_order, symbol)
 
     # ------------------------------------------------------------------
@@ -104,8 +104,9 @@ class LiveTrader:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-    def _wait_for_order_fill(self, order_id: str, symbol: str, timeout: float = 30.0) -> Any:
-        """Poll Alpaca until the order is filled, rejected, or cancelled."""
+    def _wait_for_order_fill(self, order_id: str, symbol: str, timeout: float) -> Any:
+        """Poll Alpaca until the order is filled, rejected, or cancelled.
+        If the timeout expires, cancel the order to avoid orphans."""
         start = time.time()
         while time.time() - start < timeout:
             order = self.trading_client.get_order_by_id(order_id)
@@ -113,8 +114,24 @@ class LiveTrader:
                 return order
             elif order.status in (OrderStatus.REJECTED, OrderStatus.CANCELED, OrderStatus.EXPIRED):
                 raise RuntimeError(f"Order {order_id} {order.status}")
+            # PARTIALLY_FILLED → keep waiting
             time.sleep(0.5)
-        raise RuntimeError(f"Order {order_id} did not fill within {timeout}s")
+
+        # Timeout – fetch one last time in case it filled just after the loop
+        order = self.trading_client.get_order_by_id(order_id)
+        if order.status == OrderStatus.FILLED:
+            return order
+
+        # Cancel to avoid leaving an orphan order on Alpaca
+        try:
+            self.trading_client.cancel_order_by_id(order_id)
+            logger.warning(f"Order {order_id} for {symbol} cancelled after {timeout}s timeout.")
+        except Exception as e:
+            logger.error(f"Failed to cancel order {order_id}: {e}")
+
+        raise RuntimeError(
+            f"Order {order_id} for {symbol} did not fill within {timeout}s and was cancelled."
+        )
 
     def _order_to_dict(self, order, symbol: str) -> Dict[str, Any]:
         """Convert an Alpaca order object to the dict format expected by the engine."""

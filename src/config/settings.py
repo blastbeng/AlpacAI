@@ -270,6 +270,16 @@ class Settings(BaseSettings):
     # Set to False to allow trades with very small expected profit.
     ENFORCE_MIN_PROFIT_PER_TRADE: bool = True
 
+    # Order fill timeout (seconds) – used when LLM does not specify one
+    ORDER_FILL_TIMEOUT_SECONDS: float = 60.0
+
+    @field_validator("ORDER_FILL_TIMEOUT_SECONDS")
+    @classmethod
+    def validate_order_fill_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("ORDER_FILL_TIMEOUT_SECONDS must be positive")
+        return v
+
     # Redis
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
