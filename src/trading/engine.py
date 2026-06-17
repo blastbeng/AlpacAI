@@ -4038,7 +4038,7 @@ class TradingEngine:
                         try:
                             t = self.ws_manager.get_ticker(sym)
                             if t is None:
-                                tickers_map = get_tickers(self.data_client, [sym])
+                                tickers_map = get_quotes(self.data_client, [sym.split("/")[0]])
                                 t = tickers_map.get(sym.split("/")[0])
                             total_value += pos['amount'] * t['last']
                         except Exception:
@@ -4346,7 +4346,7 @@ class TradingEngine:
             try:
                 ticker = self.ws_manager.get_ticker(pos['symbol'])
                 if ticker is None:
-                    tickers_map = get_tickers(self.data_client, [pos['symbol']])
+                    tickers_map = get_quotes(self.data_client, [pos['symbol'].split("/")[0]])
                     ticker = tickers_map.get(pos['symbol'].split("/")[0])
                 price = ticker['last'] if ticker and ticker.get('last') else 0.0
                 pos_value = pos['amount'] * price
@@ -4964,7 +4964,7 @@ class TradingEngine:
                     try:
                         t = self.ws_manager.get_ticker(sym)
                         if t is None:
-                            tickers_map = get_tickers(self.data_client, [sym])
+                            tickers_map = get_quotes(self.data_client, [sym.split("/")[0]])
                             t = tickers_map.get(sym.split("/")[0])
                         total_value += pos['amount'] * t['last']
                     except Exception:
@@ -5625,7 +5625,7 @@ class TradingEngine:
             if ticker is None:
                 try:
                     async with self._exchange_semaphore:
-                        tickers_map = await asyncio.to_thread(get_tickers, self.data_client, [symbol])
+                        tickers_map = await asyncio.to_thread(get_quotes, self.data_client, [symbol.split("/")[0]])
                         ticker = tickers_map.get(symbol.split("/")[0])
                 except Exception:
                     return False
@@ -5676,7 +5676,7 @@ class TradingEngine:
             try:
                 async with self._exchange_semaphore:
                     ohlcv = await asyncio.to_thread(
-                        get_multi_timeframe_ohlcv, self.data_client, symbol, [timeframe], limit=50
+                        get_multi_timeframe_bars, self.data_client, symbol.split("/")[0], [timeframe], limit=50
                     )
             except Exception:
                 return False
