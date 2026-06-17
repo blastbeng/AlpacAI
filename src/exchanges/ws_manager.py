@@ -137,6 +137,10 @@ class WebSocketManager:
                     logger.warning(
                         "Max stream failures reached. Giving up on WebSocket; engine will use REST polling."
                     )
+                    try:
+                        await self.stream.close()
+                    except Exception:
+                        pass
                     self._running = False
                     break
             except Exception as e:
@@ -149,6 +153,10 @@ class WebSocketManager:
                     logger.warning(
                         "Max stream failures reached. Giving up on WebSocket; engine will use REST polling."
                     )
+                    try:
+                        await self.stream.close()
+                    except Exception:
+                        pass
                     self._running = False
                     break
             else:
