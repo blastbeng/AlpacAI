@@ -2,6 +2,7 @@ import logging
 from alpaca.trading.client import TradingClient
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.live import StockDataStream
+from alpaca.data.enums import DataFeed
 from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ def get_streaming_client() -> StockDataStream:
     return StockDataStream(
         api_key=settings.ALPACA_API_KEY,
         secret_key=settings.ALPACA_SECRET_KEY,
-        feed=settings.ALPACA_DATA_FEED,
+        feed=DataFeed.IEX,
         url_override=settings.ALPACA_STREAM_URL,
         raw_data=settings.ALPACA_PAPER,
     )
