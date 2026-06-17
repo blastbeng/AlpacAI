@@ -1258,10 +1258,10 @@ class TradingEngine:
             except Exception as e:
                 logger.warning(f"News coin discovery failed: {e}")
 
-        # Fetch balance and compute per-coin budget
+        # Fetch balance and compute per-symbol budget
         balance = await asyncio.to_thread(self.trader.fetch_balance)
         base_balance = balance.get(self.base_currency, 0.0)
-        per_coin_budget = base_balance / self.max_symbols if self.max_symbols > 0 else 0.0
+        per_symbol_budget = base_balance / self.max_symbols if self.max_symbols > 0 else 0.0
 
         # Fetch tickers for a subset to keep prompt size manageable
         # Apply sentiment filter if configured
@@ -1680,7 +1680,7 @@ class TradingEngine:
             base_currency=self.base_currency,
             tickers=tickers,
             base_balance=base_balance,
-            per_symbol_budget=per_coin_budget,
+            per_symbol_budget=per_symbol_budget,
             market_limits=market_limits,
             performance=perf,
             ohlcv_data=ohlcv_data,
@@ -1721,7 +1721,7 @@ class TradingEngine:
             "symbol_max_tenure": symbol_max_tenure,
             "full_market_breadth": full_market_breadth,
             "base_balance": base_balance,
-            "per_coin_budget": per_coin_budget,
+            "per_symbol_budget": per_symbol_budget,
             "max_symbols": self.effective_max_symbols,
             "current_symbols": self.current_symbols,
             "symbol_scores": symbol_scores,
@@ -1834,13 +1834,13 @@ class TradingEngine:
                 llm_max_coins = None
 
                 if isinstance(parsed, dict):
-                    # New format: {"coins": [...], "max_coins": N}
-                    coins_list = parsed.get("coins", [])
-                    llm_max_coins = parsed.get("max_coins")
+                    # New format: {"stocks": [...], "max_stocks": N}
+                    stocks_list = parsed.get("stocks", [])
+                    llm_max_stocks = parsed.get("max_stocks")
                     if not isinstance(coins_list, list):
                         logger.error("LLM coin selection 'coins' field is not a list.")
                         coins_list = []
-                    for item in coins_list:
+                    for item in stocks_list:
                         if isinstance(item, dict) and "symbol" in item:
                             sym = item["symbol"]
                             if sym in available_pairs:
@@ -1893,14 +1893,14 @@ class TradingEngine:
                 ]
 
                 # Use the LLM's chosen number of coins to update effective_max_coins
-                if llm_max_coins is not None and isinstance(llm_max_coins, int) and 0 <= llm_max_coins <= self.max_symbols:
-                    self.effective_max_symbols = llm_max_coins
+                if llm_max_stocks is not None and isinstance(llm_max_stocks, int) and 0 <= llm_max_stocks <= self.max_symbols:
+                    self.effective_max_symbols = llm_max_stocks
                 else:
                     # Fallback: use the length of the deduped list, capped at the engine's max
                     self.effective_max_symbols = min(len(deduped), self.effective_max_symbols)
 
                 # Optional: LLM can set the global coin re-evaluation interval
-                new_interval = parsed.get("coin_revaluation_interval_seconds")
+                new_interval = parsed.get("stock_revaluation_interval_seconds")
                 if new_interval is not None:
                     if isinstance(new_interval, (int, float)) and new_interval >= 60:
                         clamped = max(new_interval, MIN_SYMBOL_REEVALUATION_INTERVAL)
@@ -2065,7 +2065,7 @@ class TradingEngine:
                     if vol < settings.FALLBACK_MIN_24H_VOLUME:
                         continue
                 min_cost = market_limits.get(sym, {}).get('min_cost', 0)
-                if per_coin_budget >= min_cost:
+                if per_symbol_budget >= min_cost:
                     if self._is_excluded(sym, default_tf):
                         continue
                     fallback_symbols.append({"symbol": sym, "timeframe": default_tf})
@@ -2161,7 +2161,7 @@ class TradingEngine:
         if not self.current_symbols:
             logger.warning("No coins selected after evaluation. Bot will idle until next cycle.")
             if self.notifier:
-                msg = f"⚠️ No coins selected. Bot will idle.\n"
+                msg = f"⚠️ No stocks selected. Bot will idle.\n"
                 msg += f"Balance: {base_balance:.2f} {self.base_currency}, "
                 msg += f"Per-coin budget: {per_coin_budget:.2f}"
                 if pause_msg:
@@ -2170,9 +2170,9 @@ class TradingEngine:
                     msg,
                     summary={
                         "action": "HOLD",
-                        "reason": "No coins selected",
+                        "reason": "No stocks selected",
                         "base_balance": base_balance,
-                        "per_coin_budget": per_coin_budget,
+                        "per_symbol_budget": per_symbol_budget,
                         "pause_decision": pause_trading if isinstance(pause_trading, bool) else None,
                         "pause_reason": pause_reason,
                         "model_type": "mind",
@@ -2181,9 +2181,9 @@ class TradingEngine:
                     }
                 )
         elif self.notifier:
-            coin_reasoning = parsed.get("reasoning", "") if isinstance(parsed, dict) else ""
+            stock_reasoning = parsed.get("reasoning", "") if isinstance(parsed, dict) else ""
             if coin_reasoning:
-                msg = f"🔄 Coins updated: {', '.join(symbol_labels)}\n💡 {coin_reasoning}"
+                msg = f"🔄 Stocks updated: {', '.join(symbol_labels)}\n💡 {stock_reasoning}"
             else:
                 msg = f"🔄 Coins updated: {', '.join(symbol_labels)}"
             if pause_msg:
@@ -2193,8 +2193,8 @@ class TradingEngine:
                 summary={
                     "action": "INFO",
                     "reason": "Coins updated",
-                    "coins": [c["symbol"] for c in self.current_symbols],
-                    "coin_reasoning": coin_reasoning,
+                    "stocks": [c["symbol"] for c in self.current_symbols],
+                    "stock_reasoning": stock_reasoning,
                     "pause_decision": pause_trading if isinstance(pause_trading, bool) else None,
                     "pause_reason": pause_reason,
                     "model_type": "mind",
