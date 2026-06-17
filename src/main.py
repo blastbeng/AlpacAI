@@ -50,24 +50,10 @@ def _seed_telegram_chat_id():
                 logging.warning("TELEGRAM_CHAT_ID in .env is not a valid integer")
 
 
-def _cleanup_redis_state():
-    """Remove old trading state keys from Redis (now stored in SQLite)."""
-    redis = get_redis_client()
-    keys_to_delete = [
-        "trading:current_coins",
-        "trading:positions",
-        "trading:trade_history",
-        "trading:initial_balance",
-        "trading:last_coin_eval",
-    ]
-    for key in keys_to_delete:
-        redis.delete(key)
-
 
 async def main():
     init_db()
     _seed_telegram_chat_id()
-    _cleanup_redis_state()
     test_rss_feeds()
     engine = TradingEngine()
     logging.info("Trading engine initialized.")
