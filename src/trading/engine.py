@@ -1439,7 +1439,7 @@ class TradingEngine:
         # Use the already volume‑sorted sample_pairs for OHLCV fetch (limit to 20 to avoid rate limits)
         sorted_by_vol = sample_pairs[:50]
 
-        # Fetch multi-timeframe OHLCV for these coins
+        # Fetch multi-timeframe OHLCV for these stocks
         ohlcv_data = {}
         if settings.OHLCV_TIMEFRAMES:
             async def fetch_ohlcv_for_symbol(sym):
@@ -1455,7 +1455,7 @@ class TradingEngine:
             results = await asyncio.gather(*tasks)
             ohlcv_data = dict(results)
 
-        # Compute indicators for each coin with OHLCV data, for ALL timeframes
+        # Compute indicators for each stock with OHLCV data, for ALL timeframes
         symbol_indicators = {}
         for sym, tf_data in ohlcv_data.items():
             symbol_indicators[sym] = {}
@@ -1520,7 +1520,7 @@ class TradingEngine:
                 'min_amount': min_amount,
             }
 
-        # Compute effective max coins based on budget and minimum trade costs
+        # Compute effective max symbols based on budget and minimum trade costs
         min_costs = [lim['min_cost'] for lim in market_limits.values() if lim['min_cost'] > 0]
         if min_costs:
             min_min_cost = min(min_costs)
@@ -1613,7 +1613,7 @@ class TradingEngine:
             session_label = "Closed (overnight)"
         session_info = {"utc_hour": utc_hour, "session": session_label}
 
-        # Market breadth: percentage of candidate coins with positive 24h change
+        # Market breadth: percentage of candidate stocks with positive 24h change
         positive_count = sum(1 for sym in sample_pairs if (tickers.get(sym, {}).get('percentage') or 0) > 0)
         total_count = len(sample_pairs)
         market_breadth = {
@@ -1647,12 +1647,12 @@ class TradingEngine:
         trading_paused_raw = await asyncio.to_thread(self.redis.get, "trading:paused")
         trading_paused_bool = trading_paused_raw is not None and trading_paused_raw == b"1"
 
-        # Compute coin tenure for the prompt
+        # Compute symbol tenure for the prompt
         symbol_tenure = {}
         for sym, first_seen in self._symbol_first_seen.items():
             symbol_tenure[sym] = round(now - first_seen)
 
-        # Compute current max tenure per coin for the prompt
+        # Compute current max tenure per symbol for the prompt
         symbol_max_tenure = {}
         for entry in self.current_symbols:
             if 'max_tenure_hours' in entry:
@@ -1795,7 +1795,7 @@ class TradingEngine:
                     logger.error(
                         f"LLM coin selection failed after all retries: {e}. Falling back to volume-based selection."
                     )
-        logger.info(f"LLM coin selection raw response: {response}")
+        logger.info(f"LLM stock selection raw response: {response}")
 
         # Initialize variables that may be used later even if LLM fails
         parsed = {}
@@ -1808,7 +1808,7 @@ class TradingEngine:
             try:
                 json.loads(response)  # validate
             except json.JSONDecodeError:
-                logger.warning("LLM coin selection response was not valid JSON. Retrying with correction prompt.")
+                logger.warning("LLM stock selection response was not valid JSON. Retrying with correction prompt.")
                 correction_prompt = (
                     "Your previous response was not valid JSON. "
                     "You MUST output ONLY a single JSON object, with no markdown fences, no explanations, no extra text. "
@@ -1828,14 +1828,13 @@ class TradingEngine:
                     llm_model = correction_result["model"]
                     json.loads(response)  # validate the retry response
                 except Exception as e:
-                    logger.error(f"LLM coin selection still invalid after retry: {e}")
+                    logger.error(f"LLM stock selection still invalid after retry: {e}")
                     response = None
 
         if response is not None:
             try:
                 parsed = json.loads(response)
                 new_symbols: List[Dict[str, str]] = []
-                llm_max_coins = None
 
                 if isinstance(parsed, dict):
                     # New format: {"stocks": [...], "max_stocks": N}
