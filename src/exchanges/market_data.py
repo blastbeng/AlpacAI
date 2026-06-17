@@ -135,9 +135,9 @@ def get_multi_timeframe_bars(
 # Keep old names for backward compatibility during migration.
 # They will be removed once the engine is fully adapted.
 def get_available_pairs(exchange, base_currency: str) -> List[str]:
-    """Temporary wrapper: returns tradable assets (ignores base_currency)."""
-    # exchange is actually a TradingClient
-    return get_tradable_assets(exchange)
+    """Return a list of trading pairs (e.g., 'AAPL/USD') for all tradable assets."""
+    symbols = get_tradable_assets(exchange)
+    return [f"{sym}/{base_currency}" for sym in symbols]
 
 
 def get_tickers(exchange, symbols: Optional[List[str]] = None) -> Dict[str, Any]:
