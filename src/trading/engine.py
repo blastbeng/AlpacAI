@@ -1098,6 +1098,7 @@ class TradingEngine:
         logger.info("Trading engine initializing...")
         await self._initialize_clients()
         logger.info("Trading engine started.")
+        print("DEBUG: about to call ws_manager.start()", flush=True)
         try:
             await self.ws_manager.start()
             logger.info("WebSocket manager started successfully.")

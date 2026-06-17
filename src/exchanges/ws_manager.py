@@ -31,11 +31,12 @@ class WebSocketManager:
     # ------------------------------------------------------------------
     async def start(self):
         """Start the WebSocket stream and subscribe to initial symbols."""
+        print("DEBUG: ws_manager.start() entered", flush=True)
         logger.info("WebSocket manager starting...")
         self._running = True
         if self.symbols:
-            self.stream.subscribe_quotes(list(self.symbols))
-            self.stream.subscribe_trades(list(self.symbols))
+            await asyncio.to_thread(self.stream.subscribe_quotes, list(self.symbols))
+            await asyncio.to_thread(self.stream.subscribe_trades, list(self.symbols))
         self.stream.on_quote(self._on_quote)
         self.stream.on_trade(self._on_trade)
         self._tasks.append(asyncio.create_task(self._run_stream()))
