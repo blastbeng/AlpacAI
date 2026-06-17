@@ -359,37 +359,6 @@ class TradingEngine:
             pass
         return ""
 
-    async def _get_fear_greed_index(self) -> Optional[Dict[str, Any]]:
-        """Fetch Crypto Fear & Greed Index from alternative.me, cached in Redis."""
-        if not getattr(settings, 'FEAR_GREED_ENABLED', True):
-            return None
-        cache_key = "fear_greed:index"
-        try:
-            cached = await asyncio.to_thread(self.redis.get, cache_key)
-            if cached:
-                return json.loads(cached)
-        except Exception:
-            pass
-
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    "https://api.alternative.me/fng/?limit=1",
-                    timeout=10.0
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    entry = data.get("data", [{}])[0]
-                    result = {
-                        "value": int(entry.get("value", 50)),
-                        "classification": entry.get("value_classification", "neutral"),
-                    }
-                    ttl = getattr(settings, 'FEAR_GREED_CACHE_TTL_SECONDS', 3600)
-                    await asyncio.to_thread(self.redis.setex, cache_key, ttl, json.dumps(result))
-                    return result
-        except Exception as e:
-            logger.warning(f"Failed to fetch Fear & Greed Index: {e}")
-        return None
 
     async def _fetch_vix(self) -> Optional[float]:
         """Fetch the current CBOE Volatility Index (VIX) value, cached in Redis."""
@@ -414,87 +383,7 @@ class TradingEngine:
             logger.warning(f"Failed to fetch VIX: {e}")
         return None
 
-    async def _fetch_global_market_data(self) -> Optional[Dict[str, Any]]:
-        """Fetch global crypto market data (BTC dominance, total market cap) from CoinGecko, cached in Redis."""
-        cache_key = "global_market:data"
-        try:
-            cached = await asyncio.to_thread(self.redis.get, cache_key)
-            if cached:
-                return json.loads(cached)
-        except Exception:
-            pass
 
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    "https://api.coingecko.com/api/v3/global",
-                    timeout=10.0,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    gd = data.get("data", {})
-                    result = {
-                        "btc_dominance": round(gd.get("market_cap_percentage", {}).get("btc", 0.0), 2),
-                        "eth_dominance": round(gd.get("market_cap_percentage", {}).get("eth", 0.0), 2),
-                        "total_market_cap_usd": gd.get("total_market_cap", {}).get("usd", 0),
-                        "total_volume_usd": gd.get("total_volume", {}).get("usd", 0),
-                        "market_cap_change_24h_usd": round(gd.get("market_cap_change_percentage_24h_usd", 0.0), 2),
-                    }
-                    ttl = getattr(settings, 'GLOBAL_MARKET_DATA_CACHE_TTL_SECONDS', 1800)
-                    await asyncio.to_thread(self.redis.setex, cache_key, ttl, json.dumps(result))
-                    return result
-        except Exception as e:
-            logger.warning(f"Failed to fetch global market data: {e}")
-        return None
-
-    async def _fetch_altcoin_season_index(self) -> Optional[Dict[str, Any]]:
-        """Fetch Altcoin Season Index from CoinMarketCap global metrics."""
-        if not getattr(settings, 'ALTCOIN_SEASON_ENABLED', True):
-            return None
-        api_key = settings.CMC_API_KEY
-        if not api_key:
-            logger.warning("CMC_API_KEY not set; cannot fetch altcoin season index.")
-            return None
-
-        cache_key = "altcoin_season:index"
-        try:
-            cached = await asyncio.to_thread(self.redis.get, cache_key)
-            if cached:
-                return json.loads(cached)
-        except Exception:
-            pass
-
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    "https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest",
-                    headers={"X-CMC_PRO_API_KEY": api_key},
-                    timeout=10.0,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    btc_dominance = data["data"]["quote"]["USD"]["btc_dominance"]
-                    altcoin_index = round(100.0 - btc_dominance, 2)
-                    if altcoin_index > 75:
-                        description = "Altcoin Season"
-                    elif altcoin_index < 25:
-                        description = "Bitcoin Season"
-                    else:
-                        description = "Neutral"
-                    result = {
-                        "value": altcoin_index,
-                        "description": description,
-                    }
-                    ttl = getattr(settings, 'ALTCOIN_SEASON_CACHE_TTL_SECONDS', 3600)
-                    await asyncio.to_thread(self.redis.setex, cache_key, ttl, json.dumps(result))
-                    return result
-                else:
-                    logger.warning(
-                        f"Altcoin Season Index API returned status {resp.status_code}: {resp.text[:200]}"
-                    )
-        except Exception as e:
-            logger.warning(f"Failed to fetch Altcoin Season Index: {e}")
-        return None
 
     def _get_news_summary(self, symbol: str) -> str:
         """Return a very short summary of the latest news article for the symbol."""
