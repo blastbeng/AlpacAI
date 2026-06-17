@@ -2,11 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies: gcc for potential C extensions, curl for health check
+# Install system dependencies: curl for health check
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
     curl \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
