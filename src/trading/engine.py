@@ -4339,7 +4339,8 @@ class TradingEngine:
             try:
                 ticker = self.ws_manager.get_ticker(pos['symbol'])
                 if ticker is None:
-                    ticker = self.exchange.fetch_ticker(pos['symbol'])
+                    tickers_map = get_tickers(self.data_client, [pos['symbol']])
+                    ticker = tickers_map.get(pos['symbol'].split("/")[0])
                 price = ticker['last'] if ticker and ticker.get('last') else 0.0
                 pos_value = pos['amount'] * price
                 exposure += pos_value
