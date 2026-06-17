@@ -455,20 +455,20 @@
                 tradingText.textContent = 'Trading: Active';
             }
 
-            // Coins
-            const coinsDiv = document.getElementById('coins');
-            coinsDiv.innerHTML = '';
-            if (data.current_coins && data.current_coins.length > 0) {
-                data.current_coins.forEach(coin => {
+            // Symbols
+            const symbolsDiv = document.getElementById('coins');
+            symbolsDiv.innerHTML = '';
+            if (data.current_symbols && data.current_symbols.length > 0) {
+                data.current_symbols.forEach(entry => {
                     const span = document.createElement('span');
-                    span.textContent = `🪙 ${coin.symbol} (${coin.timeframe})`;
+                    span.textContent = `📈 ${entry.symbol} (${entry.timeframe})`;
                     span.className = 'clickable-coin';
                     span.style.marginRight = '8px';
-                    span.onclick = () => openChart(coin.symbol, coin.timeframe);
-                    coinsDiv.appendChild(span);
+                    span.onclick = () => openChart(entry.symbol, entry.timeframe);
+                    symbolsDiv.appendChild(span);
                 });
             } else {
-                coinsDiv.textContent = 'None';
+                symbolsDiv.textContent = 'None';
             }
 
             // Positions – incremental update
