@@ -3,15 +3,13 @@ from pydantic_settings import BaseSettings
 from typing import Optional
 
 class Settings(BaseSettings):
-    # Exchange
-    EXCHANGE_ID: str = "binance"
-    EXCHANGE_API_KEY: Optional[str] = None
-    EXCHANGE_SECRET: Optional[str] = None
-    EXCHANGE_PASSWORD: Optional[str] = None
-    EXCHANGE_TIMEOUT: int = 30000  # milliseconds – timeout for all exchange API calls
-
-    # CoinMarketCap API key for altcoin season index
-    CMC_API_KEY: str = ""
+    # Alpaca Markets (stock/ETF trading)
+    ALPACA_API_KEY: str = ""
+    ALPACA_SECRET_KEY: str = ""
+    ALPACA_PAPER: bool = True   # True = paper trading, False = live
+    ALPACA_DATA_FEED: str = "iex"  # "iex" (free) or "sip" (paid)
+    ALPACA_BASE_URL: str = "https://paper-api.alpaca.markets"  # auto-set based on PAPER
+    ALPACA_DATA_URL: str = "https://data.alpaca.markets"       # auto-set based on DATA_FEED
 
     # Trading mode
     TRADING_MODE: str = "paper"   # "paper" or "live"
@@ -20,17 +18,10 @@ class Settings(BaseSettings):
     RISK_CHECK_INTERVAL_SECONDS: int = 15
 
     # Base currency
-    BASE_CURRENCY: str = "USDT"
+    BASE_CURRENCY: str = "USD"
 
-    # Max coins to trade
+    # Max stocks to trade
     MAX_COINS: int = 10
-
-    # Coin selection
-    COIN_SELECTION_MAX_PAIRS: int = 200          # max pairs to include in the LLM prompt
-    COIN_SELECTION_MIN_SENTIMENT: float = -1.0   # minimum aggregate sentiment compound to consider a coin (-1.0 = no filter)
-
-    # Limit coin selection to top N by 24h volume (reduces noise)
-    COIN_SELECTION_TOP_VOLUME_LIMIT: int = 100
 
     @field_validator("TRADING_MODE")
     @classmethod
@@ -44,34 +35,6 @@ class Settings(BaseSettings):
     def validate_max_coins(cls, v: int) -> int:
         if v < 1:
             raise ValueError("MAX_COINS must be at least 1")
-        return v
-
-    @field_validator("COIN_SELECTION_TOP_VOLUME_LIMIT")
-    @classmethod
-    def validate_top_volume_limit(cls, v: int) -> int:
-        if v < 1:
-            raise ValueError("COIN_SELECTION_TOP_VOLUME_LIMIT must be at least 1")
-        return v
-
-    # Excluded coin pairs / timeframes from coin selection.
-    # Format: "SYMBOL" or "SYMBOL/*" to exclude all timeframes,
-    #         "SYMBOL/TIMEFRAME" to exclude only that timeframe.
-    EXCLUDED_PAIRS: list[str] = []
-
-    @field_validator("EXCLUDED_PAIRS")
-    @classmethod
-    def validate_excluded_pairs(cls, v: list[str]) -> list[str]:
-        if not isinstance(v, list):
-            raise ValueError("EXCLUDED_PAIRS must be a list of strings")
-        for item in v:
-            if not isinstance(item, str):
-                raise ValueError("Each item in EXCLUDED_PAIRS must be a string")
-            # Basic format check: either "SYM/SYM" or "SYM/SYM/TF"
-            parts = item.split("/")
-            if len(parts) not in (2, 3):
-                raise ValueError(
-                    f"Invalid EXCLUDED_PAIRS entry '{item}': must be 'SYMBOL' or 'SYMBOL/TIMEFRAME'"
-                )
         return v
 
     # Maximum number of consecutive "keep paused" LLM decisions before the engine
@@ -101,18 +64,6 @@ class Settings(BaseSettings):
 
     # Maximum number of consecutive dust sweep reviews before force-selling
     MAX_DUST_SWEEP_REVIEWS: int = 10
-
-    # Fallback coin selection: minimum 24h quote volume (in base currency) required
-    # for a coin to be considered when the LLM returns no coins.
-    # Set to 0 to disable the filter.
-    FALLBACK_MIN_24H_VOLUME: float = 0.0
-
-    @field_validator("FALLBACK_MIN_24H_VOLUME")
-    @classmethod
-    def validate_fallback_min_24h_volume(cls, v: float) -> float:
-        if v < 0:
-            raise ValueError("FALLBACK_MIN_24H_VOLUME must be >= 0")
-        return v
 
     # OHLCV timeframes for multi-timeframe analysis
     OHLCV_TIMEFRAMES: list[str] = ["5m", "15m", "1h", "4h"]
@@ -154,10 +105,23 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def check_credentials(self):
         if self.TRADING_MODE == "live":
-            if not self.EXCHANGE_API_KEY or not self.EXCHANGE_SECRET:
+            if not self.ALPACA_API_KEY or not self.ALPACA_SECRET_KEY:
                 raise ValueError(
-                    "EXCHANGE_API_KEY and EXCHANGE_SECRET are required when TRADING_MODE='live'"
+                    "ALPACA_API_KEY and ALPACA_SECRET_KEY are required when TRADING_MODE='live'"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def set_alpaca_urls(self):
+        """Set Alpaca base and data URLs based on paper/live and data feed."""
+        if self.ALPACA_PAPER:
+            self.ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
+        else:
+            self.ALPACA_BASE_URL = "https://api.alpaca.markets"
+        if self.ALPACA_DATA_FEED == "iex":
+            self.ALPACA_DATA_URL = "https://data.alpaca.markets"
+        else:
+            self.ALPACA_DATA_URL = "https://data.alpaca.markets"  # sip uses same base
         return self
 
     @model_validator(mode="after")
@@ -340,47 +304,12 @@ class Settings(BaseSettings):
     YOUTUBE_API_KEY: Optional[str] = None
     YOUTUBE_MAX_RESULTS: int = 5
 
-    # CryptoPanic API
-    CRYPTOPANIC_API_KEY: Optional[str] = None
-    CRYPTOPANIC_MAX_POSTS: int = 5
-
-    # CryptoCompare News API
-    CRYPTOCOMPARE_API_KEY: Optional[str] = None
-    CRYPTOCOMPARE_MAX_ARTICLES: int = 5
-
-    # LunarCrush API
-    LUNARCRUSH_API_KEY: Optional[str] = None
-    LUNARCRUSH_MAX_ARTICLES: int = 5
-
-    # Santiment API
-    SANTIMENT_API_KEY: Optional[str] = None
-    SANTIMENT_MAX_ARTICLES: int = 5
-
-    # Messari API
-    MESSARI_API_KEY: Optional[str] = None
-    MESSARI_MAX_ARTICLES: int = 5
-
-    # CoinMarketCap API
-    COINMARKETCAP_API_KEY: Optional[str] = None
-    COINMARKETCAP_MAX_ARTICLES: int = 5
-
     # Google News RSS (free, no API key)
     GOOGLE_NEWS_MAX_ARTICLES: int = 5
 
     # StockTwits API
     STOCKTWITS_API_KEY: Optional[str] = None
     STOCKTWITS_MAX_POSTS: int = 5
-
-
-    # News-driven coin discovery
-    NEWS_COIN_DISCOVERY_ENABLED: bool = False
-    NEWS_COIN_DISCOVERY_MAX_COINS: int = 5          # max new coins to add from news
-    NEWS_COIN_DISCOVERY_MIN_SENTIMENT: float = 0.3  # minimum avg compound to consider
-    NEWS_COIN_DISCOVERY_MIN_ARTICLES: int = 3       # minimum articles to be considered
-
-    # Fear & Greed Index
-    FEAR_GREED_ENABLED: bool = True
-    FEAR_GREED_CACHE_TTL_SECONDS: int = 3600  # 1 hour
 
     # Rate limiting for news providers
     NEWS_RATE_LIMIT_ENABLED: bool = True
