@@ -471,7 +471,7 @@ class TradingEngine:
             try:
                 symbols = [entry["symbol"] for entry in self.current_symbols]
                 if symbols:
-                    logger.debug(f"Fast news refresh for {len(symbols)} current coins")
+                    logger.debug(f"Fast news refresh for {len(symbols)} current symbols")
                     await asyncio.gather(
                         *[self._fetch_and_store_news_for_symbol(sym) for sym in symbols]
                     )
@@ -505,7 +505,7 @@ class TradingEngine:
                 try:
                     plain_assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
                     available_pairs = [f"{sym}/USD" for sym in plain_assets]
-                    # Fetch tickers for a subset to determine top volume coins
+                    # Fetch tickers for a subset to determine top volume symbols
                     # (limit to 200 to avoid excessive API calls)
                     sample_for_vol = available_pairs[:200]
                     plain_sample = [s.split("/")[0] for s in sample_for_vol]
@@ -660,7 +660,7 @@ class TradingEngine:
         """Immediately backfill 30 days of OHLCV data for a newly selected symbol (assigned timeframe only)."""
         now_ms = int(time.time() * 1000)
         start_ms = now_ms - 30 * 24 * 60 * 60 * 1000
-        logger.info(f"Starting immediate backfill for newly selected coin {symbol} ({timeframe})")
+        logger.info(f"Starting immediate backfill for newly selected symbol {symbol} ({timeframe})")
         try:
             await self._backfill_ohlcv(symbol, timeframe, start_ms, now_ms)
             await self._fill_gaps(symbol, timeframe)
@@ -680,7 +680,7 @@ class TradingEngine:
             self._market_data_running = True
             try:
                 if not self.current_symbols:
-                    logger.debug("No coins tracked; skipping market data download.")
+                    logger.debug("No symbols tracked; skipping market data download.")
                 else:
                     logger.info("Starting market data download cycle...")
                     now_ms = int(time.time() * 1000)
@@ -1778,7 +1778,7 @@ class TradingEngine:
             except asyncio.TimeoutError:
                 if attempt < max_retries:
                     logger.warning(
-                        f"LLM coin selection timed out (attempt {attempt+1}/{max_retries+1}). Retrying..."
+                        f"LLM symbol selection timed out (attempt {attempt+1}/{max_retries+1}). Retrying..."
                     )
                     await asyncio.sleep(1)
                 else:
@@ -1788,7 +1788,7 @@ class TradingEngine:
             except Exception as e:
                 if attempt < max_retries:
                     logger.warning(
-                        f"LLM coin selection failed with error: {e}. Retrying..."
+                        f"LLM symbol selection failed with error: {e}. Retrying..."
                     )
                     await asyncio.sleep(1)
                 else:
@@ -1908,9 +1908,9 @@ class TradingEngine:
                     if isinstance(new_interval, (int, float)) and new_interval >= 60:
                         clamped = max(new_interval, MIN_SYMBOL_REEVALUATION_INTERVAL)
                         self._symbol_reevaluation_interval = clamped
-                        logger.info(f"LLM set coin re-evaluation interval to {clamped}s (requested {new_interval}s)")
+                        logger.info(f"LLM set symbol re-evaluation interval to {clamped}s (requested {new_interval}s)")
                     else:
-                        logger.warning(f"Invalid coin_revaluation_interval_seconds: {new_interval}")
+                        logger.warning(f"Invalid stock_revaluation_interval_seconds: {new_interval}")
 
                 was_paused = trading_paused_bool   # captured earlier in the method
                 # Optional: LLM can request to pause/resume trading
@@ -2035,14 +2035,14 @@ class TradingEngine:
                         logger.warning(f"Invalid global_risk_multiplier: {global_risk_mult}")
 
                 existing_symbols = {c['symbol']: c for c in self.current_symbols}
-                for coin in deduped[: self.effective_max_symbols]:
-                    if coin['symbol'] in existing_symbols and 'entry_time' in existing_symbols[coin['symbol']]:
-                        coin['entry_time'] = existing_symbols[coin['symbol']]['entry_time']
+                for entry in deduped[: self.effective_max_symbols]:
+                    if entry['symbol'] in existing_symbols and 'entry_time' in existing_symbols[entry['symbol']]:
+                        entry['entry_time'] = existing_symbols[entry['symbol']]['entry_time']
                     else:
-                        coin['entry_time'] = time.time()
-                    # Preserve max_tenure_hours from existing coin if LLM didn't specify it
-                    if 'max_tenure_hours' not in coin and coin['symbol'] in existing_symbols and 'max_tenure_hours' in existing_symbols[coin['symbol']]:
-                        coin['max_tenure_hours'] = existing_symbols[coin['symbol']]['max_tenure_hours']
+                        entry['entry_time'] = time.time()
+                    # Preserve max_tenure_hours from existing symbol if LLM didn't specify it
+                    if 'max_tenure_hours' not in entry and entry['symbol'] in existing_symbols and 'max_tenure_hours' in existing_symbols[entry['symbol']]:
+                        entry['max_tenure_hours'] = existing_symbols[entry['symbol']]['max_tenure_hours']
                 self.current_symbols = deduped[: self.effective_max_symbols]
 
                 # If LLM explicitly chose zero symbols, respect that and don't fall back to volume-based selection
@@ -2075,11 +2075,11 @@ class TradingEngine:
                 if len(fallback_symbols) >= self.effective_max_symbols:
                     break
             existing_symbols = {c['symbol']: c for c in self.current_symbols}
-            for coin in fallback_symbols:
-                if coin['symbol'] in existing_symbols and 'entry_time' in existing_symbols[coin['symbol']]:
-                    coin['entry_time'] = existing_symbols[coin['symbol']]['entry_time']
+            for entry in fallback_symbols:
+                if entry['symbol'] in existing_symbols and 'entry_time' in existing_symbols[entry['symbol']]:
+                    entry['entry_time'] = existing_symbols[entry['symbol']]['entry_time']
                 else:
-                    coin['entry_time'] = time.time()
+                    entry['entry_time'] = time.time()
             self.current_symbols = fallback_symbols
 
         # Ensure all open positions remain in current_symbols so they continue to be managed by the LLM strategy
@@ -2195,7 +2195,7 @@ class TradingEngine:
                 msg,
                 summary={
                     "action": "INFO",
-                    "reason": "Coins updated",
+                    "reason": "Symbols updated",
                     "stocks": [c["symbol"] for c in self.current_symbols],
                     "stock_reasoning": stock_reasoning,
                     "pause_decision": pause_trading if isinstance(pause_trading, bool) else None,
@@ -2527,7 +2527,7 @@ class TradingEngine:
         if max_tenure_hours is not None and max_tenure_hours > 0 and 'entry_time' in symbol_entry:
             tenure_seconds = max_tenure_hours * 3600
             if time.time() - symbol_entry['entry_time'] > tenure_seconds:
-                logger.info(f"Max tenure reached for {symbol} ({max_tenure_hours:.1f}h), forcing sell")
+                logger.info(f"Max symbol tenure reached for {symbol} ({max_tenure_hours:.1f}h), forcing sell")
                 signal = Signal(action="SELL", confidence=1.0, reasoning="Max coin tenure reached")
                 await self._execute_signal(symbol, signal, exit_reason="max_tenure")
                 return
@@ -4985,13 +4985,13 @@ class TradingEngine:
                     pass
 
             # Apply per-symbol position size multiplier if set by LLM in strategy params
-            per_coin_mult = params.get("position_size_multiplier")
-            if per_coin_mult is not None:
+            per_symbol_mult = params.get("position_size_multiplier")
+            if per_symbol_mult is not None:
                 try:
-                    per_coin_mult = float(per_coin_mult)
-                    if 0.0 <= per_coin_mult <= 1.0:
-                        desired_amount *= per_coin_mult
-                        logger.info(f"Applied per-coin position multiplier {per_coin_mult}: desired_amount={desired_amount:.2f}")
+                    per_symbol_mult = float(per_symbol_mult)
+                    if 0.0 <= per_symbol_mult <= 1.0:
+                        desired_amount *= per_symbol_mult
+                        logger.info(f"Applied per-symbol position multiplier {per_symbol_mult}: desired_amount={desired_amount:.2f}")
                 except (ValueError, TypeError):
                     pass
 
