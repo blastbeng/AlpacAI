@@ -1099,7 +1099,7 @@ class TradingEngine:
         """Load current coins, positions, trade history, and initial balance from SQLite."""
         state = load_trading_state()
 
-        raw_coins = state.get("current_coins", [])
+        raw_coins = state.get("current_symbols", state.get("current_coins", []))
         # Convert old format (list of strings) to new format if needed
         if raw_coins and isinstance(raw_coins[0], str):
             default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
@@ -1140,7 +1140,7 @@ class TradingEngine:
 
     async def _save_state(self):
         """Persist current coins, positions, and trade history to SQLite."""
-        await asyncio.to_thread(save_trading_state, "current_coins", self.current_symbols)
+        await asyncio.to_thread(save_trading_state, "current_symbols", self.current_symbols)
         await asyncio.to_thread(save_trading_state, "positions", self.positions)
         # Keep only the last 1000 trades to avoid unbounded growth
         self.trade_history = self.trade_history[-1000:]
@@ -1225,8 +1225,8 @@ class TradingEngine:
         # Reset per-cycle spending tracker so new buys are not blocked by prior cycle spending
         self._cycle_spent = 0.0
 
-        # Only re-evaluate every COIN_REVALUATION_INTERVAL
-        last_key = "trading:last_coin_eval"
+        # Only re-evaluate every SYMBOL_REVALUATION_INTERVAL
+        last_key = "trading:last_symbol_eval"
         last_eval = await asyncio.to_thread(self.redis.get, last_key)
         now = time.time()
         if last_eval and (now - float(last_eval)) < self._symbol_reevaluation_interval and self.current_symbols:
