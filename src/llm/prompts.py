@@ -333,7 +333,7 @@ Use this to ensure you only enter at a favorable price or when a specific signal
 The bot will NOT use any default values for required parameters. If you omit any required parameter, the trade will be skipped. Optional parameters are not required; if omitted, the bot will use its standard behavior.
 """
 
-def build_coin_selection_prompt(
+def build_stock_selection_prompt(
     available_pairs: List[str],
     current_coins: List[Dict[str, str]],
     max_coins: int,
@@ -369,7 +369,7 @@ def build_coin_selection_prompt(
     coin_tenure: Optional[Dict[str, float]] = None,
     coin_max_tenure: Optional[Dict[str, Optional[float]]] = None,
 ) -> str:
-    """Build a prompt to ask the LLM which coins to trade."""
+    """Build a prompt to ask the LLM which stocks to trade."""
     # Summarize tickers and limits for the prompt
     ticker_summary = {}
     for symbol in available_pairs:

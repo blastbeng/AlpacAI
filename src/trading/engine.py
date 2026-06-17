@@ -18,7 +18,7 @@ from src.trading.live_trader import LiveTrader
 from src.llm.cache import get_cached_llm_response, compute_market_hash
 from src.llm.prompts import (
     SYSTEM_PROMPT,
-    build_coin_selection_prompt,
+    build_stock_selection_prompt,
     build_strategy_prompt,
     _format_news_for_prompt,
     compact_prompt,
@@ -1771,7 +1771,7 @@ class TradingEngine:
             except (ValueError, TypeError):
                 pass
 
-        prompt = build_coin_selection_prompt(
+        prompt = build_stock_selection_prompt(
             available_pairs=sample_pairs,
             current_coins=self.current_coins,
             max_coins=self.effective_max_coins,
