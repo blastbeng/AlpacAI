@@ -1194,7 +1194,7 @@ class TradingEngine:
                         trading_paused = paused is not None and paused == b"1"
                         try:
                             await asyncio.wait_for(
-                                self._process_coin(coin_entry, trading_paused=trading_paused),
+                                self._process_symbol(coin_entry, trading_paused=trading_paused),
                                 timeout=settings.LLM_TIMEOUT + 10  # slightly longer than the LLM timeout
                             )
                         except asyncio.TimeoutError:
