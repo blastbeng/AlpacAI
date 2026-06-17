@@ -1100,13 +1100,13 @@ class TradingEngine:
         """Load current coins, positions, trade history, and initial balance from SQLite."""
         state = load_trading_state()
 
-        raw_coins = state.get("current_symbols", state.get("current_coins", []))
+        raw_symbols = state.get("current_symbols", [])
         # Convert old format (list of strings) to new format if needed
-        if raw_coins and isinstance(raw_coins[0], str):
+        if raw_symbols and isinstance(raw_symbols[0], str):
             default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
-            self.current_symbols = [{"symbol": s, "timeframe": default_tf} for s in raw_coins]
+            self.current_symbols = [{"symbol": s, "timeframe": default_tf} for s in raw_symbols]
         else:
-            self.current_symbols = raw_coins
+            self.current_symbols = raw_symbols
         self.positions = state.get("positions", {})
         # Remove any position that lacks LLM-defined risk parameters.
         # Such positions cannot be managed safely.
@@ -1841,7 +1841,7 @@ class TradingEngine:
                     stocks_list = parsed.get("stocks", [])
                     llm_max_stocks = parsed.get("max_stocks")
                     if not isinstance(stocks_list, list):
-                        logger.error("LLM coin selection 'stocks' field is not a list.")
+                        logger.error("LLM symbol selection 'stocks' field is not a list.")
                         stocks_list = []
                     for item in stocks_list:
                         if isinstance(item, dict) and "symbol" in item:
