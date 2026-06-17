@@ -12,7 +12,7 @@ def get_trading_client() -> TradingClient:
         api_key=settings.ALPACA_API_KEY,
         secret_key=settings.ALPACA_SECRET_KEY,
         paper=settings.ALPACA_PAPER,
-        url_override=settings.ALPACA_BASE_URL,
+        url_override=settings.ALPACA_ENDPOINT,
     )
 
 def get_data_client() -> StockHistoricalDataClient:
