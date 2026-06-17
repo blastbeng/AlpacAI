@@ -588,7 +588,7 @@ class TradingEngine:
             try:
                 async with self._exchange_semaphore:
                     candles = await asyncio.to_thread(
-                        get_bars_range, self.data_client, symbol, timeframe, start_ms=since, limit=500
+                        get_bars_range, self.data_client, symbol.split("/")[0], timeframe, start_ms=since, limit=500
                     )
             except Exception as e:
                 logger.warning(f"get_bars_range failed for {symbol} {timeframe} at {since}: {e}")
@@ -2552,8 +2552,9 @@ class TradingEngine:
             ticker = self.ws_manager.get_ticker(symbol)
             if ticker is None:
                 async with self._exchange_semaphore:
-                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [symbol])
-                    ticker = quotes.get(symbol)
+                    base = symbol.split("/")[0]
+                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
+                    ticker = quotes.get(base)
             current_price = ticker['last']
             order_book = self.ws_manager.get_order_book(symbol)
             if order_book is None:
@@ -5046,8 +5047,9 @@ class TradingEngine:
             try:
                 ticker = self.ws_manager.get_ticker(symbol)
                 if ticker is None:
-                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [symbol])
-                    ticker = quotes.get(symbol)
+                    base = symbol.split("/")[0]
+                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
+                    ticker = quotes.get(base)
                 price = ticker['last']
                 base_amount = amount / price
                 # Fetch minimum order size from Alpaca asset info
@@ -5291,8 +5293,9 @@ class TradingEngine:
             try:
                 ticker = self.ws_manager.get_ticker(symbol)
                 if ticker is None:
-                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [symbol])
-                    ticker = quotes.get(symbol)
+                    base = symbol.split("/")[0]
+                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
+                    ticker = quotes.get(base)
                 price = ticker['last']
                 # Fetch minimum order size from Alpaca asset info
                 base_asset = symbol.split('/')[0]
@@ -6223,8 +6226,9 @@ class TradingEngine:
         try:
             ticker = self.ws_manager.get_ticker(symbol)
             if ticker is None:
-                quotes = await asyncio.to_thread(get_quotes, self.data_client, [symbol])
-                ticker = quotes.get(symbol)
+                base = symbol.split("/")[0]
+                quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
+                ticker = quotes.get(base)
             price = ticker["last"]
         except Exception as e:
             logger.warning(f"Dust sweep: could not fetch price for {symbol}: {e}")
