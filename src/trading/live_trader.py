@@ -62,12 +62,12 @@ class LiveTrader:
         filled_order = self._wait_for_order_fill(order.id, base)
         return self._order_to_dict(filled_order, symbol)
 
-    def create_market_sell_order(self, symbol: str, base_amount: float) -> Dict[str, Any]:
-        """Place a market sell order. Waits for fill before returning."""
+    def create_market_sell_order(self, symbol: str, qty: float) -> Dict[str, Any]:
+        """Place a market sell order for a given quantity of shares. Waits for fill before returning."""
         base = symbol.split("/")[0]
         order_data = MarketOrderRequest(
             symbol=base,
-            qty=base_amount,
+            qty=qty,
             side=OrderSide.SELL,
             time_in_force=TimeInForce.DAY,
         )

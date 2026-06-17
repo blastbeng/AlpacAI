@@ -107,18 +107,19 @@ class PaperSimulator:
         logger.info("Paper %s %s: %s %s @ %s", order['side'].upper(), order['symbol'], order['amount'], order['cost'], order['price'])
         return order
 
-    def create_market_sell_order(self, symbol: str, base_amount: float) -> Dict[str, Any]:
+    def create_market_sell_order(self, symbol: str, qty: float) -> Dict[str, Any]:
+        """Simulate a market sell order for a given quantity of shares."""
         base, quote = symbol.split('/')
         price = self._get_price(symbol)
-        quote_amount = base_amount * price
+        quote_amount = qty * price
         fee_rate = self._get_fee_rate(symbol)
         fee = quote_amount * fee_rate
         net_quote = quote_amount - fee
 
-        if self.balances.get(base, 0) < base_amount:
+        if self.balances.get(base, 0) < qty:
             raise ValueError(f"Insufficient {base} balance")
 
-        self.balances[base] -= base_amount
+        self.balances[base] -= qty
         self.balances[quote] = self.balances.get(quote, 0) + net_quote
 
         order = {
@@ -126,7 +127,7 @@ class PaperSimulator:
             'symbol': symbol,
             'type': 'market',
             'side': 'sell',
-            'amount': base_amount,
+            'amount': qty,
             'price': price,
             'cost': quote_amount,
             'fee': {'cost': fee, 'currency': quote},
