@@ -125,6 +125,7 @@ class TradingEngine:
         self._news_fast_running = False
         self._market_data_running = False
         self._full_breadth_running = False
+        self._last_unhealthy_log = 0.0
 
     async def _initialize_clients(self):
         """Create Alpaca clients and load persisted state (non‑blocking)."""
@@ -1132,7 +1133,10 @@ class TradingEngine:
                 if self.ws_manager.healthy:
                     update = await self.ws_manager.wait_for_update(timeout=1.0)
                 else:
-                    logger.warning("WebSocket manager unhealthy – falling back to REST polling.")
+                    now = time.time()
+                    if now - self._last_unhealthy_log > 60:
+                        logger.warning("WebSocket manager unhealthy – falling back to REST polling.")
+                        self._last_unhealthy_log = now
                     await asyncio.sleep(1.0)
 
                 # Process any symbol whose evaluation interval has elapsed
