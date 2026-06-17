@@ -180,11 +180,11 @@ class TradingEngine:
                 # Check if trading is paused
                 paused = await asyncio.to_thread(self.redis.get, "trading:paused")
                 if paused:
-                    # Only run the pause/resume decision, skip coin selection
+                    # Only run the pause/resume decision, skip stock selection
                     await self._check_pause_resume_decision()
                 else:
                     await self._reevaluate_symbols()
-                    # Update WebSocket subscriptions to match current coins
+                    # Update WebSocket subscriptions to match current stocks
                     current_symbols = [entry["symbol"] for entry in self.current_symbols]
                     await self.ws_manager.update_subscriptions(current_symbols)
             except Exception as e:
@@ -499,7 +499,7 @@ class TradingEngine:
             self._news_cache_running = True
             try:
                 cycle_start = time.time()
-                # Slow refresh: all available pairs EXCEPT the coins already handled by the fast loop
+                # Slow refresh: all available pairs EXCEPT the stocks already handled by the fast loop
                 current_symbols = {entry["symbol"] for entry in self.current_symbols}
                 symbols_to_refresh = set()
                 try:
@@ -669,7 +669,7 @@ class TradingEngine:
         logger.info(f"Immediate backfill complete for {symbol} ({timeframe})")
 
     async def _download_market_data_loop(self):
-        """Periodically download and store OHLCV data for tracked coins, with gap detection."""
+        """Periodically download and store OHLCV data for tracked stocks, with gap detection."""
         # Initial delay to let the engine settle
         await asyncio.sleep(30)
         while self._running:
@@ -694,7 +694,7 @@ class TradingEngine:
                             await self._fill_gaps(symbol, tf)
                         except Exception as e:
                             logger.warning(f"Market data download failed for {symbol} {tf}: {e}")
-                        # Configurable delay between coins to avoid rate limits
+                        # Configurable delay between stocks to avoid rate limits
                         await asyncio.sleep(settings.OHLCV_DOWNLOAD_SYMBOL_DELAY_SECONDS)
                     logger.info("Market data download cycle complete.")
                     # Clean up old OHLCV data (older than 30 days)
