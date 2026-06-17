@@ -767,8 +767,8 @@ def build_strategy_prompt(
     order_book: Dict[str, Any],
     balance: Dict[str, float],
     open_positions: List[Dict[str, Any]],
-    per_coin_budget: float,
-    max_coins: int,
+    per_symbol_budget: float,
+    max_symbols: int,
     performance: Optional[Dict[str, Any]] = None,
     ohlcv_data: Optional[Dict[str, List]] = None,
     assigned_timeframe: Optional[str] = None,
@@ -810,7 +810,7 @@ def build_strategy_prompt(
     historical_ohlcv: Optional[List[List]] = None,
     min_order_amount: Optional[float] = None,
     min_order_cost: Optional[float] = None,
-    all_coins: Optional[List[Dict[str, str]]] = None,
+    all_symbols: Optional[List[Dict[str, str]]] = None,
     past_trades: Optional[List[Dict[str, Any]]] = None,
     aggregate_sentiment: Optional[Dict[str, Any]] = None,
     cycle_spent: Optional[float] = None,
@@ -820,8 +820,6 @@ def build_strategy_prompt(
     multi_tf_raw_candles: Optional[Dict[str, List[List]]] = None,
     multi_tf_indicators: Optional[Dict[str, Dict[str, Any]]] = None,
     scalping_feasibility_score: Optional[float] = None,
-    fear_greed_index: Optional[Dict[str, Any]] = None,
-    relative_strength_btc: Optional[Dict[str, Any]] = None,
     vwap: Optional[float] = None,
     vwap_multi_tf: Optional[Dict[str, float]] = None,
     session_info: Optional[Dict[str, Any]] = None,
@@ -835,9 +833,6 @@ def build_strategy_prompt(
     keltner_channels: Optional[Dict[str, float]] = None,
     pivot_points: Optional[Dict[str, float]] = None,
     donchian_channels: Optional[Dict[str, float]] = None,
-    btc_dominance: Optional[float] = None,
-    total_market_cap: Optional[Dict[str, Any]] = None,
-    altcoin_season: Optional[Dict[str, Any]] = None,
     cvd: Optional[float] = None,
     cvd_normalized: Optional[float] = None,
     order_book_pressure_trend: Optional[float] = None,
@@ -860,7 +855,7 @@ def build_strategy_prompt(
     max_partial_tp_reviews: int = 10,
     max_dust_sweep_reviews: int = 10,
 ) -> str:
-    """Build a prompt to generate a trading strategy for a specific coin."""
+    """Build a prompt to generate a trading strategy for a specific stock/ETF."""
     current_price = ticker.get("last") if ticker else None
     tf_seconds = _timeframe_to_seconds(assigned_timeframe) if assigned_timeframe else 3600
     min_hold = 2 * tf_seconds
