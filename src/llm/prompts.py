@@ -868,17 +868,17 @@ Current balances: {json.dumps(balance)}
     base_currency = symbol.split('/')[1]
     base_balance = balance.get(base_currency, 0.0)
     prompt += f"\nTotal {base_currency} balance available: {base_balance:.2f}\n"
-    if all_coins:
-        other_coins = [c for c in all_coins if c["symbol"] != symbol]
-        if other_coins:
-            coin_list_str = ", ".join(f"{c['symbol']}({c['timeframe']})" for c in other_coins)
-            prompt += f"Other coins being traded (you must leave budget for them): {coin_list_str}\n"
+    if all_symbols:
+        other_symbols = [s for s in all_symbols if s["symbol"] != symbol]
+        if other_symbols:
+            symbol_list_str = ", ".join(f"{s['symbol']}({s['timeframe']})" for s in other_symbols)
+            prompt += f"Other symbols being traded (you must leave budget for them): {symbol_list_str}\n"
         else:
-            prompt += "This is the only coin being traded; you may use the full budget.\n"
+            prompt += "This is the only symbol being traded; you may use the full budget.\n"
     prompt += f"""Open positions: {json.dumps(open_positions)}
 Your total available {base_currency} balance: {base_balance:.2f}
-Suggested equal share per coin (balance / max_coins): {per_coin_budget:.2f} {base_currency}
-Maximum coins to trade: {max_coins}
+Suggested equal share per symbol (balance / max_symbols): {per_symbol_budget:.2f} {base_currency}
+Maximum symbols to trade: {max_symbols}
 """
     if cycle_spent is not None and remaining_balance is not None:
         prompt += (
@@ -888,10 +888,10 @@ Maximum coins to trade: {max_coins}
             "If the remaining balance is low, reduce your fraction accordingly or output HOLD.\n"
         )
         # Help the LLM set min_profit_per_trade realistically
-        max_possible_amount = min(per_coin_budget, remaining_balance)
+        max_possible_amount = min(per_symbol_budget, remaining_balance)
         prompt += (
             f"The maximum amount that can actually be allocated to this trade is "
-            f"{max_possible_amount:.2f} {base_currency} (the smaller of the per‑coin budget and the remaining balance). "
+            f"{max_possible_amount:.2f} {base_currency} (the smaller of the per‑symbol budget and the remaining balance). "
             "If you set `min_profit_per_trade`, ensure it is not larger than "
             "`max_possible_amount * take_profit_pct`. Otherwise the trade will be skipped.\n"
         )
@@ -936,22 +936,6 @@ Maximum coins to trade: {max_coins}
             "- 'squeeze': Bollinger Bands are very narrow – a large move is likely imminent. Wait for breakout confirmation.\n"
             "- 'expansion': bands are wide – trend may be strong but also prone to reversals.\n"
             "- MA bias (bullish/bearish) indicates short‑term momentum when ADX is weak.\n"
-        )
-    if fear_greed_index:
-        prompt += (
-            f"\nCrypto Fear & Greed Index: {fear_greed_index['value']} "
-            f"({fear_greed_index['classification']})\n"
-            "This index reflects overall market sentiment (0 = Extreme Fear, 100 = Extreme Greed). "
-            "Use it to gauge the general mood: extreme fear may present buying opportunities, "
-            "extreme greed may signal a market top. Adjust your coin selection and risk parameters accordingly.\n"
-        )
-    if relative_strength_btc:
-        rel_str = f"{relative_strength_btc['relative_24h_pct']:+.2f}%" if relative_strength_btc.get('relative_24h_pct') is not None else "N/A"
-        prompt += (
-            f"\nRelative strength vs BTC: ratio={relative_strength_btc['ratio']:.8f}, "
-            f"24h relative performance={rel_str}\n"
-            "A positive relative performance means this coin is outperforming BTC, which may indicate strong momentum. "
-            "Use this to adjust your confidence and position size.\n"
         )
 
     if vwap is not None:
@@ -1143,9 +1127,9 @@ Maximum coins to trade: {max_coins}
         )
     # Help the LLM set min_profit_per_trade by showing the expected profit for a 1% take-profit
     example_tp = 0.01
-    example_profit = per_coin_budget * example_tp
+    example_profit = per_symbol_budget * example_tp
     prompt += (
-        f"For reference, a 1% take-profit on the per-coin budget ({per_coin_budget:.2f} {quote_coin}) "
+        f"For reference, a 1% take-profit on the per-symbol budget ({per_symbol_budget:.2f} {quote_coin}) "
         f"would yield ~{example_profit:.4f} {quote_coin} gross profit. "
         "Set min_profit_per_trade accordingly, and ensure it is not larger than your expected profit.\n"
     )
@@ -1346,39 +1330,6 @@ Maximum coins to trade: {max_coins}
             "Use it to confirm the overall market health. "
             "If the full breadth is very low (<25%) while the candidate breadth is moderate, "
             "the market may be more fragile than it appears – consider reducing risk or skipping the trade.\n"
-        )
-    if btc_dominance is not None:
-        prompt += f"\nBitcoin dominance: {btc_dominance:.2f}%\n"
-        prompt += (
-            "High/rising BTC dominance (>55%) often means altcoins underperform; "
-            "low/falling dominance (<45%) signals altseason. "
-            "Adjust your confidence and position size accordingly: "
-            "prefer BTC or reduce altcoin exposure when dominance is rising.\n"
-        )
-    if total_market_cap:
-        mc_usd = total_market_cap.get("total_market_cap_usd")
-        mc_change = total_market_cap.get("market_cap_change_24h_usd")
-        if mc_usd is not None:
-            prompt += f"\nTotal crypto market cap: ${mc_usd:,.0f}\n"
-        if mc_change is not None:
-            prompt += f"Total market cap 24h change: {mc_change:+.2f}%\n"
-        if mc_usd is not None or mc_change is not None:
-            prompt += (
-                "A rising total market cap confirms an expanding market (risk-on); "
-                "a falling market cap suggests contraction (risk-off). "
-                "Use this to adjust your risk parameters and position size.\n"
-            )
-    if altcoin_season:
-        value = altcoin_season.get("value", 50)
-        desc = altcoin_season.get("description", "")
-        prompt += f"\nAltcoin Season Index: {value} ({desc})\n"
-        prompt += (
-            "This index indicates whether altcoins are outperforming Bitcoin. "
-            "A value above 75 means 'Altcoin Season' (altcoins are strongly outperforming BTC); "
-            "below 25 means 'Bitcoin Season' (BTC is dominating). "
-            "Use this to adjust your confidence and position size: "
-            "during Altcoin Season, you may increase altcoin exposure; "
-            "during Bitcoin Season, reduce altcoin exposure or prefer BTC.\n"
         )
     if depth_trend is not None:
         prompt += f"\nOrder book depth trend (change in total depth within 1% of mid since last cycle): {depth_trend:+.4f}\n"
