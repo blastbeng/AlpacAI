@@ -128,9 +128,27 @@ class TradingEngine:
 
     async def _initialize_clients(self):
         """Create Alpaca clients and load persisted state (non‑blocking)."""
-        self.exchange = await asyncio.to_thread(get_trading_client)
-        self.data_client = await asyncio.to_thread(get_data_client)
-        self.streaming_client = await asyncio.to_thread(get_streaming_client)
+        try:
+            self.exchange = await asyncio.to_thread(get_trading_client)
+            logger.info("Trading client created.")
+        except Exception as e:
+            logger.critical(f"Failed to create trading client: {e}", exc_info=True)
+            raise
+
+        try:
+            self.data_client = await asyncio.to_thread(get_data_client)
+            logger.info("Data client created.")
+        except Exception as e:
+            logger.critical(f"Failed to create data client: {e}", exc_info=True)
+            raise
+
+        try:
+            self.streaming_client = await asyncio.to_thread(get_streaming_client)
+            logger.info("Streaming client created.")
+        except Exception as e:
+            logger.critical(f"Failed to create streaming client: {e}", exc_info=True)
+            raise
+
         self.ws_manager = WebSocketManager(self.streaming_client, [])
         self.trader = LiveTrader(self.exchange)
         self._load_state()
@@ -1081,7 +1099,7 @@ class TradingEngine:
         await self._initialize_clients()
         logger.info("Trading engine started.")
         await self.ws_manager.start()
-        logger.info("WebSocket manager started.")
+        logger.info("WebSocket manager started successfully.")
 
         # Start background tasks
         asyncio.create_task(self._refresh_news_cache())

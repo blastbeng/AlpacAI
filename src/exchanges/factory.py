@@ -28,6 +28,6 @@ def get_streaming_client() -> StockDataStream:
     return StockDataStream(
         api_key=settings.ALPACA_API_KEY,
         secret_key=settings.ALPACA_SECRET_KEY,
-        url_override=settings.ALPACA_DATA_URL,
+        url_override=settings.ALPACA_STREAM_URL,
     )
 

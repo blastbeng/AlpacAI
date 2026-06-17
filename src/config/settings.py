@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     ALPACA_BASE_URL: str = "https://paper-api.alpaca.markets"  # auto-set based on PAPER
     ALPACA_DATA_URL: str = "https://data.alpaca.markets"       # auto-set based on DATA_FEED
 
+    # Alpaca WebSocket streaming URL
+    ALPACA_STREAM_URL: str = ""
+
     # Override the trading API base URL (default: paper). The SDK appends /v2,
     # so do NOT include /v2 in this value unless you are using a custom proxy
     # that expects it.
@@ -132,6 +135,15 @@ class Settings(BaseSettings):
             self.ALPACA_DATA_URL = "https://data.alpaca.markets"
         else:
             self.ALPACA_DATA_URL = "https://data.alpaca.markets"  # sip uses same base
+        return self
+
+    @model_validator(mode="after")
+    def set_stream_url(self):
+        if not self.ALPACA_STREAM_URL:
+            if self.ALPACA_PAPER:
+                self.ALPACA_STREAM_URL = "wss://paper-api.alpaca.markets/stream"
+            else:
+                self.ALPACA_STREAM_URL = "wss://stream.data.alpaca.markets"
         return self
 
     @model_validator(mode="after")
