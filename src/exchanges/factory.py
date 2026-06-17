@@ -29,8 +29,7 @@ def get_streaming_client() -> StockDataStream:
     return StockDataStream(
         api_key=settings.ALPACA_API_KEY,
         secret_key=settings.ALPACA_SECRET_KEY,
-        feed=DataFeed.IEX,
-        url_override=settings.ALPACA_STREAM_URL,
-        raw_data=settings.ALPACA_PAPER,
+        feed=DataFeed.IEX if settings.ALPACA_DATA_FEED == "iex" else DataFeed.SIP,
+        url_override=settings.ALPACA_STREAM_URL
     )
 

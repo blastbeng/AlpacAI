@@ -69,7 +69,7 @@ def get_cached_llm_response(
         except (json.JSONDecodeError, TypeError):
             pass  # fall through to re-fetch
 
-    logger.info("LLM cache miss: model_type=%s, system_prompt=%.200s..., prompt=%.500s...", model_type, system_prompt, prompt)
+    logger.debug("LLM cache miss: model_type=%s, system_prompt=%.200s..., prompt=%.500s...", model_type, system_prompt, prompt)
     # --- Primary call ---
     response_text = None
     used_provider = provider
@@ -121,7 +121,7 @@ def get_cached_llm_response(
         logger.warning("LLM returned None response; not caching.")
         return None
 
-    logger.info("LLM response cached: %.500s...", response_text)
+    logger.debug("LLM response cached: %.500s...", response_text)
     # Store in cache as JSON
     cache_data = json.dumps({
         "response": response_text,
@@ -129,7 +129,7 @@ def get_cached_llm_response(
         "model": used_model,
     })
     redis_client.setex(cache_key, ttl, cache_data)
-    logger.info("LLM cache miss – stored response for key %s (provider=%s, model=%s)", cache_key[:32], used_provider, used_model)
+    logger.debug("LLM cache miss – stored response for key %s (provider=%s, model=%s)", cache_key[:32], used_provider, used_model)
     return {
         "response": response_text,
         "provider": used_provider,
