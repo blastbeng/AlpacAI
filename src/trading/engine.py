@@ -72,7 +72,7 @@ class TradingEngine:
         self.pro_exchange = get_pro_exchange()
         self.ws_manager = WebSocketManager(self.pro_exchange, [])
         self.base_currency = settings.BASE_CURRENCY
-        self.max_symbols = settings.MAX_COINS
+        self.max_symbols = settings.MAX_SYMBOLS
         self.effective_max_symbols = self.max_symbols
         self.redis = get_redis_client()
         self._exchange_semaphore = asyncio.Semaphore(3)  # max 3 concurrent API calls
@@ -1282,7 +1282,7 @@ class TradingEngine:
                     filtered_pairs.append(sym)  # include if error
             sample_pairs = filtered_pairs[:settings.SYMBOL_SELECTION_CANDIDATE_LIMIT]
         else:
-            sample_pairs = available_pairs[:settings.COIN_SELECTION_MAX_PAIRS]
+            sample_pairs = available_pairs[:settings.SYMBOL_SELECTION_MAX_SYMBOLS]
 
         # Remove fully excluded symbols from the candidate pool
         sample_pairs = [

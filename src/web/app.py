@@ -164,7 +164,7 @@ def config():
         "exchange_id": settings.EXCHANGE_ID,
         "trading_mode": settings.TRADING_MODE,
         "base_currency": settings.BASE_CURRENCY,
-        "max_coins": settings.MAX_COINS,
+        "max_symbols": settings.MAX_SYMBOLS,
         "llm_mind_provider": mind_provider,
         "llm_mind_model": mind_model,
         "llm_actuator_provider": actuator_provider,
