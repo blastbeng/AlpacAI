@@ -1524,7 +1524,7 @@ class TradingEngine:
             min_min_cost = min(min_costs)
             max_affordable = int(base_balance // min_min_cost) if min_min_cost > 0 else self.max_symbols
         else:
-            max_affordable = self.max_coins
+            max_affordable = self.max_symbols
         self.effective_max_symbols = max(1, min(self.max_symbols, max_affordable)) if max_affordable > 0 else 0
 
         if self.effective_max_symbols == 0:
@@ -1724,7 +1724,7 @@ class TradingEngine:
             "full_market_breadth": full_market_breadth,
             "base_balance": base_balance,
             "per_coin_budget": per_coin_budget,
-            "max_coins": self.effective_max_coins,
+            "max_symbols": self.effective_max_symbols,
             "current_coins": self.current_coins,
             "coin_scores": coin_scores,
             "coin_spreads": coin_spreads,
@@ -1899,7 +1899,7 @@ class TradingEngine:
                     self.effective_max_symbols = llm_max_coins
                 else:
                     # Fallback: use the length of the deduped list, capped at the engine's max
-                    self.effective_max_coins = min(len(deduped), self.effective_max_coins)
+                    self.effective_max_symbols = min(len(deduped), self.effective_max_symbols)
 
                 # Optional: LLM can set the global coin re-evaluation interval
                 new_interval = parsed.get("coin_revaluation_interval_seconds")
@@ -2045,9 +2045,9 @@ class TradingEngine:
                 self.current_coins = deduped[: self.effective_max_coins]
 
                 # If LLM explicitly chose zero coins, respect that and don't fall back to volume-based selection
-                if not deduped or self.effective_max_coins == 0:
+                if not deduped or self.effective_max_symbols == 0:
                     self.current_coins = []
-                    self.effective_max_coins = 0
+                    self.effective_max_symbols = 0
                     logger.info("LLM selected 0 coins – pausing trading until next evaluation.")
 
             except json.JSONDecodeError:
@@ -2071,7 +2071,7 @@ class TradingEngine:
                     if self._is_excluded(sym, default_tf):
                         continue
                     fallback_coins.append({"symbol": sym, "timeframe": default_tf})
-                if len(fallback_coins) >= self.effective_max_coins:
+                if len(fallback_coins) >= self.effective_max_symbols:
                     break
             existing_coins = {c['symbol']: c for c in self.current_coins}
             for coin in fallback_coins:
@@ -2628,10 +2628,10 @@ class TradingEngine:
 
             balance = await asyncio.to_thread(self.trader.fetch_balance)
             base_balance = balance.get(self.base_currency, 0.0)
-            if base_balance <= 0 or self.effective_max_coins == 0:
+            if base_balance <= 0 or self.effective_max_symbols == 0:
                 logger.warning(
                     f"Skipping {symbol}: {self.base_currency} balance={base_balance:.2f}, "
-                    f"effective_max_coins={self.effective_max_coins}"
+                    f"effective_max_symbols={self.effective_max_symbols}"
                 )
                 return
 
@@ -2650,7 +2650,7 @@ class TradingEngine:
             ]
 
             # Compute per-coin budget for this coin
-            per_coin_budget = base_balance / self.effective_max_coins if self.effective_max_coins > 0 else 0.0
+            per_coin_budget = base_balance / self.effective_max_symbols if self.effective_max_symbols > 0 else 0.0
 
             perf = self._compute_performance_metrics()
 
@@ -3124,7 +3124,7 @@ class TradingEngine:
                 balance=balance,
                 open_positions=open_positions,
                 per_symbol_budget=per_coin_budget,
-                max_symbols=self.effective_max_coins,
+                max_symbols=self.effective_max_symbols,
                 base_currency=self.base_currency,
                 performance=perf,
                 ohlcv_data=ohlcv_data,
@@ -3221,7 +3221,7 @@ class TradingEngine:
                 "balance": balance,
                 "open_positions": open_positions,
                 "per_coin_budget": per_coin_budget,
-                "max_coins": self.effective_max_coins,
+                "max_symbols": self.effective_max_symbols,
                 "performance": perf,
                 "ohlcv_data": ohlcv_data,
                 "assigned_timeframe": assigned_tf,
