@@ -1542,8 +1542,8 @@ class TradingEngine:
                 )
             return
 
-        # Recompute per-coin budget with the effective max
-        per_coin_budget = base_balance / self.effective_max_symbols
+        # Recompute per-symbol budget with the effective max
+        per_symbol_budget = base_balance / self.effective_max_symbols
 
         # Compute pairwise correlation matrix from OHLCV close prices
         correlation_matrix: Dict[str, Dict[str, float]] = {}
@@ -2163,7 +2163,7 @@ class TradingEngine:
             if self.notifier:
                 msg = f"⚠️ No stocks selected. Bot will idle.\n"
                 msg += f"Balance: {base_balance:.2f} {self.base_currency}, "
-                msg += f"Per-coin budget: {per_coin_budget:.2f}"
+                msg += f"Per-symbol budget: {per_symbol_budget:.2f}"
                 if pause_msg:
                     msg = pause_msg + "\n" + msg
                 await self.notifier.send_notification(
@@ -2641,7 +2641,7 @@ class TradingEngine:
             ]
 
             # Compute per-coin budget for this coin
-            per_coin_budget = base_balance / self.effective_max_symbols if self.effective_max_symbols > 0 else 0.0
+            per_symbol_budget = base_balance / self.effective_max_symbols if self.effective_max_symbols > 0 else 0.0
 
             perf = self._compute_performance_metrics()
 
@@ -2971,10 +2971,10 @@ class TradingEngine:
                 else:
                     scalping_score = round(0.25 * spread_score + 0.25 * depth_score + 0.25 * freq_score + 0.25 * vol_score, 3)
 
-            # Pre-computed slippage estimate for per-coin budget order size
+            # Pre-computed slippage estimate for per-symbol budget order size
             estimated_slippage_pct = None
-            if asks and per_coin_budget > 0:
-                desired_quote = per_coin_budget
+            if asks and per_symbol_budget > 0:
+                desired_quote = per_symbol_budget
                 remaining_slip = desired_quote
                 total_cost_slip = 0.0
                 total_base_slip = 0.0
@@ -3119,7 +3119,7 @@ class TradingEngine:
                 order_book=order_book,
                 balance=balance,
                 open_positions=open_positions,
-                per_symbol_budget=per_coin_budget,
+                per_symbol_budget=per_symbol_budget,
                 max_symbols=self.effective_max_symbols,
                 base_currency=self.base_currency,
                 performance=perf,
@@ -3216,7 +3216,7 @@ class TradingEngine:
                 "order_book": order_book,
                 "balance": balance,
                 "open_positions": open_positions,
-                "per_coin_budget": per_coin_budget,
+                "per_symbol_budget": per_symbol_budget,
                 "max_symbols": self.effective_max_symbols,
                 "performance": perf,
                 "ohlcv_data": ohlcv_data,
