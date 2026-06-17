@@ -1232,7 +1232,7 @@ class TradingEngine:
         if last_eval and (now - float(last_eval)) < self._symbol_reevaluation_interval and self.current_symbols:
             return
 
-        old_coins = list(self.current_symbols)
+        old_symbols = list(self.current_symbols)
         available_pairs = await asyncio.to_thread(get_tradable_symbols, self.exchange)
         if not available_pairs:
             logger.warning("No available pairs found.")
@@ -1830,7 +1830,7 @@ class TradingEngine:
         if response is not None:
             try:
                 parsed = json.loads(response)
-                new_coins: List[Dict[str, str]] = []
+                new_symbols: List[Dict[str, str]] = []
                 llm_max_coins = None
 
                 if isinstance(parsed, dict):
@@ -2031,7 +2031,7 @@ class TradingEngine:
                     else:
                         logger.warning(f"Invalid global_risk_multiplier: {global_risk_mult}")
 
-                existing_coins = {c['symbol']: c for c in self.current_symbols}
+                existing_symbols = {c['symbol']: c for c in self.current_symbols}
                 for coin in deduped[: self.effective_max_symbols]:
                     if coin['symbol'] in existing_coins and 'entry_time' in existing_coins[coin['symbol']]:
                         coin['entry_time'] = existing_coins[coin['symbol']]['entry_time']
@@ -2056,7 +2056,7 @@ class TradingEngine:
             logger.warning("LLM returned no coins – using volume-based fallback.")
             # Sort sample_pairs by 24h volume descending
             sorted_pairs = sorted(sample_pairs, key=_volume, reverse=True)
-            fallback_coins: List[Dict[str, str]] = []
+            fallback_symbols: List[Dict[str, str]] = []
             default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
             for sym in sorted_pairs:
                 # Apply minimum 24h volume filter if configured
@@ -2071,7 +2071,7 @@ class TradingEngine:
                     fallback_coins.append({"symbol": sym, "timeframe": default_tf})
                 if len(fallback_coins) >= self.effective_max_symbols:
                     break
-            existing_coins = {c['symbol']: c for c in self.current_symbols}
+            existing_symbols = {c['symbol']: c for c in self.current_symbols}
             for coin in fallback_coins:
                 if coin['symbol'] in existing_coins and 'entry_time' in existing_coins[coin['symbol']]:
                     coin['entry_time'] = existing_coins[coin['symbol']]['entry_time']
@@ -2104,16 +2104,16 @@ class TradingEngine:
 
         # Update coin tenure tracking
         now_ts = time.time()
-        new_symbols = {entry["symbol"] for entry in self.current_symbols}
-        for sym in new_symbols:
+        new_symbol_set = {entry["symbol"] for entry in self.current_symbols}
+        for sym in new_symbol_set:
             if sym not in self._symbol_first_seen:
                 self._symbol_first_seen[sym] = now_ts
         for sym in list(self._symbol_first_seen.keys()):
-            if sym not in new_symbols:
+            if sym not in new_symbol_set:
                 del self._symbol_first_seen[sym]
 
         # Trigger immediate backfill for newly selected coins
-        old_symbols = {entry["symbol"] for entry in old_coins}
+        old_symbol_set = {entry["symbol"] for entry in old_symbols}
         for entry in self.current_symbols:
             if entry["symbol"] not in old_symbols:
                 sym = entry["symbol"]
@@ -2127,8 +2127,8 @@ class TradingEngine:
                 logger.info(f"Triggering immediate news fetch for newly selected coin {sym}")
                 asyncio.create_task(self._fetch_and_store_news_for_symbol(sym))
 
-        coin_labels = [f"{c['symbol']}({c['timeframe']})" for c in self.current_coins]
-        logger.info(f"Selected coins: {coin_labels}")
+        symbol_labels = [f"{c['symbol']}({c['timeframe']})" for c in self.current_symbols]
+        logger.info(f"Selected coins: {symbol_labels}")
 
         # Build a pause/resume message if the LLM provided a decision
         pause_msg = ""
