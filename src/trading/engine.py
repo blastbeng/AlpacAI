@@ -1247,7 +1247,7 @@ class TradingEngine:
                     discover_trending_stocks,
                     self.base_currency,
                     available_pairs,
-                    max_coins=settings.NEWS_SYMBOL_DISCOVERY_MAX_SYMBOLS,
+                    max_symbols=settings.NEWS_SYMBOL_DISCOVERY_MAX_SYMBOLS,
                     min_sentiment=settings.NEWS_SYMBOL_DISCOVERY_MIN_SENTIMENT,
                     min_articles=settings.NEWS_SYMBOL_DISCOVERY_MIN_ARTICLES,
                 )
@@ -1258,7 +1258,7 @@ class TradingEngine:
                 if discovered:
                     logger.info(f"Added {len(discovered)} news-discovered symbols to candidate pool.")
             except Exception as e:
-                logger.warning(f"News coin discovery failed: {e}")
+                logger.warning(f"News stock discovery failed: {e}")
 
         # Fetch balance and compute per-symbol budget
         balance = await asyncio.to_thread(self.trader.fetch_balance)
@@ -1308,7 +1308,7 @@ class TradingEngine:
             return t.get('quoteVolume', 0) or 0
         sample_pairs = sorted(sample_pairs, key=_volume, reverse=True)[:settings.SYMBOL_SELECTION_TOP_VOLUME_LIMIT]
 
-        # --- Fetch order books for these top coins to compute real spread/depth for scalping score ---
+        # --- Fetch order books for these top stocks to compute real spread/depth for scalping score ---
         top_n_for_ob = min(50, len(sample_pairs))
         top_by_vol = sample_pairs[:top_n_for_ob]  # already sorted by volume
         symbol_spreads: Dict[str, float] = {}
@@ -1331,9 +1331,9 @@ class TradingEngine:
                     total_depth = bid_vol + ask_vol
                     symbol_depths[sym] = round(total_depth, 2)
             except Exception as e:
-                logger.debug(f"Order book fetch failed for {sym} during coin selection: {e}")
+                logger.debug(f"Order book fetch failed for {sym} during stock selection: {e}")
 
-        # --- Compute scalping suitability scores for candidate coins ---
+        # --- Compute scalping suitability scores for candidate stocks ---
         symbol_scores: Dict[str, float] = {}
         for sym in sample_pairs:
             try:
@@ -1367,7 +1367,7 @@ class TradingEngine:
             except Exception:
                 symbol_scores[sym] = 0.0
 
-        # Fetch news sentiment for all candidate coins
+        # Fetch news sentiment for all candidate stocks
         news_sentiment = {}
         if settings.NEWS_ENABLED:
             for sym in sample_pairs:
