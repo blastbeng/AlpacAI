@@ -1442,7 +1442,7 @@ The bot will NOT use any default values. If you omit any required parameter, the
 
 **Fee awareness:** You are solely responsible for ensuring that every trade is profitable after fees and spread. The bot provides you with the taker fee rate and the current spread. You must set take_profit_pct (and partial_take_profit_pct if used) high enough to cover both entry and exit fees plus the spread, and still leave a net profit. There is no engine‑side minimum – if you set a take‑profit that is too low, the trade will lose money. Use the formula: minimum take_profit_pct = 1/(1-fee)^2 - 1 + spread_decimal. Add a buffer for safety.
 
-You are trading spot only (no shorting). Only output SELL if you currently hold the coin.
+You are trading spot only (no shorting). Only output SELL if you currently hold the stock.
 
 **Execution Decision:**
 - **There is NO separate "execute flag".** The only mechanism to control whether a trade is taken is the `"min_confidence"` parameter.
@@ -1459,7 +1459,7 @@ Return a JSON object as specified.
         prompt += (
             "\n**Trading is currently PAUSED.** You may ONLY output SELL or HOLD actions. "
             "Do NOT output BUY under any circumstances. "
-            "If you hold this coin, decide whether to continue holding (HOLD) or exit (SELL) "
+            "If you hold this stock, decide whether to continue holding (HOLD) or exit (SELL) "
             "based on current market conditions, risk parameters, and profit/loss status.\n"
         )
     # Add OHLCV summary if available
