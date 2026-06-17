@@ -2071,19 +2071,19 @@ class TradingEngine:
                     fallback_coins.append({"symbol": sym, "timeframe": default_tf})
                 if len(fallback_coins) >= self.effective_max_symbols:
                     break
-            existing_coins = {c['symbol']: c for c in self.current_coins}
+            existing_coins = {c['symbol']: c for c in self.current_symbols}
             for coin in fallback_coins:
                 if coin['symbol'] in existing_coins and 'entry_time' in existing_coins[coin['symbol']]:
                     coin['entry_time'] = existing_coins[coin['symbol']]['entry_time']
                 else:
                     coin['entry_time'] = time.time()
-            self.current_coins = fallback_coins
+            self.current_symbols = fallback_coins
 
         # Ensure all open positions remain in current_coins so they continue to be managed by the LLM strategy
         for symbol, pos in self.positions.items():
-            if not any(entry["symbol"] == symbol for entry in self.current_coins):
+            if not any(entry["symbol"] == symbol for entry in self.current_symbols):
                 tf = pos.get("timeframe") or (settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h")
-                self.current_coins.append({"symbol": symbol, "timeframe": tf})
+                self.current_symbols.append({"symbol": symbol, "timeframe": tf})
                 logger.info(f"Keeping {symbol} in current_coins due to open position (timeframe={tf})")
 
         # If trading is paused, keep ONLY coins with open positions.
@@ -2091,20 +2091,20 @@ class TradingEngine:
         paused_now = await asyncio.to_thread(self.redis.get, "trading:paused")
         if paused_now and paused_now == b"1":
             open_symbols = set(self.positions.keys())
-            before_count = len(self.current_coins)
-            self.current_coins = [c for c in self.current_coins if c["symbol"] in open_symbols]
-            removed = before_count - len(self.current_coins)
+            before_count = len(self.current_symbols)
+            self.current_symbols = [c for c in self.current_symbols if c["symbol"] in open_symbols]
+            removed = before_count - len(self.current_symbols)
             if removed > 0:
                 logger.info(
                     "Trading paused: removed %d coin(s) without open positions. "
                     "Remaining: %s",
                     removed,
-                    [c["symbol"] for c in self.current_coins],
+                    [c["symbol"] for c in self.current_symbols],
                 )
 
         # Update coin tenure tracking
         now_ts = time.time()
-        new_symbols = {entry["symbol"] for entry in self.current_coins}
+        new_symbols = {entry["symbol"] for entry in self.current_symbols}
         for sym in new_symbols:
             if sym not in self._coin_first_seen:
                 self._coin_first_seen[sym] = now_ts
@@ -2114,7 +2114,7 @@ class TradingEngine:
 
         # Trigger immediate backfill for newly selected coins
         old_symbols = {entry["symbol"] for entry in old_coins}
-        for entry in self.current_coins:
+        for entry in self.current_symbols:
             if entry["symbol"] not in old_symbols:
                 sym = entry["symbol"]
                 tf = entry["timeframe"]
