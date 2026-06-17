@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Any
 
 from src.config.settings import settings
 from src.exchanges.fees import get_fee_rate
-from src.exchanges.factory import get_exchange, get_pro_exchange
+from src.exchanges.factory import get_exchange, get_pro_exchange, get_data_client
 from src.exchanges.ws_manager import WebSocketManager
 from src.exchanges.market_data import get_available_pairs, get_tickers, get_order_book, get_multi_timeframe_ohlcv
 from src.trading.paper_simulator import PaperSimulator
@@ -69,6 +69,7 @@ MAX_TAKE_PROFIT_REVIEWS = 10   # force-sell after this many consecutive take-pro
 class TradingEngine:
     def __init__(self):
         self.exchange = get_exchange()
+        self.data_client = get_data_client()
         self.pro_exchange = get_pro_exchange()
         self.ws_manager = WebSocketManager(self.pro_exchange, [])
         self.base_currency = settings.BASE_CURRENCY
@@ -79,7 +80,8 @@ class TradingEngine:
 
         if settings.TRADING_MODE == "paper":
             self.trader = PaperSimulator(
-                self.exchange,
+                data_client=self.data_client,
+                trading_client=self.exchange,
                 base_currency=self.base_currency,
                 initial_balance=settings.PAPER_INITIAL_BALANCE,
                 redis_client=self.redis,

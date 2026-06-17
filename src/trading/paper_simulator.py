@@ -2,11 +2,13 @@ import uuid
 import time
 import logging
 from typing import Dict, List, Optional, Any
-import ccxt
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.trading.client import TradingClient
 
 logger = logging.getLogger(__name__)
 
 from src.exchanges.fees import get_fee_rate
+from src.exchanges.market_data import get_quotes
 
 
 class PaperSimulator:
@@ -14,14 +16,16 @@ class PaperSimulator:
 
     def __init__(
         self,
-        exchange: ccxt.Exchange,
-        base_currency: str = "USDT",
+        data_client: StockHistoricalDataClient,
+        trading_client: TradingClient,
+        base_currency: str = "USD",
         initial_balance: float = 10000.0,
-        fee_rate: float = 0.001,  # 0.1% fee
+        fee_rate: float = 0.0,
         redis_client=None,
         ws_manager=None,
     ):
-        self.exchange = exchange
+        self.data_client = data_client
+        self.trading_client = trading_client
         self.base_currency = base_currency
         self.fee_rate = fee_rate
         self.redis_client = redis_client
@@ -32,7 +36,6 @@ class PaperSimulator:
 
     def _get_price(self, symbol: str) -> float:
         """Get current mid price for a symbol, preferring live WebSocket data."""
-        # Try WebSocket ticker first
         if self.ws_manager is not None:
             ws_ticker = self.ws_manager.get_ticker(symbol)
             if ws_ticker is not None:
@@ -43,18 +46,25 @@ class PaperSimulator:
                     return (bid + ask) / 2
                 if last is not None:
                     return last
-        # Fallback to REST
-        ticker = self.exchange.fetch_ticker(symbol)
-        return (ticker['bid'] + ticker['ask']) / 2 if ticker['bid'] and ticker['ask'] else ticker['last']
+        # Fallback to REST via data client
+        quotes = get_quotes(self.data_client, [symbol])
+        q = quotes.get(symbol)
+        if q:
+            bid = q.get('bid')
+            ask = q.get('ask')
+            last = q.get('last')
+            if bid is not None and ask is not None:
+                return (bid + ask) / 2
+            if last is not None:
+                return last
+        raise ValueError(f"Could not get price for {symbol}")
 
     def _deduct_fee(self, currency: str, amount: float) -> float:
-        """Return amount after fee deduction."""
         return amount * (1 - self.fee_rate)
 
     def _get_fee_rate(self, symbol: str) -> float:
-        """Return the taker fee rate for the symbol, using Redis cache if available."""
         return get_fee_rate(
-            self.exchange,
+            self.trading_client,
             symbol,
             redis_client=self.redis_client,
             default=self.fee_rate,
@@ -67,7 +77,6 @@ class PaperSimulator:
         return dict(self.balances)
 
     def create_market_buy_order(self, symbol: str, quote_amount: float) -> Dict[str, Any]:
-        """Buy base currency using quote currency (e.g., spend USDT to buy BTC)."""
         base, quote = symbol.split('/')
         price = self._get_price(symbol)
         base_amount = quote_amount / price
@@ -99,7 +108,6 @@ class PaperSimulator:
         return order
 
     def create_market_sell_order(self, symbol: str, base_amount: float) -> Dict[str, Any]:
-        """Sell base currency to receive quote currency."""
         base, quote = symbol.split('/')
         price = self._get_price(symbol)
         quote_amount = base_amount * price
@@ -131,11 +139,9 @@ class PaperSimulator:
         return order
 
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
-        # In this simple simulator, market orders fill immediately, so no open orders.
         return []
 
     def cancel_order(self, order_id: str) -> bool:
-        # No open orders to cancel.
         return False
 
     def get_trade_history(self) -> List[Dict[str, Any]]:
