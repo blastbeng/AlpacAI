@@ -1837,9 +1837,9 @@ class TradingEngine:
                     # New format: {"stocks": [...], "max_stocks": N}
                     stocks_list = parsed.get("stocks", [])
                     llm_max_stocks = parsed.get("max_stocks")
-                    if not isinstance(coins_list, list):
-                        logger.error("LLM coin selection 'coins' field is not a list.")
-                        coins_list = []
+                    if not isinstance(stocks_list, list):
+                        logger.error("LLM coin selection 'stocks' field is not a list.")
+                        stocks_list = []
                     for item in stocks_list:
                         if isinstance(item, dict) and "symbol" in item:
                             sym = item["symbol"]
@@ -2182,10 +2182,10 @@ class TradingEngine:
                 )
         elif self.notifier:
             stock_reasoning = parsed.get("reasoning", "") if isinstance(parsed, dict) else ""
-            if coin_reasoning:
+            if stock_reasoning:
                 msg = f"🔄 Stocks updated: {', '.join(symbol_labels)}\n💡 {stock_reasoning}"
             else:
-                msg = f"🔄 Coins updated: {', '.join(symbol_labels)}"
+                msg = f"🔄 Stocks updated: {', '.join(symbol_labels)}"
             if pause_msg:
                 msg = pause_msg + "\n" + msg
             await self.notifier.send_notification(
