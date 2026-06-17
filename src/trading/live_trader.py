@@ -1,85 +1,134 @@
-import ccxt
-import logging
 import time
+import logging
 from typing import Dict, List, Optional, Any
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import MarketOrderRequest, GetOrdersRequest
+from alpaca.trading.enums import OrderSide, OrderType, TimeInForce, OrderStatus
 
 logger = logging.getLogger(__name__)
 
 
 class LiveTrader:
-    """Wraps a real exchange account for live trading."""
+    """Wraps an Alpaca TradingClient for live stock/ETF trading."""
 
-    def __init__(self, exchange: ccxt.Exchange):
-        self.exchange = exchange
+    def __init__(self, trading_client: TradingClient):
+        self.trading_client = trading_client
 
-    def _wait_for_order_fill(self, order: Dict[str, Any], symbol: str, timeout: float = 10.0) -> Dict[str, Any]:
-        """
-        Poll the exchange until the order is closed and has valid amount/cost.
-        Raises RuntimeError if the order does not fill within the timeout.
-        """
-        if order.get('status') == 'closed' and order.get('amount') is not None:
-            return order
-
-        start = time.time()
-        while time.time() - start < timeout:
-            time.sleep(0.5)
-            try:
-                order = self.exchange.fetch_order(order['id'], symbol)
-            except Exception as e:
-                logger.warning(f"Error fetching order {order['id']}: {e}")
-                continue
-            if order.get('status') == 'closed' and order.get('amount') is not None:
-                return order
-            logger.debug(f"Waiting for order {order['id']} to fill... status={order.get('status')}")
-
-        raise RuntimeError(f"Order {order['id']} did not fill within {timeout}s")
-
+    # ------------------------------------------------------------------
+    # Balance helpers
+    # ------------------------------------------------------------------
     def get_balance(self, currency: str) -> float:
-        """Get free balance for a specific currency."""
-        balance = self.exchange.fetch_balance()
-        return balance.get(currency, {}).get('free', 0.0)
+        """Get free balance for a specific currency (USD or stock symbol)."""
+        if currency.upper() == "USD":
+            account = self.trading_client.get_account()
+            return float(account.cash)
+        else:
+            # currency is a stock symbol (e.g., "AAPL")
+            try:
+                pos = self.trading_client.get_open_position(currency)
+                return float(pos.qty)
+            except Exception:
+                return 0.0
 
     def fetch_balance(self) -> Dict[str, float]:
-        """Return all free balances."""
-        balance = self.exchange.fetch_balance()
-        free_balances = {}
-        for currency, data in balance.get('total', {}).items():
-            free_balances[currency] = data
-        logger.debug("Fetched live balances: %s", free_balances)
-        return free_balances
+        """Return all free balances (USD + all open positions)."""
+        account = self.trading_client.get_account()
+        balances = {"USD": float(account.cash)}
+        try:
+            positions = self.trading_client.get_all_positions()
+            for pos in positions:
+                balances[pos.symbol] = float(pos.qty)
+        except Exception as e:
+            logger.warning(f"Could not fetch positions: {e}")
+        logger.debug("Fetched live balances: %s", balances)
+        return balances
 
+    # ------------------------------------------------------------------
+    # Order placement
+    # ------------------------------------------------------------------
     def create_market_buy_order(self, symbol: str, quote_amount: float) -> Dict[str, Any]:
         """
-        Place a market buy order using quote currency amount.
+        Place a market buy order using quote currency amount (USD).
         Waits for the order to fill before returning.
         """
-        ticker = self.exchange.fetch_ticker(symbol)
-        price = ticker['last']
-        base_amount = quote_amount / price
-        order = self.exchange.create_market_buy_order(symbol, base_amount)
-        order = self._wait_for_order_fill(order, symbol)
-        logger.info("Live BUY %s: amount=%s cost=%s @ %s", symbol, order.get('amount'), order.get('cost'), order.get('price'))
-        return order
+        base = symbol.split("/")[0]   # e.g., "AAPL" from "AAPL/USD"
+        order_data = MarketOrderRequest(
+            symbol=base,
+            notional=quote_amount,
+            side=OrderSide.BUY,
+            time_in_force=TimeInForce.DAY,
+        )
+        order = self.trading_client.submit_order(order_data)
+        filled_order = self._wait_for_order_fill(order.id, base)
+        return self._order_to_dict(filled_order, symbol)
 
     def create_market_sell_order(self, symbol: str, base_amount: float) -> Dict[str, Any]:
         """Place a market sell order. Waits for fill before returning."""
-        order = self.exchange.create_market_sell_order(symbol, base_amount)
-        order = self._wait_for_order_fill(order, symbol)
-        logger.info("Live SELL %s: amount=%s cost=%s @ %s", symbol, order.get('amount'), order.get('cost'), order.get('price'))
-        return order
+        base = symbol.split("/")[0]
+        order_data = MarketOrderRequest(
+            symbol=base,
+            qty=base_amount,
+            side=OrderSide.SELL,
+            time_in_force=TimeInForce.DAY,
+        )
+        order = self.trading_client.submit_order(order_data)
+        filled_order = self._wait_for_order_fill(order.id, base)
+        return self._order_to_dict(filled_order, symbol)
 
+    # ------------------------------------------------------------------
+    # Order management
+    # ------------------------------------------------------------------
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """Fetch open orders, optionally filtered by symbol."""
-        return self.exchange.fetch_open_orders(symbol)
+        request = GetOrdersRequest(status=OrderStatus.OPEN)
+        if symbol:
+            base = symbol.split("/")[0]
+            request.symbols = [base]
+        orders = self.trading_client.get_orders(request)
+        return [self._order_to_dict(o, o.symbol) for o in orders]
 
     def cancel_order(self, order_id: str) -> bool:
         """Cancel an order by ID. Returns True if successful."""
         try:
-            self.exchange.cancel_order(order_id)
+            self.trading_client.cancel_order_by_id(order_id)
             return True
         except Exception:
             return False
 
     def get_trade_history(self) -> List[Dict[str, Any]]:
-        """Fetch recent closed trades."""
-        return self.exchange.fetch_my_trades()
+        """Fetch recent closed orders."""
+        request = GetOrdersRequest(status=OrderStatus.CLOSED, limit=100)
+        orders = self.trading_client.get_orders(request)
+        return [self._order_to_dict(o, o.symbol) for o in orders]
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _wait_for_order_fill(self, order_id: str, symbol: str, timeout: float = 10.0) -> Any:
+        """Poll Alpaca until the order is filled, rejected, or cancelled."""
+        start = time.time()
+        while time.time() - start < timeout:
+            order = self.trading_client.get_order_by_id(order_id)
+            if order.status == OrderStatus.FILLED:
+                return order
+            elif order.status in (OrderStatus.REJECTED, OrderStatus.CANCELED, OrderStatus.EXPIRED):
+                raise RuntimeError(f"Order {order_id} {order.status}")
+            time.sleep(0.5)
+        raise RuntimeError(f"Order {order_id} did not fill within {timeout}s")
+
+    def _order_to_dict(self, order, symbol: str) -> Dict[str, Any]:
+        """Convert an Alpaca order object to the dict format expected by the engine."""
+        qty = float(order.filled_qty) if order.filled_qty else 0.0
+        price = float(order.filled_avg_price) if order.filled_avg_price else 0.0
+        cost = qty * price
+        return {
+            'id': str(order.id),
+            'symbol': symbol,          # original pair (e.g., "AAPL/USD")
+            'side': 'buy' if order.side == OrderSide.BUY else 'sell',
+            'amount': qty,
+            'price': price,
+            'cost': cost,
+            'fee': {'cost': 0.0, 'currency': 'USD'},
+            'status': 'closed',
+            'timestamp': int(order.created_at.timestamp() * 1000) if order.created_at else int(time.time() * 1000),
+        }
