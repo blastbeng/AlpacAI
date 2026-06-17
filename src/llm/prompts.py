@@ -110,15 +110,14 @@ def get_cached_news_summary(symbol: str, model_type: str = "actuator") -> dict:
         except (json.JSONDecodeError, TypeError):
             pass
 
-    base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
-    articles = get_news_for_symbol(base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+    articles = get_news_for_symbol(symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
     if not articles:
         result = {"summary": "No recent news.", "provider": "", "model": ""}
     else:
         try:
             formatted = _format_news_for_prompt(articles)
             prompt = (
-                f"Here are recent news headlines and summaries for {base_symbol}:\n\n"
+                f"Here are recent news headlines and summaries for {symbol}:\n\n"
                 f"{formatted}\n\n"
                 "Based on these articles, write a single very short sentence (max 15 words) "
                 "that explains the overall sentiment and the main reason for it. "
