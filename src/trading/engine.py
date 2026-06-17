@@ -58,7 +58,7 @@ from src.database import load_trading_state, save_trading_state, delete_trading_
 logger = logging.getLogger(__name__)
 
 SYMBOL_REEVALUATION_INTERVAL = 3600  # seconds (60 minutes)
-DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no coins (10 minutes)
+DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no symbols (10 minutes)
 MIN_SYMBOL_REEVALUATION_INTERVAL = 300  # seconds (5 minutes) – prevents rapid toggling
 MIN_LLM_PAUSE_DURATION = 3600  # seconds (60 min) – LLM cannot resume before this
 MAX_STOP_LOSS_REVIEWS = 10   # force-sell after this many consecutive stop-loss reviews
@@ -977,7 +977,7 @@ class TradingEngine:
         return regime
 
     async def _reconcile_positions(self):
-        """Detect and handle external changes: delisted coins, externally sold positions."""
+        """Detect and handle external changes: delisted symbols, externally sold positions."""
         # --- Delisted stocks ---
         plain_assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
         available_pairs = [f"{sym}/USD" for sym in plain_assets]
@@ -1097,7 +1097,7 @@ class TradingEngine:
         await self._save_state()
 
     def _load_state(self):
-        """Load current coins, positions, trade history, and initial balance from SQLite."""
+        """Load current symbols, positions, trade history, and initial balance from SQLite."""
         state = load_trading_state()
 
         raw_symbols = state.get("current_symbols", [])
@@ -1140,7 +1140,7 @@ class TradingEngine:
         )
 
     async def _save_state(self):
-        """Persist current coins, positions, and trade history to SQLite."""
+        """Persist current symbols, positions, and trade history to SQLite."""
         await asyncio.to_thread(save_trading_state, "current_symbols", self.current_symbols)
         await asyncio.to_thread(save_trading_state, "positions", self.positions)
         # Keep only the last 1000 trades to avoid unbounded growth
@@ -1169,7 +1169,7 @@ class TradingEngine:
         asyncio.create_task(self._periodic_full_market_breadth())
         asyncio.create_task(self._check_pending_entries())
 
-        # Initial coin selection and subscription update
+        # Initial symbol selection and subscription update
         await self._reevaluate_symbols()
         current_symbols = [entry["symbol"] for entry in self.current_symbols]
         await self.ws_manager.update_subscriptions(current_symbols)
@@ -1183,7 +1183,7 @@ class TradingEngine:
                     logger.warning("WebSocket manager unhealthy – falling back to REST polling.")
                     await asyncio.sleep(1.0)
 
-                # Process any coin whose evaluation interval has elapsed
+                # Process any symbol whose evaluation interval has elapsed
                 now = time.time()
                 for symbol_entry in self.current_symbols:
                     symbol = symbol_entry["symbol"]
@@ -1783,7 +1783,7 @@ class TradingEngine:
                     await asyncio.sleep(1)
                 else:
                     logger.warning(
-                        "LLM coin selection timed out after all retries. Falling back to volume-based selection."
+                        "LLM symbol selection timed out after all retries. Falling back to volume-based selection."
                     )
             except Exception as e:
                 if attempt < max_retries:
@@ -1793,7 +1793,7 @@ class TradingEngine:
                     await asyncio.sleep(1)
                 else:
                     logger.error(
-                        f"LLM coin selection failed after all retries: {e}. Falling back to volume-based selection."
+                        f"LLM symbol selection failed after all retries: {e}. Falling back to volume-based selection."
                     )
         logger.info(f"LLM stock selection raw response: {response}")
 
@@ -1878,7 +1878,7 @@ class TradingEngine:
                                 default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
                                 new_symbols.append({"symbol": item, "timeframe": default_tf})
                 else:
-                    logger.error("LLM coin selection response is neither a list nor a dict.")
+                    logger.error("LLM symbol selection response is neither a list nor a dict.")
 
                 # Deduplicate by symbol, keeping first occurrence
                 seen = set()
@@ -2052,7 +2052,7 @@ class TradingEngine:
                     logger.info("LLM selected 0 symbols – pausing trading until next evaluation.")
 
             except json.JSONDecodeError:
-                logger.error("Failed to parse coin selection response.")
+                logger.error("Failed to parse symbol selection response.")
 
         # Fallback: if LLM returned no symbols, pick top-volume affordable symbols
         if not self.current_symbols:
@@ -2528,7 +2528,7 @@ class TradingEngine:
             tenure_seconds = max_tenure_hours * 3600
             if time.time() - symbol_entry['entry_time'] > tenure_seconds:
                 logger.info(f"Max symbol tenure reached for {symbol} ({max_tenure_hours:.1f}h), forcing sell")
-                signal = Signal(action="SELL", confidence=1.0, reasoning="Max coin tenure reached")
+                signal = Signal(action="SELL", confidence=1.0, reasoning="Max symbol tenure reached")
                 await self._execute_signal(symbol, signal, exit_reason="max_tenure")
                 return
 
@@ -2629,7 +2629,7 @@ class TradingEngine:
                 )
                 return
 
-            # Fetch OHLCV for the coin's assigned timeframe
+            # Fetch OHLCV for the symbol's assigned timeframe
             ohlcv_data = {}
             if settings.OHLCV_TIMEFRAMES:
                 try:
@@ -3262,7 +3262,7 @@ class TradingEngine:
                 "historical_ohlcv": historical_ohlcv,
                 "min_order_amount": min_order_amount,
                 "min_order_cost": min_order_cost,
-                "all_coins": self.current_symbols,
+                "all_symbols": self.current_symbols,
                 "past_trades": past_trades,
                 "aggregate_sentiment": aggregate_sentiment,
                 "cycle_spent": self._cycle_spent,
@@ -3636,7 +3636,7 @@ class TradingEngine:
                         self.positions[symbol]["timestamp"] = int(time.time() * 1000)
                         self.positions[symbol].pop("_max_hold_expired", None)
                         self.positions[symbol].pop("_max_hold_expired_count", None)
-                    # Also update current_coins entry_time for consistency
+                    # Also update current_symbols entry_time for consistency
                     for symbol_entry in self.current_symbols:
                         if symbol_entry["symbol"] == symbol:
                             symbol_entry["entry_time"] = time.time()
@@ -3689,7 +3689,7 @@ class TradingEngine:
                         Signal(action="SELL", confidence=1.0, reasoning="Max hold expired, LLM did not extend"),
                         exit_reason="max_hold_time_llm_no_extend"
                     )
-                    return   # stop further processing for this coin
+                    return   # stop further processing for this symbol
 
             # --- Handle stop-loss-triggered LLM decision ---
             if stop_loss_triggered and signal.action == "HOLD":
@@ -3737,7 +3737,7 @@ class TradingEngine:
                                 "llm_model": llm_model,
                             }
                         )
-                    # Skip further processing for this coin (do not execute a trade)
+                    # Skip further processing for this symbol (do not execute a trade)
                     return
                 else:
                     # LLM returned HOLD but did not provide a new stop-loss → force SELL
@@ -3810,7 +3810,7 @@ class TradingEngine:
                                 "llm_model": llm_model,
                             }
                         )
-                    # Skip further processing for this coin
+                    # Skip further processing for this symbol
                     return
                 else:
                     # LLM returned HOLD but did not provide a new take-profit → force SELL
@@ -4219,7 +4219,7 @@ class TradingEngine:
             if fee_currency == self.base_currency:
                 total_fees += fee_cost
             else:
-                # fee is in the base coin (e.g., BTC) → convert using trade price
+                # fee is in the base symbol (e.g., BTC) → convert using trade price
                 price = t.get('price', 0.0)
                 total_fees += fee_cost * price
         total_value = current_balance + open_value
@@ -4294,7 +4294,7 @@ class TradingEngine:
         return open_trades
 
     def get_performance_summary(self) -> Dict[str, Any]:
-        """Return performance summary grouped by coin and timeframe from trade_history table."""
+        """Return performance summary grouped by symbol and timeframe from trade_history table."""
         return get_performance()
 
     def get_pause_status(self) -> Dict[str, Any]:
@@ -4830,7 +4830,7 @@ class TradingEngine:
                         if not pos.get("_stop_loss_triggered"):
                             pos["_stop_loss_triggered"] = True
                             pos["_stop_loss_review_count"] = review_count + 1
-                            # Force immediate strategy re-evaluation for this coin
+                            # Force immediate strategy re-evaluation for this symbol
                             self._last_strategy_eval.pop(symbol, None)
                             logger.info(
                                 f"Stop-loss triggered for {symbol} at {current_price} – "
@@ -4882,7 +4882,7 @@ class TradingEngine:
                     if not pos.get("_take_profit_triggered"):
                         pos["_take_profit_triggered"] = True
                         pos["_take_profit_review_count"] = review_count + 1
-                        # Force immediate strategy re-evaluation for this coin
+                        # Force immediate strategy re-evaluation for this symbol
                         self._last_strategy_eval.pop(symbol, None)
                         logger.info(
                             f"Take-profit triggered for {symbol} at {current_price} – "
@@ -4973,7 +4973,7 @@ class TradingEngine:
                 desired_amount = min(desired_amount, max_allowed_amount)
                 logger.info(f"Max risk per trade: {max_risk_pct:.2%} of {total_value:.2f} = {max_risk_amount:.2f}, max allowed amount = {max_allowed_amount:.2f}")
 
-            # Apply global risk multiplier if set by LLM in coin selection
+            # Apply global risk multiplier if set by LLM in symbol selection
             global_mult_raw = await asyncio.to_thread(self.redis.get, "trading:global_risk_multiplier")
             if global_mult_raw:
                 try:
@@ -6268,7 +6268,7 @@ class TradingEngine:
                 )
 
     async def _sweep_dust(self, symbol: str):
-        """Sell any remaining dust balance of a coin after a partial sell."""
+        """Sell any remaining dust balance of a symbol after a partial sell."""
         base = symbol.split("/")[0]
         try:
             balance = await asyncio.to_thread(self.trader.get_balance, base)

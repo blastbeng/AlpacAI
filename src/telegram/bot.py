@@ -582,7 +582,7 @@ class TelegramBot:
         for key in allowed_keys:
             if key in summary:
                 value = summary[key]
-                # If coins is a list of dicts, keep only the symbols
+                # If symbols is a list of dicts, keep only the symbols
                 if key == "symbols" and isinstance(value, list):
                     if value and isinstance(value[0], dict):
                         value = [c.get("symbol", c) for c in value]
