@@ -1130,10 +1130,10 @@ Maximum symbols to trade: {max_symbols}
         "Set min_profit_per_trade accordingly, and ensure it is not larger than your expected profit.\n"
     )
     if estimated_slippage_pct is not None:
-        prompt += f"\nEstimated slippage for a per-coin budget market buy: {estimated_slippage_pct:.4f}%\n"
+        prompt += f"\nEstimated slippage for a per-symbol budget market buy: {estimated_slippage_pct:.4f}%\n"
         prompt += (
             "This is the expected slippage (average fill price vs best ask) for a market buy order "
-            "sized to the per-coin budget. Use this to decide whether to reduce position_size_fraction "
+            "sized to the per-symbol budget. Use this to decide whether to reduce position_size_fraction "
             "or skip the trade entirely if slippage is too high. "
             "For scalping very small percentages, slippage above 0.05% may erode profitability. "
             "If slippage is high, consider a smaller position or a different stock. "
@@ -1315,7 +1315,7 @@ Maximum symbols to trade: {max_symbols}
             f"\nMarket breadth: {market_breadth['positive_pct']}% of {market_breadth['total_count']} "
             f"candidate stocks have a positive 24h change ({market_breadth['positive_count']} positive).\n"
             "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
-            "Use this to gauge overall market participation and adjust your coin selection and risk parameters accordingly.\n"
+            "Use this to gauge overall market participation and adjust your stock selection and risk parameters accordingly.\n"
         )
     if full_market_breadth:
         prompt += (
