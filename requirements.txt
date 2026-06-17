@@ -1,4 +1,4 @@
-alpaca-py>=0.30.0
+alpaca-py
 python-dotenv>=1.0.0
 redis>=5.0.0
 fastapi>=0.100.0

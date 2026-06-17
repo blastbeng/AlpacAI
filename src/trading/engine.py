@@ -6241,9 +6241,6 @@ class TradingEngine:
             self._last_strategy_eval.pop(symbol, None)
             await self._remove_symbol_if_paused(symbol)
 
-            if settings.TRADING_MODE == "paper":
-                await asyncio.to_thread(save_paper_balances, self.trader.balances)
-
             if self.notifier:
                 await self.notifier.send_notification(
                     f"🧹 Dust sweep: sold remaining {balance} {base} from {symbol}",
