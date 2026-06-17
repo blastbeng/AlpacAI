@@ -691,7 +691,7 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
         perf_text = f"""
 Historical Performance Data:
 Overall equity curve: {json.dumps(performance.get('equity_curve', {}))}
-Per-stock performance (win rate, avg P&L, total trades): {json.dumps(performance.get('coin_performance', {}), indent=2)}
+Per-stock performance (win rate, avg P&L, total trades): {json.dumps(performance.get('stock_performance', {}), indent=2)}
 Per-strategy performance: {json.dumps(performance.get('strategy_performance', {}), indent=2)}
 
 Use this historical data to select stocks that have been profitable in the past, and to avoid stocks with poor performance. Prefer strategies that have shown higher win rates and average P&L.
@@ -1482,12 +1482,12 @@ Return a JSON object as specified.
             }
         prompt += f"\nMulti-timeframe OHLCV data:\n{json.dumps(ohlcv_summary, indent=2)}\n"
     if performance:
-        coin_perf = performance.get("coin_performance", {}).get(symbol, {})
+        stock_perf = performance.get("stock_performance", {}).get(symbol, {})
         strategy_perf = performance.get("strategy_performance", {})
         equity = performance.get("equity_curve", {})
         perf_text = f"""
 Historical Performance:
-- This stock's past performance: {json.dumps(coin_perf)} (stop_loss_hits = number of times stop-loss was triggered; avg_hold_time_seconds = average trade duration)
+- This stock's past performance: {json.dumps(stock_perf)} (stop_loss_hits = number of times stop-loss was triggered; avg_hold_time_seconds = average trade duration)
 - Overall equity curve: {json.dumps(equity)}
 - Strategy performance summary: {json.dumps(strategy_perf)}
 
