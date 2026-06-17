@@ -4197,7 +4197,8 @@ class TradingEngine:
             try:
                 ticker = self.ws_manager.get_ticker(sym)
                 if ticker is None:
-                    ticker = self.exchange.fetch_ticker(sym)
+                    tickers_map = get_tickers(self.data_client, [sym])
+                    ticker = tickers_map.get(sym.split("/")[0])
                 price = ticker['last']
                 open_value += pos['amount'] * price
             except Exception:
