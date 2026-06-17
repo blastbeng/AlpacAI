@@ -109,7 +109,7 @@ class WebSocketManager:
         while self._running:
             try:
                 logger.info("Connecting to Alpaca WebSocket stream...")
-                await self.stream.run()
+                await self.stream._run_forever()
                 # Connection succeeded – reset failure counter for future reconnects
                 self._stream_failures = 0
             except AttributeError as e:
