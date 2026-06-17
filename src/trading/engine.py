@@ -1808,7 +1808,7 @@ class TradingEngine:
             try:
                 json.loads(response)  # validate
             except json.JSONDecodeError:
-                logger.warning("LLM stock selection response was not valid JSON. Retrying with correction prompt.")
+                logger.warning("LLM symbol selection response was not valid JSON. Retrying with correction prompt.")
                 correction_prompt = (
                     "Your previous response was not valid JSON. "
                     "You MUST output ONLY a single JSON object, with no markdown fences, no explanations, no extra text. "
@@ -1828,7 +1828,7 @@ class TradingEngine:
                     llm_model = correction_result["model"]
                     json.loads(response)  # validate the retry response
                 except Exception as e:
-                    logger.error(f"LLM stock selection still invalid after retry: {e}")
+                    logger.error(f"LLM symbol selection still invalid after retry: {e}")
                     response = None
 
         if response is not None:
