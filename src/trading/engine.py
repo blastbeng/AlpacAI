@@ -302,7 +302,7 @@ class TradingEngine:
                     await asyncio.to_thread(
                         self.redis.setex, "market:breadth:full", 600, json.dumps(full_market_breadth)
                     )
-                    logger.debug(f"Full market breadth updated: {full_market_breadth}")
+                    logger.info(f"Full market breadth updated: {full_market_breadth}")
             except Exception as e:
                 logger.error(f"Full market breadth computation error: {e}", exc_info=True)
             finally:
@@ -396,7 +396,7 @@ class TradingEngine:
                 await asyncio.to_thread(self.redis.setex, redis_key, 7 * 24 * 3600, str(current_volume))
                 return 1.0
         except Exception as e:
-            logger.debug(f"Volume trend computation failed for {symbol}: {e}")
+            logger.info(f"Volume trend computation failed for {symbol}: {e}")
             return None
 
     async def _fetch_and_store_news_for_symbol(self, symbol: str):
@@ -410,7 +410,7 @@ class TradingEngine:
             if articles:
                 await asyncio.to_thread(store_news_articles, base_symbol, articles)
         except Exception as e:
-            logger.debug(f"News fetch/store failed for {symbol}: {e}")
+            logger.info(f"News fetch/store failed for {symbol}: {e}")
 
     async def _risk_management_loop(self):
         """Check stop-loss, take-profit, and other risk rules on every ticker update."""
@@ -441,7 +441,7 @@ class TradingEngine:
             try:
                 symbols = [entry["symbol"] for entry in self.current_symbols]
                 if symbols:
-                    logger.debug(f"Fast news refresh for {len(symbols)} current symbols")
+                    logger.info(f"Fast news refresh for {len(symbols)} current symbols")
                     await asyncio.gather(
                         *[self._fetch_and_store_news_for_symbol(sym) for sym in symbols]
                     )
@@ -498,10 +498,10 @@ class TradingEngine:
                             base_symbol = sym.split("/")[0] if "/" in sym else sym
                             await asyncio.to_thread(store_news_articles, base_symbol, articles)
                     except Exception as e:
-                        logger.debug(f"News refresh failed for {sym}: {e}")
+                        logger.info(f"News refresh failed for {sym}: {e}")
                     await asyncio.sleep(0.2)
 
-                logger.debug(f"News cache refreshed for {len(symbols_to_refresh)} symbols in {time.time() - cycle_start:.2f}s")
+                logger.info(f"News cache refreshed for {len(symbols_to_refresh)} symbols in {time.time() - cycle_start:.2f}s")
             except Exception as e:
                 logger.error(f"Background news refresh error: {e}")
             finally:
@@ -539,7 +539,7 @@ class TradingEngine:
 
     async def _backfill_ohlcv(self, symbol: str, timeframe: str, start_ms: int, end_ms: int, max_candles: int = None, ignore_existing: bool = False):
         """Fetch and store all missing OHLCV candles between start_ms and end_ms."""
-        logger.debug(f"Backfill started for {symbol} {timeframe}: {start_ms} → {end_ms}")
+        logger.info(f"Backfill started for {symbol} {timeframe}: {start_ms} → {end_ms}")
         if ignore_existing:
             since = start_ms
         else:
@@ -568,7 +568,7 @@ class TradingEngine:
             await asyncio.to_thread(insert_ohlcv_batch, symbol, timeframe, candles)
             batch_count = len(candles)
             total_inserted += batch_count
-            logger.debug(f"Backfill batch: {symbol} {timeframe} fetched {batch_count} candles from {since}")
+            logger.info(f"Backfill batch: {symbol} {timeframe} fetched {batch_count} candles from {since}")
 
             if total_inserted >= max_candles:
                 logger.info(
@@ -586,9 +586,9 @@ class TradingEngine:
             await asyncio.sleep(0.2)
 
         if total_inserted >= max_candles:
-            logger.debug(f"Backfill partial for {symbol} {timeframe}: {total_inserted} candles inserted (limit reached)")
+            logger.info(f"Backfill partial for {symbol} {timeframe}: {total_inserted} candles inserted (limit reached)")
         else:
-            logger.debug(f"Backfill complete for {symbol} {timeframe}: {total_inserted} candles inserted")
+            logger.info(f"Backfill complete for {symbol} {timeframe}: {total_inserted} candles inserted")
 
     async def _fill_gaps(self, symbol: str, timeframe: str):
         """Detect and fill gaps in stored OHLCV data for a symbol/timeframe."""
@@ -599,7 +599,7 @@ class TradingEngine:
         # Get all stored timestamps
         candles = await asyncio.to_thread(get_ohlcv, symbol, timeframe, limit=50000)
         if len(candles) < 2:
-            logger.debug(f"Not enough data to check gaps for {symbol} {timeframe}")
+            logger.info(f"Not enough data to check gaps for {symbol} {timeframe}")
             return
 
         timestamps = sorted(c["timestamp"] for c in candles)
@@ -622,7 +622,7 @@ class TradingEngine:
                     gaps_filled += 1
 
         if gaps_found == 0:
-            logger.debug(f"No gaps found for {symbol} {timeframe}")
+            logger.info(f"No gaps found for {symbol} {timeframe}")
         else:
             logger.info(f"Gap check for {symbol} {timeframe}: {gaps_found} gaps found, {gaps_filled} filled")
 
@@ -650,7 +650,7 @@ class TradingEngine:
             self._market_data_running = True
             try:
                 if not self.current_symbols:
-                    logger.debug("No symbols tracked; skipping market data download.")
+                    logger.info("No symbols tracked; skipping market data download.")
                 else:
                     logger.info("Starting market data download cycle...")
                     now_ms = int(time.time() * 1000)
@@ -658,7 +658,7 @@ class TradingEngine:
                     for symbol_entry in self.current_symbols:
                         symbol = symbol_entry["symbol"]
                         tf = symbol_entry["timeframe"]
-                        logger.debug(f"Downloading market data for {symbol} ({tf})")
+                        logger.info(f"Downloading market data for {symbol} ({tf})")
                         try:
                             await self._backfill_ohlcv(symbol, tf, start_ms, now_ms)
                             await self._fill_gaps(symbol, tf)
@@ -1058,7 +1058,7 @@ class TradingEngine:
         # Keep only the last 1000 trades to avoid unbounded growth
         self.trade_history = self.trade_history[-1000:]
         await asyncio.to_thread(save_trading_state, "trade_history", self.trade_history)
-        logger.debug("Saved trading state: %d symbols, %d positions, %d trades",
+        logger.info("Saved trading state: %d symbols, %d positions, %d trades",
                      len(self.current_symbols), len(self.positions), len(self.trade_history))
 
     async def run(self):
@@ -1240,7 +1240,7 @@ class TradingEngine:
                     total_depth = bid_vol + ask_vol
                     symbol_depths[sym] = round(total_depth, 2)
             except Exception as e:
-                logger.debug(f"Order book fetch failed for {sym} during stock selection: {e}")
+                logger.info(f"Order book fetch failed for {sym} during stock selection: {e}")
 
         # --- Compute scalping suitability scores for candidate stocks ---
         symbol_scores: Dict[str, float] = {}
@@ -1286,7 +1286,7 @@ class TradingEngine:
                     if agg:
                         news_sentiment[base_symbol] = agg
                 except Exception as e:
-                    logger.debug(f"Could not fetch news sentiment for {sym}: {e}")
+                    logger.info(f"Could not fetch news sentiment for {sym}: {e}")
 
         # --- Build top opportunities list for the prompt ---
         top_opportunities = []
@@ -1402,7 +1402,7 @@ class TradingEngine:
                                 "volume": volume,
                             }
                     except Exception as e:
-                        logger.debug(f"Failed to fetch historical OHLCV for {sym} {tf}: {e}")
+                        logger.info(f"Failed to fetch historical OHLCV for {sym} {tf}: {e}")
                 return sym, sym_summary
 
             tasks = [_fetch_historical_summary(sym) for sym in sorted_by_vol]
@@ -2129,7 +2129,7 @@ class TradingEngine:
             source_raw = await asyncio.to_thread(self.redis.get, "trading:pause_source")
             source = source_raw.decode() if isinstance(source_raw, bytes) else (source_raw or "")
             if source != "llm":
-                logger.debug("Pause/resume check skipped: pause was not initiated by LLM (source=%s).", source or "unknown")
+                logger.info("Pause/resume check skipped: pause was not initiated by LLM (source=%s).", source or "unknown")
                 return
 
             # Gather minimal market context
@@ -2469,7 +2469,7 @@ class TradingEngine:
 
         # If trading is paused and we have no open position, skip entirely
         if trading_paused and symbol not in self.positions:
-            logger.debug(f"Skipping {symbol}: trading paused and no open position.")
+            logger.info(f"Skipping {symbol}: trading paused and no open position.")
             return
 
         # --- Max hold expired flag ---
@@ -2680,7 +2680,7 @@ class TradingEngine:
                         rank = sum(1 for v in sorted_atr if v <= atr)
                         atr_percentile = round(rank / len(sorted_atr) * 100, 1)
                 except Exception as e:
-                    logger.debug(f"ATR percentile computation failed for {symbol}: {e}")
+                    logger.info(f"ATR percentile computation failed for {symbol}: {e}")
 
             # --- Market regime classification (enhanced) ---
             market_regime = self._classify_market_regime(
@@ -2964,7 +2964,7 @@ class TradingEngine:
                         get_aggregate_sentiment_from_db, base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS
                     )
                 except Exception as e:
-                    logger.debug(f"Could not fetch aggregate sentiment for {symbol}: {e}")
+                    logger.info(f"Could not fetch aggregate sentiment for {symbol}: {e}")
 
             # Sentiment trend for this symbol
             sentiment_trend_val = None
@@ -3120,7 +3120,7 @@ class TradingEngine:
                 max_partial_tp_reviews=settings.MAX_PARTIAL_TP_REVIEWS,
                 max_dust_sweep_reviews=settings.MAX_DUST_SWEEP_REVIEWS,
             )
-            logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
+            logger.info(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-symbol)
             market_snapshot = {
                 "symbol": symbol,
@@ -3219,7 +3219,7 @@ class TradingEngine:
                 has_position=has_position,
                 is_critical=is_critical,
             ):
-                logger.debug(f"Skipping LLM for {symbol}: market unchanged, no strong signals.")
+                logger.info(f"Skipping LLM for {symbol}: market unchanged, no strong signals.")
                 # Update snapshot but no LLM call – assume HOLD
                 self._update_last_eval_snapshot(symbol, current_price, rsi, macd_hist)
                 return
@@ -3267,7 +3267,7 @@ class TradingEngine:
                 response = strategy_result["response"]
                 llm_provider = strategy_result["provider"]
                 llm_model = strategy_result["model"]
-                logger.debug(f"LLM call completed for {symbol} (provider={llm_provider}, model={llm_model})")
+                logger.info(f"LLM call completed for {symbol} (provider={llm_provider}, model={llm_model})")
                 # Update snapshot after a real LLM call
                 self._update_last_eval_snapshot(symbol, current_price, rsi, macd_hist)
             except asyncio.TimeoutError:
@@ -4381,14 +4381,14 @@ class TradingEngine:
                             new_stop = current_price * (1 - distance)
                             if new_stop > pos["stop_loss"]:
                                 pos["stop_loss"] = new_stop
-                                logger.debug(f"Trailing stop updated for {symbol}: new stop {new_stop:.4f}")
+                                logger.info(f"Trailing stop updated for {symbol}: new stop {new_stop:.4f}")
                     else:
                         # No activation threshold – update immediately
                         distance = pos["trailing_stop_distance_pct"]
                         new_stop = current_price * (1 - distance)
                         if new_stop > pos["stop_loss"]:
                             pos["stop_loss"] = new_stop
-                            logger.debug(f"Trailing stop updated for {symbol}: new stop {new_stop:.4f}")
+                            logger.info(f"Trailing stop updated for {symbol}: new stop {new_stop:.4f}")
 
                 # --- Trailing take-profit ---
                 if pos.get("trailing_take_profit") and pos.get("trailing_take_profit_distance_pct"):
@@ -4396,7 +4396,7 @@ class TradingEngine:
                     new_tp = current_price * (1 + ttp_dist)
                     if new_tp > pos["take_profit"]:
                         pos["take_profit"] = new_tp
-                        logger.debug(f"Trailing take-profit updated for {symbol}: new TP {new_tp:.4f}")
+                        logger.info(f"Trailing take-profit updated for {symbol}: new TP {new_tp:.4f}")
 
                 # --- Breakeven stop ---
                 breakeven_activation = pos.get("breakeven_activation_pct")
@@ -4411,7 +4411,7 @@ class TradingEngine:
                             breakeven_price = entry_price  # fallback
                         if breakeven_price > pos["stop_loss"]:
                             pos["stop_loss"] = breakeven_price
-                            logger.debug(f"Breakeven stop activated for {symbol}: new stop {breakeven_price:.4f}")
+                            logger.info(f"Breakeven stop activated for {symbol}: new stop {breakeven_price:.4f}")
 
                 # --- Lock profit (scalping) ---
                 lock_activation = pos.get("lock_profit_activation_pct")
@@ -4422,7 +4422,7 @@ class TradingEngine:
                         new_stop = entry_price * (1 + lock_level)
                         if new_stop > pos["stop_loss"]:
                             pos["stop_loss"] = new_stop
-                            logger.debug(f"Lock-profit activated for {symbol}: new stop {new_stop:.4f} (guaranteed +{lock_level:.2%})")
+                            logger.info(f"Lock-profit activated for {symbol}: new stop {new_stop:.4f} (guaranteed +{lock_level:.2%})")
 
                 # --- Partial take-profit (scalping) ---
                 partial_levels = pos.get("partial_take_profit_levels")
@@ -4482,7 +4482,7 @@ class TradingEngine:
                                             else:
                                                 elapsed = now_ts - wait_start
                                                 if elapsed < depth_timeout:
-                                                    logger.debug(
+                                                    logger.info(
                                                         f"Partial TP level {i} for {symbol}: still waiting for depth "
                                                         f"({elapsed:.1f}s / {depth_timeout}s)"
                                                     )
@@ -4652,7 +4652,7 @@ class TradingEngine:
                             )
                             continue  # skip further checks for this symbol
                     except Exception as e:
-                        logger.debug(f"News sentiment check failed for {symbol}: {e}")
+                        logger.info(f"News sentiment check failed for {symbol}: {e}")
 
                 # --- Soft stop: max unrealized loss ---
                 max_ul_pct = pos.get("max_unrealized_loss_pct")
@@ -4757,7 +4757,7 @@ class TradingEngine:
                                 )
                         else:
                             # Already waiting for LLM; do nothing (avoid re-triggering)
-                            logger.debug(
+                            logger.info(
                                 f"Stop-loss still triggered for {symbol}, waiting for LLM response "
                                 f"(review {review_count}/{MAX_STOP_LOSS_REVIEWS})."
                             )
@@ -4809,7 +4809,7 @@ class TradingEngine:
                             )
                     else:
                         # Already waiting for LLM; do nothing
-                        logger.debug(
+                        logger.info(
                             f"Take-profit still triggered for {symbol}, waiting for LLM response "
                             f"(review {review_count}/{MAX_TAKE_PROFIT_REVIEWS})."
                         )
