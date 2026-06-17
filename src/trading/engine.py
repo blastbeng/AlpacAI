@@ -1295,7 +1295,7 @@ class TradingEngine:
             )
         ]
 
-        tickers = await asyncio.to_thread(get_tickers, self.exchange, sample_pairs)
+        tickers = await asyncio.to_thread(get_tickers, self.data_client, sample_pairs)
 
         # --- Limit candidate pool to top N by 24h volume ---
         def _volume(sym):
@@ -1310,7 +1310,7 @@ class TradingEngine:
         coin_depths: Dict[str, float] = {}
         for sym in top_by_vol:
             try:
-                ob = await asyncio.to_thread(get_order_book, self.exchange, sym, 5)
+                ob = await asyncio.to_thread(get_order_book, self.data_client, sym, 5)
                 bids = ob.get('bids', [])
                 asks = ob.get('asks', [])
                 if bids and asks:
@@ -1440,7 +1440,7 @@ class TradingEngine:
             async def fetch_ohlcv_for_symbol(sym):
                 try:
                     data = await asyncio.to_thread(
-                        get_multi_timeframe_ohlcv, self.exchange, sym, settings.OHLCV_TIMEFRAMES, limit=50
+                        get_multi_timeframe_ohlcv, self.data_client, sym, settings.OHLCV_TIMEFRAMES, limit=50
                     )
                     return sym, data
                 except Exception as e:
@@ -1495,24 +1495,21 @@ class TradingEngine:
             results = await asyncio.gather(*tasks)
             historical_ohlcv_summary = {sym: summary for sym, summary in results if summary}
 
-        # Build market_limits with a concrete min_cost for each symbol
+        # Use Alpaca asset info instead of ccxt-style markets dict
         market_limits = {}
         for symbol in sample_pairs:
-            market = self.exchange.markets.get(symbol, {})
-            limits = market.get('limits', {})
-            min_cost = limits.get('cost', {}).get('min')
-            min_amount = limits.get('amount', {}).get('min')
+            base = symbol.split('/')[0]
+            try:
+                asset = await asyncio.to_thread(self.exchange.get_asset, base)
+                min_amount = float(asset.min_order_size) if asset.min_order_size else None
+            except Exception:
+                min_amount = None
             ticker = tickers.get(symbol, {})
             last_price = ticker.get('last', 0)
-
-            # Compute a numeric min_cost
-            if min_cost is not None:
-                numeric_min_cost = float(min_cost)
-            elif min_amount is not None and last_price:
-                numeric_min_cost = float(min_amount) * last_price
+            if min_amount is not None and last_price:
+                numeric_min_cost = min_amount * last_price
             else:
-                numeric_min_cost = 0.0  # no known limit
-
+                numeric_min_cost = 0.0
             market_limits[symbol] = {
                 'min_cost': numeric_min_cost,
                 'min_amount': min_amount,
