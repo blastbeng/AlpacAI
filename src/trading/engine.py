@@ -6357,7 +6357,7 @@ class TradingEngine:
             logger.error(f"Dust sweep failed for {symbol}: {e}")
 
     def _is_excluded(self, symbol: str, timeframe: str) -> bool:
-        """Return True if (symbol, timeframe) is in the EXCLUDED_PAIRS list."""
+        """Return True if (symbol, timeframe) is in the EXCLUDED_SYMBOLS list."""
         for entry in settings.EXCLUDED_SYMBOLS:
             parts = entry.split("/")
             if len(parts) == 2:
@@ -6373,7 +6373,7 @@ class TradingEngine:
         return False
 
     async def _remove_symbol_if_paused(self, symbol: str):
-        """If trading is paused, remove the symbol from current_coins to prevent new signals."""
+        """If trading is paused, remove the symbol from current_symbols to prevent new signals."""
         # Always clear any pending entry for this symbol
         self._pending_entries.pop(symbol, None)
         paused_raw = await asyncio.to_thread(self.redis.get, "trading:paused")
