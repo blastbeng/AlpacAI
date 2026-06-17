@@ -105,11 +105,13 @@ class WebSocketManager:
     # ------------------------------------------------------------------
     async def _run_stream(self):
         """Run the stream's event loop and reconnect on failure, giving up after N consecutive failures."""
+        self._stream_failures = 0
         while self._running:
-            self._stream_failures = 0  # reset for this connection attempt
             try:
                 logger.info("Connecting to Alpaca WebSocket stream...")
                 await self.stream.run()
+                # Connection succeeded – reset failure counter for future reconnects
+                self._stream_failures = 0
             except AttributeError as e:
                 self._stream_failures += 1
                 err_msg = str(e)
