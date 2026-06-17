@@ -1737,7 +1737,7 @@ class TradingEngine:
         # Compute prompt complexity for temperature selection
         _st_values = [abs(v) for v in sentiment_trend.values() if v is not None]
         _st_mag = max(_st_values) if _st_values else None
-        coin_selection_complexity = self._compute_prompt_complexity(
+        symbol_selection_complexity = self._compute_prompt_complexity(
             num_candidates=len(sample_pairs),
             market_breadth=market_breadth,
             fear_greed=None,
@@ -1746,7 +1746,7 @@ class TradingEngine:
             conflicting_signals=False,
             is_critical=False,
         )
-        effective_temp = self._get_effective_temperature("mind", coin_selection_complexity)
+        effective_temp = self._get_effective_temperature("mind", symbol_selection_complexity)
 
         parsed = {}
         max_retries = 2
