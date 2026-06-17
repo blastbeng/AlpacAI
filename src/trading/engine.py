@@ -5621,7 +5621,8 @@ class TradingEngine:
             if ticker is None:
                 try:
                     async with self._exchange_semaphore:
-                        ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                        tickers_map = await asyncio.to_thread(get_tickers, self.data_client, [symbol])
+                        ticker = tickers_map.get(symbol.split("/")[0])
                 except Exception:
                     return False
             current_price = ticker.get("last", 0) if ticker else 0
@@ -5632,7 +5633,7 @@ class TradingEngine:
             try:
                 async with self._exchange_semaphore:
                     ohlcv = await asyncio.to_thread(
-                        get_multi_timeframe_ohlcv, self.exchange, symbol, [timeframe], limit=50
+                        get_multi_timeframe_ohlcv, self.data_client, symbol, [timeframe], limit=50
                     )
             except Exception:
                 return False
@@ -5648,7 +5649,7 @@ class TradingEngine:
             if ob is None:
                 try:
                     async with self._exchange_semaphore:
-                        ob = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
+                        ob = await asyncio.to_thread(get_order_book, self.data_client, symbol, 20)
                 except Exception:
                     return False
             if ob:
@@ -5671,7 +5672,7 @@ class TradingEngine:
             try:
                 async with self._exchange_semaphore:
                     ohlcv = await asyncio.to_thread(
-                        get_multi_timeframe_ohlcv, self.exchange, symbol, [timeframe], limit=50
+                        get_multi_timeframe_ohlcv, self.data_client, symbol, [timeframe], limit=50
                     )
             except Exception:
                 return False
