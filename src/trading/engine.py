@@ -66,17 +66,18 @@ MAX_TAKE_PROFIT_REVIEWS = 10   # force-sell after this many consecutive take-pro
 
 class TradingEngine:
     def __init__(self):
-        self.exchange = get_trading_client()
-        self.data_client = get_data_client()
-        self.streaming_client = get_streaming_client()
-        self.ws_manager = WebSocketManager(self.streaming_client, [])
+        # Clients will be created asynchronously in _initialize_clients()
+        self.exchange = None
+        self.data_client = None
+        self.streaming_client = None
+        self.ws_manager = None
+        self.trader = None
+
         self.base_currency = settings.BASE_CURRENCY
         self.max_symbols = settings.MAX_SYMBOLS
         self.effective_max_symbols = self.max_symbols
         self.redis = get_redis_client()
         self._exchange_semaphore = asyncio.Semaphore(3)  # max 3 concurrent API calls
-
-        self.trader = LiveTrader(self.exchange)
 
         self.current_symbols: List[Dict[str, str]] = []   # each dict: {"symbol": ..., "timeframe": ...}
         self.positions: Dict[str, Dict[str, Any]] = {}  # symbol -> position info
@@ -88,9 +89,11 @@ class TradingEngine:
         self._strategy_intervals: Dict[str, float] = {}    # symbol -> custom interval in seconds
         self._symbol_reevaluation_interval = SYMBOL_REEVALUATION_INTERVAL
         self.notifier = None
-        self._load_state()
-        self._ensure_cost_basis()
-        # Ensure trading is not paused on startup and no stale pause keys remain
+
+        # _load_state() and _ensure_cost_basis() are now called in _initialize_clients()
+        # after the trading client is available.
+
+        # Clear stale pause keys immediately (Redis is already available)
         pause_keys = [
             "trading:paused",
             "trading:pause_source",
@@ -123,6 +126,16 @@ class TradingEngine:
         self._market_data_running = False
         self._full_breadth_running = False
 
+    async def _initialize_clients(self):
+        """Create Alpaca clients and load persisted state (non‑blocking)."""
+        self.exchange = await asyncio.to_thread(get_trading_client)
+        self.data_client = await asyncio.to_thread(get_data_client)
+        self.streaming_client = await asyncio.to_thread(get_streaming_client)
+        self.ws_manager = WebSocketManager(self.streaming_client, [])
+        self.trader = LiveTrader(self.exchange)
+        self._load_state()
+        self._ensure_cost_basis()
+
     def set_notifier(self, notifier):
         """Attach a notification service (e.g., TelegramBot)."""
         self.notifier = notifier
@@ -135,7 +148,8 @@ class TradingEngine:
         """Gracefully stop the engine and all background tasks."""
         logger.info("Stopping trading engine...")
         self._running = False
-        await self.ws_manager.stop()
+        if self.ws_manager:
+            await self.ws_manager.stop()
         logger.info("Trading engine stopped.")
 
     async def _periodic_reconcile(self):
@@ -1063,6 +1077,8 @@ class TradingEngine:
 
     async def run(self):
         """Main event‑driven loop using WebSocket ticker updates."""
+        logger.info("Trading engine initializing...")
+        await self._initialize_clients()
         logger.info("Trading engine started.")
         await self.ws_manager.start()
         logger.info("WebSocket manager started.")
