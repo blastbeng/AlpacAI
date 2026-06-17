@@ -765,6 +765,7 @@ def build_strategy_prompt(
     open_positions: List[Dict[str, Any]],
     per_symbol_budget: float,
     max_symbols: int,
+    base_currency: str,
     performance: Optional[Dict[str, Any]] = None,
     ohlcv_data: Optional[Dict[str, List]] = None,
     assigned_timeframe: Optional[str] = None,
@@ -861,7 +862,6 @@ Order book (top 5 levels): {json.dumps(order_book)}
 Current balances: {json.dumps(balance)}
 """
     # --- Portfolio context: total base balance and all tracked coins ---
-    base_currency = symbol.split('/')[1]
     base_balance = balance.get(base_currency, 0.0)
     prompt += f"\nTotal {base_currency} balance available: {base_balance:.2f}\n"
     if all_symbols:
@@ -905,8 +905,8 @@ Maximum symbols to trade: {max_symbols}
         f"**Important:** The sum of position_size_fraction across all stocks you intend to trade must not exceed 1.0, "
         f"so that you leave enough capital for other stocks. Plan your allocations accordingly.\n"
     )
-    base_symbol = symbol.split('/')[0]
-    quote_currency = symbol.split('/')[1]
+    base_symbol = symbol
+    quote_currency = base_currency
     if min_order_amount is not None or min_order_cost is not None:
         prompt += f"\nMinimum order size for {symbol}:"
         if min_order_amount is not None:
@@ -1141,7 +1141,7 @@ Maximum symbols to trade: {max_symbols}
             f"{settings.MAX_SLIPPAGE_CAP_PCT}% (configurable).\n"
         )
     if unrealized_pnl is not None and position_info:
-        prompt += f"Current position unrealized P&L: {unrealized_pnl:.2f} {symbol.split('/')[1]}\n"
+        prompt += f"Current position unrealized P&L: {unrealized_pnl:.2f} {base_currency}\n"
         prompt += f"Position details: entry price {position_info.get('price')}, amount {position_info.get('amount')}\n"
 
     # --- Multi-timeframe OHLCV summary and indicators ---
