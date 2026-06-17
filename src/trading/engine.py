@@ -185,7 +185,7 @@ class TradingEngine:
                 else:
                     await self._reevaluate_symbols()
                     # Update WebSocket subscriptions to match current coins
-                    current_symbols = [entry["symbol"] for entry in self.current_coins]
+                    current_symbols = [entry["symbol"] for entry in self.current_symbols]
                     await self.ws_manager.update_subscriptions(current_symbols)
             except Exception as e:
                 logger.error(f"Coin re-evaluation error: {e}", exc_info=True)
@@ -470,7 +470,7 @@ class TradingEngine:
                 continue
             self._news_fast_running = True
             try:
-                symbols = [entry["symbol"] for entry in self.current_coins]
+                symbols = [entry["symbol"] for entry in self.current_symbols]
                 if symbols:
                     logger.debug(f"Fast news refresh for {len(symbols)} current coins")
                     await asyncio.gather(
@@ -501,7 +501,7 @@ class TradingEngine:
             try:
                 cycle_start = time.time()
                 # Slow refresh: all available pairs EXCEPT the coins already handled by the fast loop
-                current_symbols = {entry["symbol"] for entry in self.current_coins}
+                current_symbols = {entry["symbol"] for entry in self.current_symbols}
                 symbols_to_refresh = set()
                 try:
                     available_pairs = await asyncio.to_thread(
@@ -679,13 +679,13 @@ class TradingEngine:
                 continue
             self._market_data_running = True
             try:
-                if not self.current_coins:
+                if not self.current_symbols:
                     logger.debug("No coins tracked; skipping market data download.")
                 else:
                     logger.info("Starting market data download cycle...")
                     now_ms = int(time.time() * 1000)
                     start_ms = now_ms - 30 * 24 * 60 * 60 * 1000  # 30 days ago
-                    for coin_entry in self.current_coins:
+                    for symbol_entry in self.current_symbols:
                         symbol = coin_entry["symbol"]
                         tf = coin_entry["timeframe"]
                         logger.debug(f"Downloading market data for {symbol} ({tf})")
@@ -980,11 +980,11 @@ class TradingEngine:
         """Detect and handle external changes: delisted coins, externally sold positions."""
         # --- Delisted coins ---
         available_pairs = await asyncio.to_thread(get_tradable_symbols, self.exchange)
-        for entry in list(self.current_coins):
+        for entry in list(self.current_symbols):
             coin = entry["symbol"]
             if coin not in available_pairs:
                 logger.warning(f"Coin {coin} no longer available. Removing from tracking.")
-                self.current_coins.remove(entry)
+                self.current_symbols.remove(entry)
                 if coin in self.positions:
                     pos = self.positions.pop(coin)
                     cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
@@ -3163,7 +3163,7 @@ class TradingEngine:
                 historical_ohlcv=historical_ohlcv,
                 min_order_amount=min_order_amount,
                 min_order_cost=min_order_cost,
-                all_symbols=self.current_coins,
+                all_symbols=self.current_symbols,
                 past_trades=past_trades,
                 aggregate_sentiment=aggregate_sentiment,
                 cycle_spent=self._cycle_spent,
@@ -3634,9 +3634,9 @@ class TradingEngine:
                         self.positions[symbol].pop("_max_hold_expired", None)
                         self.positions[symbol].pop("_max_hold_expired_count", None)
                     # Also update current_coins entry_time for consistency
-                    for coin_entry in self.current_coins:
-                        if coin_entry["symbol"] == symbol:
-                            coin_entry["entry_time"] = time.time()
+                    for symbol_entry in self.current_symbols:
+                        if symbol_entry["symbol"] == symbol:
+                            symbol_entry["entry_time"] = time.time()
                             break
                     # Notify the user about the extension
                     if self.notifier:
@@ -6378,5 +6378,5 @@ class TradingEngine:
         self._pending_entries.pop(symbol, None)
         paused_raw = await asyncio.to_thread(self.redis.get, "trading:paused")
         if paused_raw and paused_raw == b"1":
-            self.current_coins = [c for c in self.current_coins if c["symbol"] != symbol]
+            self.current_symbols = [c for c in self.current_symbols if c["symbol"] != symbol]
             logger.info(f"Trading paused: removed {symbol} from current_coins after position closed.")
