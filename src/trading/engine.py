@@ -482,7 +482,7 @@ class TradingEngine:
             await asyncio.sleep(settings.NEWS_FAST_UPDATE_INTERVAL_MINUTES * 60)
 
     async def _refresh_news_cache(self):
-        """Periodically fetch news for tracked coins and top-volume coins to keep cache warm."""
+        """Periodically fetch news for tracked stocks/ETFs and top-volume stocks to keep cache warm."""
         if not settings.NEWS_ENABLED:
             return
         try:
