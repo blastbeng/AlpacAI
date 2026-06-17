@@ -49,7 +49,7 @@ def status():
     redis = get_redis_client()
     paused = redis.get("trading:paused") == "1"
     return {
-        "current_coins": engine.current_coins,
+        "current_symbols": engine.current_symbols,
         "positions": engine.positions,
         "balances": engine.trader.fetch_balance(),
         "paused": paused,
@@ -79,9 +79,9 @@ def risk():
 @app.get("/api/news")
 async def news():
     engine = get_engine()
-    coins = engine.current_coins
+    symbols = engine.current_symbols
     result = {}
-    for entry in coins:
+    for entry in symbols:
         symbol = entry["symbol"]
         try:
             news_data = await run_in_threadpool(get_cached_news_summary, symbol)
@@ -298,7 +298,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 engine = get_engine()
                 redis = get_redis_client()
                 data = await asyncio.to_thread(lambda: {
-                    "current_coins": engine.current_coins,
+                    "current_symbols": engine.current_symbols,
                     "positions": engine.positions,
                     "balances": engine.trader.fetch_balance(),
                     "trades": engine.trade_history,
