@@ -104,7 +104,7 @@ class LiveTrader:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-    def _wait_for_order_fill(self, order_id: str, symbol: str, timeout: float = 10.0) -> Any:
+    def _wait_for_order_fill(self, order_id: str, symbol: str, timeout: float = 30.0) -> Any:
         """Poll Alpaca until the order is filled, rejected, or cancelled."""
         start = time.time()
         while time.time() - start < timeout:
