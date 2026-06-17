@@ -179,20 +179,23 @@ def get_tradable_symbols(trading_client: TradingClient) -> List[str]:
 
 
 def get_tickers(exchange, symbols: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Temporary wrapper: returns quotes for given symbols."""
-    # exchange is actually a StockHistoricalDataClient (will be fixed later)
+    """Temporary wrapper: returns quotes for given symbols (pair format 'SYM/USD' → plain 'SYM')."""
     if symbols is None:
         return {}
-    return get_quotes(exchange, symbols)
+    # Strip "/USD" suffix to get plain Alpaca symbols
+    plain_symbols = [s.split("/")[0] if "/" in s else s for s in symbols]
+    return get_quotes(exchange, plain_symbols)
 
 
 def get_order_book(exchange, symbol: str, limit: int = 20) -> Dict[str, Any]:
-    """Temporary wrapper: returns simulated order book."""
-    return get_order_book(exchange, symbol, limit)
+    """Temporary wrapper: returns simulated order book (pair format 'SYM/USD' → plain 'SYM')."""
+    plain_symbol = symbol.split("/")[0] if "/" in symbol else symbol
+    return get_order_book(exchange, plain_symbol, limit)
 
 
 def get_multi_timeframe_ohlcv(
     exchange, symbol: str, timeframes: List[str], limit: int = 24
 ) -> Dict[str, List[List[float]]]:
-    """Temporary wrapper: returns multi-timeframe bars."""
-    return get_multi_timeframe_bars(exchange, symbol, timeframes, limit)
+    """Temporary wrapper: returns multi-timeframe bars (pair format 'SYM/USD' → plain 'SYM')."""
+    plain_symbol = symbol.split("/")[0] if "/" in symbol else symbol
+    return get_multi_timeframe_bars(exchange, plain_symbol, timeframes, limit)
