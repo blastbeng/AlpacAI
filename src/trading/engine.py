@@ -183,7 +183,7 @@ class TradingEngine:
                     # Only run the pause/resume decision, skip coin selection
                     await self._check_pause_resume_decision()
                 else:
-                    await self._reevaluate_coins()
+                    await self._reevaluate_symbols()
                     # Update WebSocket subscriptions to match current coins
                     current_symbols = [entry["symbol"] for entry in self.current_coins]
                     await self.ws_manager.update_subscriptions(current_symbols)
@@ -458,8 +458,8 @@ class TradingEngine:
             except Exception as e:
                 logger.error(f"Risk management loop error: {e}", exc_info=True)
 
-    async def _refresh_current_coins_news_fast(self):
-        """Fast news refresh loop – only for the coins currently tracked by the engine."""
+    async def _refresh_current_symbols_news_fast(self):
+        """Fast news refresh loop – only for the symbols currently tracked by the engine."""
         if not settings.NEWS_ENABLED:
             return
         # Fetch immediately on startup, then periodically
@@ -656,8 +656,8 @@ class TradingEngine:
         else:
             logger.info(f"Gap check for {symbol} {timeframe}: {gaps_found} gaps found, {gaps_filled} filled")
 
-    async def _backfill_new_coin(self, symbol: str, timeframe: str):
-        """Immediately backfill 30 days of OHLCV data for a newly selected coin (assigned timeframe only)."""
+    async def _backfill_new_symbol(self, symbol: str, timeframe: str):
+        """Immediately backfill 30 days of OHLCV data for a newly selected symbol (assigned timeframe only)."""
         now_ms = int(time.time() * 1000)
         start_ms = now_ms - 30 * 24 * 60 * 60 * 1000
         logger.info(f"Starting immediate backfill for newly selected coin {symbol} ({timeframe})")
@@ -1004,7 +1004,7 @@ class TradingEngine:
                     self.trade_history.append(trade)
                     await asyncio.to_thread(insert_trade, trade)
                     logger.warning(f"Delisted coin {coin}: recorded forced sell of {pos['amount']} at 0.")
-                    await self._remove_coin_if_paused(coin)
+                    await self._remove_symbol_if_paused(coin)
 
         # --- Externally modified balances ---
         for symbol, pos in list(self.positions.items()):
@@ -1055,7 +1055,7 @@ class TradingEngine:
                 )
                 if actual_balance == 0.0:
                     del self.positions[symbol]
-                    await self._remove_coin_if_paused(symbol)
+                    await self._remove_symbol_if_paused(symbol)
                 else:
                     self.positions[symbol]["amount"] = actual_balance
                     self.positions[symbol]["cost_basis"] = cost_basis - prorated_cost_basis
@@ -1158,7 +1158,7 @@ class TradingEngine:
 
         # Start background tasks
         asyncio.create_task(self._refresh_news_cache())
-        asyncio.create_task(self._refresh_current_coins_news_fast())
+        asyncio.create_task(self._refresh_current_symbols_news_fast())
         asyncio.create_task(self._download_market_data_loop())
         asyncio.create_task(self._risk_management_loop())
         asyncio.create_task(self._periodic_reconcile())
@@ -1168,7 +1168,7 @@ class TradingEngine:
         asyncio.create_task(self._check_pending_entries())
 
         # Initial coin selection and subscription update
-        await self._reevaluate_coins()
+        await self._reevaluate_symbols()
         current_symbols = [entry["symbol"] for entry in self.current_coins]
         await self.ws_manager.update_subscriptions(current_symbols)
 
@@ -1215,12 +1215,12 @@ class TradingEngine:
                 logger.error(f"Engine loop error: {e}", exc_info=True)
                 await asyncio.sleep(5)
 
-    async def _reevaluate_coins(self):
-        """Use LLM to select which coins to trade."""
+    async def _reevaluate_symbols(self):
+        """Use LLM to select which symbols to trade."""
         async with self._coin_reeval_lock:
-            return await self._reevaluate_coins_impl()
+            return await self._reevaluate_symbols_impl()
 
-    async def _reevaluate_coins_impl(self):
+    async def _reevaluate_symbols_impl(self):
         # Reset per-cycle spending tracker so new buys are not blocked by prior cycle spending
         self._cycle_spent = 0.0
 
@@ -2118,7 +2118,7 @@ class TradingEngine:
                 sym = entry["symbol"]
                 tf = entry["timeframe"]
                 logger.info(f"Triggering immediate backfill for newly selected coin {sym} ({tf})")
-                asyncio.create_task(self._backfill_new_coin(sym, tf))
+                asyncio.create_task(self._backfill_new_symbol(sym, tf))
 
         # Also trigger immediate news fetch for newly selected coins
         if settings.NEWS_ENABLED:
@@ -2511,17 +2511,17 @@ class TradingEngine:
             else:
                 logger.warning(f"Invalid resume_trading value in LLM response: {resume_trading}")
 
-    async def _process_coin(self, coin_entry: Dict[str, str], trading_paused: bool = False):
+    async def _process_symbol(self, symbol_entry: Dict[str, str], trading_paused: bool = False):
         """Fetch market data, get LLM strategy, validate, and execute."""
-        symbol = coin_entry["symbol"]
-        assigned_tf = coin_entry["timeframe"]
+        symbol = symbol_entry["symbol"]
+        assigned_tf = symbol_entry["timeframe"]
         tf_seconds = self._timeframe_to_seconds(assigned_tf)
 
         # --- Maximum coin tenure (per-coin, set by LLM) ---
-        max_tenure_hours = coin_entry.get('max_tenure_hours')
-        if max_tenure_hours is not None and max_tenure_hours > 0 and 'entry_time' in coin_entry:
+        max_tenure_hours = symbol_entry.get('max_tenure_hours')
+        if max_tenure_hours is not None and max_tenure_hours > 0 and 'entry_time' in symbol_entry:
             tenure_seconds = max_tenure_hours * 3600
-            if time.time() - coin_entry['entry_time'] > tenure_seconds:
+            if time.time() - symbol_entry['entry_time'] > tenure_seconds:
                 logger.info(f"Max tenure reached for {symbol} ({max_tenure_hours:.1f}h), forcing sell")
                 signal = Signal(action="SELL", confidence=1.0, reasoning="Max coin tenure reached")
                 await self._execute_signal(symbol, signal, exit_reason="max_tenure")
@@ -5419,7 +5419,7 @@ class TradingEngine:
                 self._strategy_intervals.pop(symbol, None)
                 self._last_strategy_eval.pop(symbol, None)
                 self._pending_entries.pop(symbol, None)
-                await self._remove_coin_if_paused(symbol)
+                await self._remove_symbol_if_paused(symbol)
                 self.trade_history.append(order)
                 await asyncio.to_thread(insert_trade, order)
                 # Persist paper balances immediately
@@ -6047,7 +6047,7 @@ class TradingEngine:
                 self._strategy_intervals.pop(symbol, None)
                 self._last_strategy_eval.pop(symbol, None)
                 self._pending_entries.pop(symbol, None)
-                await self._remove_coin_if_paused(symbol)
+                await self._remove_symbol_if_paused(symbol)
             else:
                 self.positions[symbol]["amount"] = remaining_amount
                 self.positions[symbol]["cost_basis"] = remaining_cost_basis
@@ -6201,7 +6201,7 @@ class TradingEngine:
                 self._strategy_intervals.pop(symbol, None)
                 self._last_strategy_eval.pop(symbol, None)
                 self._pending_entries.pop(symbol, None)
-                await self._remove_coin_if_paused(symbol)
+                await self._remove_symbol_if_paused(symbol)
             else:
                 self.positions[symbol]["amount"] = remaining_amount
                 self.positions[symbol]["cost_basis"] = remaining_cost_basis
@@ -6328,7 +6328,7 @@ class TradingEngine:
             self.positions.pop(symbol, None)
             self._strategy_intervals.pop(symbol, None)
             self._last_strategy_eval.pop(symbol, None)
-            await self._remove_coin_if_paused(symbol)
+            await self._remove_symbol_if_paused(symbol)
 
             if settings.TRADING_MODE == "paper":
                 await asyncio.to_thread(save_paper_balances, self.trader.balances)
@@ -6363,7 +6363,7 @@ class TradingEngine:
                     return True
         return False
 
-    async def _remove_coin_if_paused(self, symbol: str):
+    async def _remove_symbol_if_paused(self, symbol: str):
         """If trading is paused, remove the symbol from current_coins to prevent new signals."""
         # Always clear any pending entry for this symbol
         self._pending_entries.pop(symbol, None)
