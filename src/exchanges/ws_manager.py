@@ -31,6 +31,7 @@ class WebSocketManager:
     # ------------------------------------------------------------------
     async def start(self):
         """Start the WebSocket stream and subscribe to initial symbols."""
+        logger.info("WebSocket manager starting...")
         self._running = True
         if self.symbols:
             self.stream.subscribe_quotes(list(self.symbols))
@@ -38,6 +39,7 @@ class WebSocketManager:
         self.stream.on_quote(self._on_quote)
         self.stream.on_trade(self._on_trade)
         self._tasks.append(asyncio.create_task(self._run_stream()))
+        logger.info("WebSocket manager started (stream task created).")
 
     async def stop(self):
         """Stop the stream and cancel all tasks."""
@@ -97,6 +99,7 @@ class WebSocketManager:
         """Run the stream's event loop and reconnect on failure."""
         while self._running:
             try:
+                logger.info("Connecting to Alpaca WebSocket stream...")
                 await self.stream.run()
             except Exception as e:
                 logger.error(f"Stream disconnected: {e}")

@@ -1098,8 +1098,17 @@ class TradingEngine:
         logger.info("Trading engine initializing...")
         await self._initialize_clients()
         logger.info("Trading engine started.")
-        await self.ws_manager.start()
-        logger.info("WebSocket manager started successfully.")
+        try:
+            await self.ws_manager.start()
+            logger.info("WebSocket manager started successfully.")
+        except Exception as e:
+            logger.error(
+                f"WebSocket manager failed to start: {e}. "
+                f"Engine will use REST polling for market data.",
+                exc_info=True
+            )
+            # ws_manager is in an unstarted state; the main loop will detect
+            # unhealthy and automatically fall back to REST.
 
         # Start background tasks
         asyncio.create_task(self._refresh_news_cache())
