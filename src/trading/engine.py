@@ -4893,8 +4893,9 @@ class TradingEngine:
                 atr_mult = params["stop_loss_atr_multiple"]
                 ticker = self.ws_manager.get_ticker(symbol)
                 if ticker is None:
-                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [symbol])
-                    ticker = quotes.get(symbol)
+                    base = symbol.split("/")[0]
+                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
+                    ticker = quotes.get(base)
                 current_price = ticker['last']
                 sl_pct = (atr_mult * atr) / current_price
                 logger.info(f"ATR-based stop: ATR={atr}, multiplier={atr_mult}, stop_loss_pct={sl_pct:.4%}")
