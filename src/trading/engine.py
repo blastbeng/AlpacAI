@@ -4664,16 +4664,16 @@ class TradingEngine:
                 # --- Dust sweep check (if not already triggered) ---
                 if not pos.get("_dust_sweep_triggered"):
                     base = symbol.split("/")[0]
-                    quote = symbol.split("/")[1]
-                    market = self.exchange.markets.get(symbol, {})
-                    limits = market.get("limits", {})
-                    min_amount = limits.get("amount", {}).get("min")
-                    min_cost = limits.get("cost", {}).get("min")
                     amount = pos["amount"]
                     is_dust = False
-                    if min_amount is not None and amount < float(min_amount):
+                    try:
+                        asset = await asyncio.to_thread(self.exchange.get_asset, base)
+                        min_amount = float(asset.min_order_size) if asset.min_order_size else None
+                    except Exception:
+                        min_amount = None
+                    if min_amount is not None and amount < min_amount:
                         is_dust = True
-                    elif min_cost is not None and amount * current_price < float(min_cost):
+                    elif min_amount is not None and current_price and amount * current_price < min_amount * current_price:
                         is_dust = True
 
                     if is_dust:
@@ -4694,16 +4694,16 @@ class TradingEngine:
                 else:
                     # If dust was previously triggered but condition no longer holds, clear it
                     base = symbol.split("/")[0]
-                    quote = symbol.split("/")[1]
-                    market = self.exchange.markets.get(symbol, {})
-                    limits = market.get("limits", {})
-                    min_amount = limits.get("amount", {}).get("min")
-                    min_cost = limits.get("cost", {}).get("min")
                     amount = pos["amount"]
                     is_dust = False
-                    if min_amount is not None and amount < float(min_amount):
+                    try:
+                        asset = await asyncio.to_thread(self.exchange.get_asset, base)
+                        min_amount = float(asset.min_order_size) if asset.min_order_size else None
+                    except Exception:
+                        min_amount = None
+                    if min_amount is not None and amount < min_amount:
                         is_dust = True
-                    elif min_cost is not None and amount * current_price < float(min_cost):
+                    elif min_amount is not None and current_price and amount * current_price < min_amount * current_price:
                         is_dust = True
                     if not is_dust:
                         pos.pop("_dust_sweep_triggered", None)
