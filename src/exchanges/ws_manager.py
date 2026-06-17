@@ -35,9 +35,17 @@ class WebSocketManager:
         """Start the WebSocket stream and subscribe to initial symbols."""
         logger.info("WebSocket manager starting...")
         self._running = True
+        if self.stream is None:
+            logger.error("Stream client is None – cannot start WebSocket manager.")
+            self._running = False
+            return
         if self.symbols:
-            await asyncio.to_thread(self.stream.subscribe_quotes, self._on_quote, *self.symbols)
-            await asyncio.to_thread(self.stream.subscribe_trades, self._on_trade, *self.symbols)
+            try:
+                await asyncio.to_thread(self.stream.subscribe_quotes, self._on_quote, *self.symbols)
+                await asyncio.to_thread(self.stream.subscribe_trades, self._on_trade, *self.symbols)
+            except Exception as e:
+                logger.error(f"Failed to subscribe initial symbols: {e}")
+                # Continue anyway; _run_stream will attempt connection
         self._tasks.append(asyncio.create_task(self._run_stream()))
         logger.info("WebSocket manager started (stream task created).")
 
@@ -102,12 +110,29 @@ class WebSocketManager:
             try:
                 logger.info("Connecting to Alpaca WebSocket stream...")
                 await self.stream.run()
+            except AttributeError as e:
+                self._stream_failures += 1
+                logger.error(
+                    f"Stream connection failed with AttributeError: {e}. "
+                    f"This usually means the stream object is not properly initialised. "
+                    f"Check ALPACA_STREAM_URL and ALPACA_DATA_FEED settings. "
+                    f"(failure {self._stream_failures}/{self.MAX_STREAM_FAILURES})"
+                )
+                if self._running and self._stream_failures < self.MAX_STREAM_FAILURES:
+                    await self._reconnect()
+                    await asyncio.sleep(5)
+                else:
+                    logger.warning(
+                        "Max stream failures reached. Giving up on WebSocket; engine will use REST polling."
+                    )
+                    self._running = False
+                    break
             except Exception as e:
                 self._stream_failures += 1
                 logger.error(f"Stream disconnected: {e} (failure {self._stream_failures}/{self.MAX_STREAM_FAILURES})")
                 if self._running and self._stream_failures < self.MAX_STREAM_FAILURES:
                     await self._reconnect()
-                    await asyncio.sleep(5)  # wait before next attempt
+                    await asyncio.sleep(5)
                 else:
                     logger.warning(
                         "Max stream failures reached. Giving up on WebSocket; engine will use REST polling."
@@ -128,9 +153,16 @@ class WebSocketManager:
                 pass
             from src.exchanges.factory import get_streaming_client
             self.stream = get_streaming_client()
+            if self.stream is None:
+                logger.error("Failed to create a new stream client – reconnection aborted.")
+                return
             if self.symbols:
-                self.stream.subscribe_quotes(self._on_quote, *self.symbols)
-                self.stream.subscribe_trades(self._on_trade, *self.symbols)
+                try:
+                    self.stream.subscribe_quotes(self._on_quote, *self.symbols)
+                    self.stream.subscribe_trades(self._on_trade, *self.symbols)
+                except Exception as e:
+                    logger.warning(f"Failed to re-subscribe during reconnect: {e}")
+            await asyncio.sleep(0.5)  # brief pause to let the new stream settle
             logger.info("Reconnection complete.")
 
     async def _on_quote(self, quote: Quote):
