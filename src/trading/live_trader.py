@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Any
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest, GetOrdersRequest
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce, OrderStatus
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class LiveTrader:
             notional=quote_amount,
             side=OrderSide.BUY,
             time_in_force=TimeInForce.DAY,
+            extended_hours=settings.ALPACA_PAPER,
         )
         order = self.trading_client.submit_order(order_data)
         filled_order = self._wait_for_order_fill(order.id, base, timeout)
@@ -70,6 +72,7 @@ class LiveTrader:
             qty=qty,
             side=OrderSide.SELL,
             time_in_force=TimeInForce.DAY,
+            extended_hours=settings.ALPACA_PAPER,
         )
         order = self.trading_client.submit_order(order_data)
         filled_order = self._wait_for_order_fill(order.id, base, timeout)

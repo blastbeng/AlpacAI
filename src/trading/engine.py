@@ -4873,6 +4873,16 @@ class TradingEngine:
 
     async def _execute_signal(self, symbol: str, signal, timeframe: str = None, exit_reason: str = None, atr: Optional[float] = None, spread_pct: Optional[float] = None, order_book: Optional[Dict[str, Any]] = None):
         """Execute a BUY or SELL signal."""
+        # In live mode, only execute during regular market hours (manual overrides are allowed anytime)
+        if not self._is_market_open() and not (exit_reason and exit_reason.startswith("manual")):
+            logger.info(f"Skipping {signal.action} for {symbol}: market closed (live mode).")
+            if self.notifier:
+                await self.notifier.send_notification(
+                    f"⏸️ Skipping {signal.action} for {symbol}: market closed.",
+                    summary={"symbol": symbol, "action": "SKIP", "reason": "Market closed"}
+                )
+            return
+
         async with self._risk_lock:
             base, quote = symbol.split("/")
             balance = await asyncio.to_thread(self.trader.fetch_balance)
@@ -6348,6 +6358,20 @@ class TradingEngine:
                     parts[2] == timeframe):
                     return True
         return False
+
+    def _is_market_open(self) -> bool:
+        """Return True if trading is allowed right now (paper always open, live only regular hours)."""
+        if settings.TRADING_MODE == "paper":
+            return True
+        now_utc = datetime.now(timezone.utc)
+        # Approximate Eastern Time (UTC-5); minor DST difference is acceptable
+        et_hour = (now_utc.hour - 5) % 24
+        weekday = now_utc.weekday()
+        if weekday >= 5:                     # Saturday or Sunday
+            return False
+        if et_hour < 9.5 or et_hour >= 16:   # outside 9:30–16:00 ET
+            return False
+        return True
 
     async def _remove_symbol_if_paused(self, symbol: str):
         """If trading is paused, remove the symbol from current_symbols to prevent new signals."""
