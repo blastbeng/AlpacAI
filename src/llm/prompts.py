@@ -110,15 +110,15 @@ def get_cached_news_summary(symbol: str, model_type: str = "actuator") -> dict:
         except (json.JSONDecodeError, TypeError):
             pass
 
-    base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-    articles = get_news_for_symbol(base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+    base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
+    articles = get_news_for_symbol(base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
     if not articles:
         result = {"summary": "No recent news.", "provider": "", "model": ""}
     else:
         try:
             formatted = _format_news_for_prompt(articles)
             prompt = (
-                f"Here are recent news headlines and summaries for {base_coin}:\n\n"
+                f"Here are recent news headlines and summaries for {base_symbol}:\n\n"
                 f"{formatted}\n\n"
                 "Based on these articles, write a single very short sentence (max 15 words) "
                 "that explains the overall sentiment and the main reason for it. "
@@ -909,20 +909,20 @@ Maximum symbols to trade: {max_symbols}
         f"**Important:** The sum of position_size_fraction across all coins you intend to trade must not exceed 1.0, "
         f"so that you leave enough capital for other coins. Plan your allocations accordingly.\n"
     )
-    base_coin = symbol.split('/')[0]
-    quote_coin = symbol.split('/')[1]
+    base_symbol = symbol.split('/')[0]
+    quote_currency = symbol.split('/')[1]
     if min_order_amount is not None or min_order_cost is not None:
         prompt += f"\nMinimum order size for {symbol}:"
         if min_order_amount is not None:
-            prompt += f" {min_order_amount} {base_coin}"
+            prompt += f" {min_order_amount} {base_symbol}"
         if min_order_cost is not None:
-            prompt += f" (or {min_order_cost} {quote_coin} cost)"
+            prompt += f" (or {min_order_cost} {quote_currency} cost)"
         prompt += (
             ". Your position_size_fraction must result in an order that meets both the minimum amount "
             "and the minimum cost. Use the current price to convert between amount and cost.\n"
         )
     if assigned_timeframe:
-        prompt += f"\nAssigned trading timeframe for this coin: {assigned_timeframe}. Base your decision primarily on the OHLCV data for this timeframe.\n"
+        prompt += f"\nAssigned trading timeframe for this stock: {assigned_timeframe}. Base your decision primarily on the OHLCV data for this timeframe.\n"
     if market_regime:
         prompt += f"\nMarket regime: {market_regime}\n"
         prompt += (
@@ -1129,8 +1129,8 @@ Maximum symbols to trade: {max_symbols}
     example_tp = 0.01
     example_profit = per_symbol_budget * example_tp
     prompt += (
-        f"For reference, a 1% take-profit on the per-symbol budget ({per_symbol_budget:.2f} {quote_coin}) "
-        f"would yield ~{example_profit:.4f} {quote_coin} gross profit. "
+        f"For reference, a 1% take-profit on the per-symbol budget ({per_symbol_budget:.2f} {quote_currency}) "
+        f"would yield ~{example_profit:.4f} {quote_currency} gross profit. "
         "Set min_profit_per_trade accordingly, and ensure it is not larger than your expected profit.\n"
     )
     if estimated_slippage_pct is not None:
