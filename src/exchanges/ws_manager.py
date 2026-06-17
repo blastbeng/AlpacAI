@@ -12,7 +12,7 @@ class WebSocketManager:
 
     def __init__(self, stream: StockDataStream, symbols: List[str]):
         self.stream = stream
-        self.symbols = set(symbols)
+        self.symbols = set(self._plain(s) for s in symbols)
         self.tickers: Dict[str, Dict[str, Any]] = {}
         self._ticker_queue = asyncio.Queue()
         self.order_books: Dict[str, Dict[str, Any]] = {}
@@ -20,6 +20,11 @@ class WebSocketManager:
         self._running = False
         self._tasks: List[asyncio.Task] = []
         self._reconnect_lock = asyncio.Lock()
+
+    @staticmethod
+    def _plain(symbol: str) -> str:
+        """Strip '/USD' suffix from a pair symbol, returning the plain symbol."""
+        return symbol.split("/")[0] if "/" in symbol else symbol
 
     # ------------------------------------------------------------------
     # Public API (same signatures as before)
@@ -47,7 +52,7 @@ class WebSocketManager:
 
     async def update_subscriptions(self, symbols: List[str]):
         """Change the set of watched symbols."""
-        new_symbols = set(symbols)
+        new_symbols = set(self._plain(s) for s in symbols)
         if new_symbols == self.symbols:
             return
         removed = self.symbols - new_symbols
@@ -65,13 +70,13 @@ class WebSocketManager:
             self.trades.pop(sym, None)
 
     def get_ticker(self, symbol: str) -> Optional[Dict[str, Any]]:
-        return self.tickers.get(symbol)
+        return self.tickers.get(self._plain(symbol))
 
     def get_order_book(self, symbol: str) -> Optional[Dict[str, Any]]:
-        return self.order_books.get(symbol)
+        return self.order_books.get(self._plain(symbol))
 
     def get_trades(self, symbol: str) -> List[Dict[str, Any]]:
-        return self.trades.get(symbol, [])
+        return self.trades.get(self._plain(symbol), [])
 
     async def wait_for_update(self, timeout: float = 5.0) -> Optional[tuple]:
         try:
