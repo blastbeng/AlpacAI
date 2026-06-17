@@ -121,7 +121,10 @@ def get_multi_timeframe_bars(
                 limit=limit,
             )
             bars = data_client.get_stock_bars(request)
-            symbol_bars = bars.get(symbol, [])
+            try:
+                symbol_bars = bars[symbol]
+            except KeyError:
+                symbol_bars = []
             candles = [
                 [int(bar.timestamp.timestamp() * 1000), bar.open, bar.high, bar.low, bar.close, bar.volume]
                 for bar in symbol_bars
@@ -159,7 +162,10 @@ def get_bars_range(
     )
     try:
         bars = data_client.get_stock_bars(request)
-        symbol_bars = bars.get(symbol, [])
+        try:
+            symbol_bars = bars[symbol]
+        except KeyError:
+            symbol_bars = []
         candles = [
             [int(bar.timestamp.timestamp() * 1000), bar.open, bar.high, bar.low, bar.close, bar.volume]
             for bar in symbol_bars
