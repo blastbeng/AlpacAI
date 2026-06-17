@@ -1,314 +1,153 @@
 import asyncio
 import logging
 from typing import Dict, List, Optional, Any
-import ccxt
-import ccxt.pro as ccxt_pro
+from alpaca.data.live import StockDataStream
+from alpaca.data.models import Quote, Trade
 
 logger = logging.getLogger(__name__)
 
+
 class WebSocketManager:
-    def __init__(self, exchange: ccxt_pro.Exchange, symbols: List[str]):
-        self.exchange = exchange
+    """Manages real‑time market data via Alpaca's StockDataStream."""
+
+    def __init__(self, stream: StockDataStream, symbols: List[str]):
+        self.stream = stream
         self.symbols = set(symbols)
         self.tickers: Dict[str, Dict[str, Any]] = {}
         self._ticker_queue = asyncio.Queue()
         self.order_books: Dict[str, Dict[str, Any]] = {}
-        self._order_book_tasks: Dict[str, asyncio.Task] = {}
-        self._ticker_tasks: Dict[str, asyncio.Task] = {}
         self.trades: Dict[str, List[Dict[str, Any]]] = {}
-        self._trade_tasks: Dict[str, asyncio.Task] = {}
-        self._use_batch_tickers = True  # will be set to False if batch not supported
         self._running = False
-        self._task: Optional[asyncio.Task] = None
+        self._tasks: List[asyncio.Task] = []
         self._reconnect_lock = asyncio.Lock()
 
-    def _setup_exception_handler(self):
-        """Replace the event loop's exception handler so unhandled futures are logged cleanly."""
-        loop = asyncio.get_event_loop()
-        original_handler = loop.get_exception_handler()
-
-        def handle_exception(loop, context):
-            msg = context.get("message")
-            exception = context.get("exception")
-            if exception and "timed out due to a ping-pong keepalive" in str(exception):
-                logger.warning(f"WebSocket keepalive timeout: {exception}")
-            elif isinstance(exception, Exception):
-                logger.warning(f"Unhandled WebSocket future exception: {exception}")
-            elif original_handler:
-                original_handler(loop, context)
-            else:
-                loop.default_exception_handler(context)
-
-        loop.set_exception_handler(handle_exception)
-
+    # ------------------------------------------------------------------
+    # Public API (same signatures as before)
+    # ------------------------------------------------------------------
     async def start(self):
-        """Start the WebSocket watch loop."""
+        """Start the WebSocket stream and subscribe to initial symbols."""
         self._running = True
-        self._setup_exception_handler()
-        self._task = asyncio.create_task(self._watch_loop())
-
-    async def _reconnect(self):
-        """Close and recreate the exchange connection, then re-subscribe."""
-        async with self._reconnect_lock:
-            logger.warning("WebSocket reconnecting...")
-            try:
-                try:
-                    await self.exchange.close()
-                except Exception:
-                    pass
-
-                # 1. Cancel all existing watch tasks EXCEPT the current task and the main loop task
-                current_task = asyncio.current_task()
-                all_watch_tasks = [
-                    task
-                    for task in (
-                        list(self._order_book_tasks.values())
-                        + list(self._ticker_tasks.values())
-                        + list(self._trade_tasks.values())
-                    )
-                    if task is not None and task is not current_task and task is not self._task
-                ]
-                for task in all_watch_tasks:
-                    task.cancel()
-                if all_watch_tasks:
-                    await asyncio.gather(*all_watch_tasks, return_exceptions=True)
-
-                # 2. Clear cached data and task dictionaries
-                self.tickers.clear()
-                self.order_books.clear()
-                self.trades.clear()
-                self._order_book_tasks.clear()
-                self._ticker_tasks.clear()
-                self._trade_tasks.clear()
-
-                # 3. Reset batch flag – we will try batch again on the new connection
-                self._use_batch_tickers = True
-
-                # 4. Re-create the pro exchange
-                from src.exchanges.factory import get_pro_exchange
-                self.exchange = get_pro_exchange()
-
-                # 5. Small delay to let the new connection stabilise
-                await asyncio.sleep(1)
-
-                # 6. Restart order book and trade tasks for all current symbols
-                for sym in self.symbols:
-                    self._order_book_tasks[sym] = asyncio.create_task(self._watch_order_book(sym))
-                    self._trade_tasks[sym] = asyncio.create_task(self._watch_trades(sym))
-
-                # 7. If we already know batch isn't supported, start per-symbol ticker tasks
-                if not self._use_batch_tickers:
-                    for sym in self.symbols:
-                        self._ticker_tasks[sym] = asyncio.create_task(self._watch_ticker(sym))
-
-                # 8. Cancel the calling watch task so it doesn't keep running alongside the new one
-                if current_task is not None and current_task is not self._task:
-                    current_task.cancel()
-
-                logger.info("WebSocket reconnection complete.")
-            except Exception as e:
-                logger.error(f"Reconnect attempt failed: {e}", exc_info=True)
-                # Do not re-raise; the caller will handle the situation by retrying
-
-    async def _watch_ticker(self, symbol: str):
-        """Continuously watch the ticker for a single symbol."""
-        backoff = 1
-        max_backoff = 30
-        while self._running and symbol in self.symbols:
-            try:
-                ticker = await self.exchange.watch_ticker(symbol)
-                self.tickers[symbol] = ticker
-                await self._ticker_queue.put((symbol, ticker))
-                backoff = 1
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Ticker watch error for {symbol}: {e}", exc_info=True)
-                try:
-                    await self._reconnect()
-                except Exception:
-                    pass
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, max_backoff)
-
-    async def _watch_trades(self, symbol: str):
-        """Continuously watch trades for a single symbol."""
-        backoff = 1
-        max_backoff = 30
-        while self._running and symbol in self.symbols:
-            try:
-                trades = await self.exchange.watch_trades(symbol)
-                # Keep only the last 50 trades to limit memory
-                self.trades[symbol] = trades[-50:]
-                backoff = 1
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Trade watch error for {symbol}: {e}", exc_info=True)
-                try:
-                    await self._reconnect()
-                except Exception:
-                    pass
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, max_backoff)
+        if self.symbols:
+            self.stream.subscribe_quotes(list(self.symbols))
+            self.stream.subscribe_trades(list(self.symbols))
+        self.stream.on_quote(self._on_quote)
+        self.stream.on_trade(self._on_trade)
+        self._tasks.append(asyncio.create_task(self._run_stream()))
 
     async def stop(self):
-        """Stop the watch loop and close the connection."""
+        """Stop the stream and cancel all tasks."""
         self._running = False
-        # Cancel ticker watch task
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-        # Cancel all order book tasks
-        for task in self._order_book_tasks.values():
+        for task in self._tasks:
             task.cancel()
-        await asyncio.gather(*self._order_book_tasks.values(), return_exceptions=True)
-        self._order_book_tasks.clear()
-        # Cancel all per-symbol ticker tasks
-        for task in self._ticker_tasks.values():
-            task.cancel()
-        await asyncio.gather(*self._ticker_tasks.values(), return_exceptions=True)
-        self._ticker_tasks.clear()
-        # Cancel all trade watch tasks
-        for task in self._trade_tasks.values():
-            task.cancel()
-        await asyncio.gather(*self._trade_tasks.values(), return_exceptions=True)
-        self._trade_tasks.clear()
-        await self.exchange.close()
-
-    async def _watch_loop(self):
-        """Continuously watch tickers for all subscribed symbols."""
-        backoff = 1
-        max_backoff = 60
-        while self._running:
-            if not self.symbols:
-                await asyncio.sleep(1)
-                continue
-            if not self._use_batch_tickers:
-                # Per-symbol tasks handle tickers; just keep loop alive
-                await asyncio.sleep(1)
-                continue
-            try:
-                tickers = await self.exchange.watch_tickers(list(self.symbols))
-                backoff = 1  # reset on success
-                # If we are using batch tickers, cancel any leftover per-symbol ticker tasks
-                if self._use_batch_tickers and self._ticker_tasks:
-                    for task in self._ticker_tasks.values():
-                        task.cancel()
-                    self._ticker_tasks.clear()
-                for symbol, ticker in tickers.items():
-                    self.tickers[symbol] = ticker
-                    await self._ticker_queue.put((symbol, ticker))
-            except asyncio.CancelledError:
-                break
-            except (ccxt.NotSupported, ccxt.BadSymbol):
-                logger.warning("watch_tickers not supported, falling back to per-symbol watch_ticker")
-                self._use_batch_tickers = False
-                # Start per-symbol tasks for current symbols
-                for sym in list(self.symbols):
-                    if sym not in self._ticker_tasks:
-                        task = asyncio.create_task(self._watch_ticker(sym))
-                        self._ticker_tasks[sym] = task
-            except Exception as e:
-                logger.error(f"WebSocket watch loop error: {e}", exc_info=True)
-                try:
-                    await self._reconnect()
-                except Exception as reconnect_error:
-                    logger.critical(f"Reconnect failed, will retry later: {reconnect_error}", exc_info=True)
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, max_backoff)
-
-    @property
-    def healthy(self) -> bool:
-        """Return True if the ticker watch task is alive and the exchange is connected."""
-        return self._running and self._task is not None and not self._task.done()
-
-    def get_ticker(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Return the latest ticker for a symbol, or None if not available."""
-        return self.tickers.get(symbol)
-
-    def get_order_book(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Return the latest order book for a symbol, or None if not available."""
-        return self.order_books.get(symbol)
-
-    def get_trades(self, symbol: str) -> List[Dict[str, Any]]:
-        """Return the latest trades for a symbol, or empty list if not available."""
-        return self.trades.get(symbol, [])
-
-    async def _watch_order_book(self, symbol: str):
-        """Continuously watch the order book for a single symbol."""
-        backoff = 1
-        max_backoff = 30
-        while self._running and symbol in self.symbols:
-            try:
-                ob = await self.exchange.watch_order_book(symbol)
-                self.order_books[symbol] = ob
-                backoff = 1
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Order book watch error for {symbol}: {e}", exc_info=True)
-                try:
-                    await self._reconnect()
-                except Exception:
-                    pass
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, max_backoff)
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        try:
+            await self.stream.close()
+        except Exception:
+            pass
 
     async def update_subscriptions(self, symbols: List[str]):
-        """Update the set of symbols to watch (tickers + order books)."""
+        """Change the set of watched symbols."""
         new_symbols = set(symbols)
         if new_symbols == self.symbols:
             return
-
         removed = self.symbols - new_symbols
         added = new_symbols - self.symbols
-
-        # Stop order book watchers for removed symbols
-        for sym in removed:
-            task = self._order_book_tasks.pop(sym, None)
-            if task:
-                task.cancel()
-            self.order_books.pop(sym, None)
-
-        # Start order book watchers for new symbols
-        for sym in added:
-            if sym not in self._order_book_tasks:
-                task = asyncio.create_task(self._watch_order_book(sym))
-                self._order_book_tasks[sym] = task
-
-        # Manage per-symbol ticker tasks if not using batch
-        if not self._use_batch_tickers:
-            for sym in removed:
-                task = self._ticker_tasks.pop(sym, None)
-                if task:
-                    task.cancel()
-                self.tickers.pop(sym, None)
-            for sym in added:
-                if sym not in self._ticker_tasks:
-                    task = asyncio.create_task(self._watch_ticker(sym))
-                    self._ticker_tasks[sym] = task
-
-        # Manage trade watchers
-        for sym in removed:
-            task = self._trade_tasks.pop(sym, None)
-            if task:
-                task.cancel()
-            self.trades.pop(sym, None)
-        for sym in added:
-            if sym not in self._trade_tasks:
-                task = asyncio.create_task(self._watch_trades(sym))
-                self._trade_tasks[sym] = task
-
+        if removed:
+            self.stream.unsubscribe_quotes(list(removed))
+            self.stream.unsubscribe_trades(list(removed))
+        if added:
+            self.stream.subscribe_quotes(list(added))
+            self.stream.subscribe_trades(list(added))
         self.symbols = new_symbols
-        logger.info(f"WebSocket subscriptions updated: {len(self.symbols)} symbols")
+        for sym in removed:
+            self.tickers.pop(sym, None)
+            self.order_books.pop(sym, None)
+            self.trades.pop(sym, None)
+
+    def get_ticker(self, symbol: str) -> Optional[Dict[str, Any]]:
+        return self.tickers.get(symbol)
+
+    def get_order_book(self, symbol: str) -> Optional[Dict[str, Any]]:
+        return self.order_books.get(symbol)
+
+    def get_trades(self, symbol: str) -> List[Dict[str, Any]]:
+        return self.trades.get(symbol, [])
 
     async def wait_for_update(self, timeout: float = 5.0) -> Optional[tuple]:
-        """Wait for the next ticker update, or return None after timeout."""
         try:
             return await asyncio.wait_for(self._ticker_queue.get(), timeout=timeout)
         except asyncio.TimeoutError:
             return None
+
+    @property
+    def healthy(self) -> bool:
+        if not self._running:
+            return False
+        return any(not task.done() for task in self._tasks)
+
+    # ------------------------------------------------------------------
+    # Internal stream handling
+    # ------------------------------------------------------------------
+    async def _run_stream(self):
+        """Run the stream's event loop and reconnect on failure."""
+        while self._running:
+            try:
+                await self.stream.run()
+            except Exception as e:
+                logger.error(f"Stream disconnected: {e}")
+                if self._running:
+                    await self._reconnect()
+            await asyncio.sleep(1)
+
+    async def _reconnect(self):
+        """Close the current stream, create a new one, and re‑subscribe."""
+        async with self._reconnect_lock:
+            logger.warning("WebSocket reconnecting...")
+            try:
+                await self.stream.close()
+            except Exception:
+                pass
+            from src.exchanges.factory import get_streaming_client
+            self.stream = get_streaming_client()
+            if self.symbols:
+                self.stream.subscribe_quotes(list(self.symbols))
+                self.stream.subscribe_trades(list(self.symbols))
+            self.stream.on_quote(self._on_quote)
+            self.stream.on_trade(self._on_trade)
+            logger.info("Reconnection complete.")
+
+    async def _on_quote(self, quote: Quote):
+        """Handle an incoming quote update."""
+        symbol = quote.symbol
+        ticker = {
+            'symbol': symbol,
+            'bid': quote.bid_price,
+            'ask': quote.ask_price,
+            'last': (quote.bid_price + quote.ask_price) / 2 if quote.bid_price and quote.ask_price else quote.ask_price,
+            'percentage': None,      # not available from streaming quote
+            'quoteVolume': None,     # not available from streaming quote
+            'timestamp': int(quote.timestamp.timestamp() * 1000) if quote.timestamp else None,
+        }
+        self.tickers[symbol] = ticker
+        self.order_books[symbol] = {
+            'bids': [[quote.bid_price, quote.bid_size]],
+            'asks': [[quote.ask_price, quote.ask_size]],
+        }
+        await self._ticker_queue.put((symbol, ticker))
+
+    async def _on_trade(self, trade: Trade):
+        """Handle an incoming trade update."""
+        symbol = trade.symbol
+        trade_dict = {
+            'id': trade.id,
+            'symbol': symbol,
+            'price': trade.price,
+            'amount': trade.size,
+            'side': 'buy' if trade.taker_side == 'buy' else 'sell',
+            'timestamp': int(trade.timestamp.timestamp() * 1000) if trade.timestamp else None,
+        }
+        if symbol not in self.trades:
+            self.trades[symbol] = []
+        self.trades[symbol].append(trade_dict)
+        if len(self.trades[symbol]) > 50:
+            self.trades[symbol] = self.trades[symbol][-50:]
