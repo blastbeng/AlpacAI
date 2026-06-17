@@ -1630,6 +1630,7 @@ class TradingEngine:
         except Exception:
             pass
 
+        vix = await self._fetch_vix()
         # Store market status in Redis for the web dashboard
         market_status = {
             "vix": vix,
@@ -1674,7 +1675,6 @@ class TradingEngine:
             except (ValueError, TypeError):
                 pass
 
-        vix = await self._fetch_vix()
         prompt = build_stock_selection_prompt(
             available_symbols=sample_pairs,
             current_symbols=self.current_coins,
@@ -1742,7 +1742,7 @@ class TradingEngine:
         coin_selection_complexity = self._compute_prompt_complexity(
             num_candidates=len(sample_pairs),
             market_breadth=market_breadth,
-            fear_greed=fear_greed,
+            fear_greed=None,
             volatility_percentile=None,
             sentiment_trend_magnitude=_st_mag,
             conflicting_signals=False,
@@ -2326,7 +2326,7 @@ class TradingEngine:
             pause_resume_complexity = self._compute_prompt_complexity(
                 num_candidates=0,
                 market_breadth=market_breadth,
-                fear_greed=fear_greed,
+                fear_greed=None,
                 volatility_percentile=None,
                 sentiment_trend_magnitude=None,
                 conflicting_signals=False,
@@ -3334,7 +3334,7 @@ class TradingEngine:
             strategy_complexity = self._compute_prompt_complexity(
                 num_candidates=len(self.current_coins),
                 market_breadth=getattr(self, '_market_breadth', None),
-                fear_greed=fear_greed,
+                fear_greed=None,
                 volatility_percentile=atr_percentile,
                 sentiment_trend_magnitude=abs(sentiment_trend_val) if sentiment_trend_val is not None else None,
                 conflicting_signals=_conflicting,
