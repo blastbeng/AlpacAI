@@ -4924,7 +4924,8 @@ class TradingEngine:
                 atr_mult = params["stop_loss_atr_multiple"]
                 ticker = self.ws_manager.get_ticker(symbol)
                 if ticker is None:
-                    ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [symbol])
+                    ticker = quotes.get(symbol)
                 current_price = ticker['last']
                 sl_pct = (atr_mult * atr) / current_price
                 logger.info(f"ATR-based stop: ATR={atr}, multiplier={atr_mult}, stop_loss_pct={sl_pct:.4%}")
@@ -5082,13 +5083,22 @@ class TradingEngine:
             try:
                 ticker = self.ws_manager.get_ticker(symbol)
                 if ticker is None:
-                    ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [symbol])
+                    ticker = quotes.get(symbol)
                 price = ticker['last']
                 base_amount = amount / price
-                market = self.exchange.markets.get(symbol, {})
-                limits = market.get('limits', {})
-                min_amount_limit = limits.get('amount', {}).get('min')
-                min_cost_limit = limits.get('cost', {}).get('min')
+                # Fetch minimum order size from Alpaca asset info
+                base_asset = symbol.split('/')[0]
+                try:
+                    asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+                    min_amount_limit = float(asset.min_order_size) if asset.min_order_size else None
+                except Exception:
+                    min_amount_limit = None
+                # Compute min cost from min amount and current price
+                if min_amount_limit is not None and price:
+                    min_cost_limit = min_amount_limit * price
+                else:
+                    min_cost_limit = None
 
                 # Determine the required minimum quote amount
                 required_quote = amount
@@ -5321,12 +5331,20 @@ class TradingEngine:
             try:
                 ticker = self.ws_manager.get_ticker(symbol)
                 if ticker is None:
-                    ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [symbol])
+                    ticker = quotes.get(symbol)
                 price = ticker['last']
-                market = self.exchange.markets.get(symbol, {})
-                limits = market.get('limits', {})
-                min_amount_limit = limits.get('amount', {}).get('min')
-                min_cost_limit = limits.get('cost', {}).get('min')
+                # Fetch minimum order size from Alpaca asset info
+                base_asset = symbol.split('/')[0]
+                try:
+                    asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+                    min_amount_limit = float(asset.min_order_size) if asset.min_order_size else None
+                except Exception:
+                    min_amount_limit = None
+                if min_amount_limit is not None and price:
+                    min_cost_limit = min_amount_limit * price
+                else:
+                    min_cost_limit = None
                 if min_amount_limit is not None and gross_amount < float(min_amount_limit):
                     logger.info(f"SELL amount {gross_amount:.6f} {base} below min amount {min_amount_limit} for {symbol}, skipping")
                     if self.notifier:
@@ -5964,10 +5982,17 @@ class TradingEngine:
         base, quote = symbol.split("/")
 
         # Check minimum sell size
-        market = self.exchange.markets.get(symbol, {})
-        limits = market.get("limits", {})
-        min_amount = limits.get("amount", {}).get("min")
-        min_cost = limits.get("cost", {}).get("min")
+        # Fetch minimum order size from Alpaca asset info
+        base_asset = symbol.split('/')[0]
+        try:
+            asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+            min_amount = float(asset.min_order_size) if asset.min_order_size else None
+        except Exception:
+            min_amount = None
+        if min_amount is not None and current_price:
+            min_cost = min_amount * current_price
+        else:
+            min_cost = None
         if min_amount is not None and sell_amount < float(min_amount):
             logger.info(f"Partial TP sell amount {sell_amount:.6f} below min {min_amount} for {symbol}, skipping.")
             return
@@ -6101,10 +6126,17 @@ class TradingEngine:
         base, quote = symbol.split("/")
 
         # Check minimum sell size
-        market = self.exchange.markets.get(symbol, {})
-        limits = market.get("limits", {})
-        min_amount = limits.get("amount", {}).get("min")
-        min_cost = limits.get("cost", {}).get("min")
+        # Fetch minimum order size from Alpaca asset info
+        base_asset = symbol.split('/')[0]
+        try:
+            asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+            min_amount = float(asset.min_order_size) if asset.min_order_size else None
+        except Exception:
+            min_amount = None
+        if min_amount is not None and current_price:
+            min_cost = min_amount * current_price
+        else:
+            min_cost = None
         if min_amount is not None and sell_amount < float(min_amount):
             logger.info(f"Partial TP level {level_index} sell amount {sell_amount:.6f} below min for {symbol}, skipping.")
             return
@@ -6237,16 +6269,24 @@ class TradingEngine:
         try:
             ticker = self.ws_manager.get_ticker(symbol)
             if ticker is None:
-                ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                quotes = await asyncio.to_thread(get_quotes, self.data_client, [symbol])
+                ticker = quotes.get(symbol)
             price = ticker["last"]
         except Exception as e:
             logger.warning(f"Dust sweep: could not fetch price for {symbol}: {e}")
             return
 
-        market = self.exchange.markets.get(symbol, {})
-        limits = market.get("limits", {})
-        min_amount = limits.get("amount", {}).get("min")
-        min_cost = limits.get("cost", {}).get("min")
+        # Fetch minimum order size from Alpaca asset info
+        base_asset = symbol.split('/')[0]
+        try:
+            asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+            min_amount = float(asset.min_order_size) if asset.min_order_size else None
+        except Exception:
+            min_amount = None
+        if min_amount is not None and price:
+            min_cost = min_amount * price
+        else:
+            min_cost = None
 
         if min_amount is not None and balance < float(min_amount):
             logger.info(f"Dust sweep: {balance} {base} below min amount {min_amount}, cannot sell.")
