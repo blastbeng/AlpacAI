@@ -5136,8 +5136,20 @@ class TradingEngine:
             except Exception as e:
                 logger.warning(f"Could not verify/adjust min order size for {symbol}: {e}")
 
+            need_limit = settings.ALPACA_PAPER and not self._is_regular_hours()
+            limit_price = None
+            time_in_force = "day"
+            if need_limit:
+                limit_price = params.get("limit_price") or self._default_limit_price(symbol, "BUY", ticker, order_book)
+                time_in_force = params.get("time_in_force", "day")
+                if limit_price is None:
+                    logger.error(f"Cannot place limit order for {symbol}: no limit price available.")
+                    return
+
             try:
-                order = await asyncio.to_thread(self.trader.create_market_buy_order, symbol, amount, fill_timeout)
+                order = await asyncio.to_thread(
+                    self.trader.create_market_buy_order, symbol, amount, fill_timeout, limit_price, time_in_force
+                )
                 logger.info(f"BUY {symbol}: {order}")
                 self._cycle_spent += order['cost']
                 # Update or create position
@@ -5360,8 +5372,20 @@ class TradingEngine:
             except Exception as e:
                 logger.warning(f"Could not verify min sell size for {symbol}: {e}")
 
+            need_limit = settings.ALPACA_PAPER and not self._is_regular_hours()
+            limit_price = None
+            time_in_force = "day"
+            if need_limit:
+                limit_price = params.get("limit_price") or self._default_limit_price(symbol, "SELL", ticker, order_book)
+                time_in_force = params.get("time_in_force", "day")
+                if limit_price is None:
+                    logger.error(f"Cannot place limit order for {symbol}: no limit price available.")
+                    return
+
             try:
-                order = await asyncio.to_thread(self.trader.create_market_sell_order, symbol, gross_amount, fill_timeout)
+                order = await asyncio.to_thread(
+                    self.trader.create_market_sell_order, symbol, gross_amount, fill_timeout, limit_price, time_in_force
+                )
                 logger.info(f"SELL {symbol}: {order}")
                 # Compute realized P&L
                 fee = order.get('fee', {})
@@ -5988,9 +6012,19 @@ class TradingEngine:
 
         fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
 
+        need_limit = settings.ALPACA_PAPER and not self._is_regular_hours()
+        limit_price = None
+        time_in_force = "day"
+        if need_limit:
+            limit_price = self._default_limit_price(symbol, "SELL", ticker, None)
+            if limit_price is None:
+                logger.error(f"Cannot place limit order for partial TP on {symbol}: no limit price.")
+                return
+
         try:
             order = await asyncio.to_thread(
-                self.trader.create_market_sell_order, symbol, sell_amount, settings.ORDER_FILL_TIMEOUT_SECONDS
+                self.trader.create_market_sell_order, symbol, sell_amount,
+                settings.ORDER_FILL_TIMEOUT_SECONDS, limit_price, time_in_force
             )
             logger.info(f"Partial TP SELL {symbol}: {sell_amount:.6f} @ {order.get('price', current_price):.4f}")
 
@@ -6130,9 +6164,19 @@ class TradingEngine:
 
         fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
 
+        need_limit = settings.ALPACA_PAPER and not self._is_regular_hours()
+        limit_price = None
+        time_in_force = "day"
+        if need_limit:
+            limit_price = self._default_limit_price(symbol, "SELL", ticker, None)
+            if limit_price is None:
+                logger.error(f"Cannot place limit order for partial TP level on {symbol}: no limit price.")
+                return
+
         try:
             order = await asyncio.to_thread(
-                self.trader.create_market_sell_order, symbol, sell_amount, settings.ORDER_FILL_TIMEOUT_SECONDS
+                self.trader.create_market_sell_order, symbol, sell_amount,
+                settings.ORDER_FILL_TIMEOUT_SECONDS, limit_price, time_in_force
             )
             logger.info(f"Partial TP level {level_index} SELL {symbol}: {sell_amount:.6f} @ {order.get('price', current_price):.4f}")
 
@@ -6278,8 +6322,20 @@ class TradingEngine:
             logger.info(f"Dust sweep: notional {balance * price:.4f} below min cost {min_cost}, cannot sell.")
             return
 
+        need_limit = settings.ALPACA_PAPER and not self._is_regular_hours()
+        limit_price = None
+        time_in_force = "day"
+        if need_limit:
+            limit_price = self._default_limit_price(symbol, "SELL", ticker, None)
+            if limit_price is None:
+                logger.error(f"Cannot place limit order for dust sweep on {symbol}: no limit price.")
+                return
+
         try:
-            order = await asyncio.to_thread(self.trader.create_market_sell_order, symbol, balance, settings.ORDER_FILL_TIMEOUT_SECONDS)
+            order = await asyncio.to_thread(
+                self.trader.create_market_sell_order, symbol, balance,
+                settings.ORDER_FILL_TIMEOUT_SECONDS, limit_price, time_in_force
+            )
             logger.info(f"Dust sweep: sold {balance} {base} from {symbol} – order {order.get('id')}")
 
             # Record the dust sale in trade history for consistency
@@ -6372,6 +6428,38 @@ class TradingEngine:
         if et_hour < 9.5 or et_hour >= 16:   # outside 9:30–16:00 ET
             return False
         return True
+
+    def _is_regular_hours(self) -> bool:
+        """Return True if current time is within regular US market hours (9:30–16:00 ET)."""
+        now_utc = datetime.now(timezone.utc)
+        et_hour = (now_utc.hour - 5) % 24
+        weekday = now_utc.weekday()
+        if weekday >= 5:
+            return False
+        if et_hour < 9.5 or et_hour >= 16:
+            return False
+        return True
+
+    def _default_limit_price(
+        self, symbol: str, action: str, ticker: Dict[str, Any],
+        order_book: Optional[Dict[str, Any]] = None
+    ) -> Optional[float]:
+        """Compute a default aggressive limit price for extended‑hours trading."""
+        if action == "BUY":
+            if order_book and order_book.get('asks'):
+                best_ask = order_book['asks'][0][0]
+                return best_ask * 1.001   # 0.1% above ask
+            last = ticker.get('last')
+            if last:
+                return last * 1.002
+        elif action == "SELL":
+            if order_book and order_book.get('bids'):
+                best_bid = order_book['bids'][0][0]
+                return best_bid * 0.999   # 0.1% below bid
+            last = ticker.get('last')
+            if last:
+                return last * 0.998
+        return None
 
     async def _remove_symbol_if_paused(self, symbol: str):
         """If trading is paused, remove the symbol from current_symbols to prevent new signals."""

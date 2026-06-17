@@ -2,7 +2,7 @@ import time
 import logging
 from typing import Dict, List, Optional, Any
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest, GetOrdersRequest
+from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, GetOrdersRequest
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce, OrderStatus
 from src.config.settings import settings
 
@@ -47,33 +47,55 @@ class LiveTrader:
     # ------------------------------------------------------------------
     # Order placement
     # ------------------------------------------------------------------
-    def create_market_buy_order(self, symbol: str, quote_amount: float, timeout: float = 60.0) -> Dict[str, Any]:
-        """
-        Place a market buy order using quote currency amount (USD).
-        Waits for the order to fill before returning.
-        """
-        base = symbol.split("/")[0]   # e.g., "AAPL" from "AAPL/USD"
-        order_data = MarketOrderRequest(
-            symbol=base,
-            notional=quote_amount,
-            side=OrderSide.BUY,
-            time_in_force=TimeInForce.DAY,
-            extended_hours=settings.ALPACA_PAPER,
-        )
+    def create_market_buy_order(
+        self, symbol: str, quote_amount: float, timeout: float = 60.0,
+        limit_price: Optional[float] = None, time_in_force: str = "day"
+    ) -> Dict[str, Any]:
+        base = symbol.split("/")[0]
+        if limit_price is not None:
+            qty = quote_amount / limit_price
+            tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
+            order_data = LimitOrderRequest(
+                symbol=base,
+                qty=qty,
+                limit_price=limit_price,
+                side=OrderSide.BUY,
+                time_in_force=tif,
+                extended_hours=True,
+            )
+        else:
+            order_data = MarketOrderRequest(
+                symbol=base,
+                notional=quote_amount,
+                side=OrderSide.BUY,
+                time_in_force=TimeInForce.DAY,
+            )
         order = self.trading_client.submit_order(order_data)
         filled_order = self._wait_for_order_fill(order.id, base, timeout)
         return self._order_to_dict(filled_order, symbol)
 
-    def create_market_sell_order(self, symbol: str, qty: float, timeout: float = 60.0) -> Dict[str, Any]:
-        """Place a market sell order for a given quantity of shares. Waits for fill before returning."""
+    def create_market_sell_order(
+        self, symbol: str, qty: float, timeout: float = 60.0,
+        limit_price: Optional[float] = None, time_in_force: str = "day"
+    ) -> Dict[str, Any]:
         base = symbol.split("/")[0]
-        order_data = MarketOrderRequest(
-            symbol=base,
-            qty=qty,
-            side=OrderSide.SELL,
-            time_in_force=TimeInForce.DAY,
-            extended_hours=settings.ALPACA_PAPER,
-        )
+        if limit_price is not None:
+            tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
+            order_data = LimitOrderRequest(
+                symbol=base,
+                qty=qty,
+                limit_price=limit_price,
+                side=OrderSide.SELL,
+                time_in_force=tif,
+                extended_hours=True,
+            )
+        else:
+            order_data = MarketOrderRequest(
+                symbol=base,
+                qty=qty,
+                side=OrderSide.SELL,
+                time_in_force=TimeInForce.DAY,
+            )
         order = self.trading_client.submit_order(order_data)
         filled_order = self._wait_for_order_fill(order.id, base, timeout)
         return self._order_to_dict(filled_order, symbol)

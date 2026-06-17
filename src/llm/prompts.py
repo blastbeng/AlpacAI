@@ -328,6 +328,8 @@ You may also include the following optional parameters to fine-tune risk managem
 - "max_unrealized_loss_pct": an optional decimal between 0 and 1.0 (e.g., 0.002 for 0.2%). If set, the bot will monitor the unrealized loss of the position. If the current price falls below `entry_price * (1 - max_unrealized_loss_pct)`, the position will be closed immediately, regardless of the stop‑loss. Use this as a soft stop to cut losses quickly when scalping tiny percentages. Must be less than `stop_loss_pct`.
 - "position_size_multiplier": an optional decimal between 0.0 and 1.0 (e.g., 0.5 for 50%). If set, the final position size for this trade will be further multiplied by this factor, after the global risk multiplier. Use this to reduce exposure on a specific stock without changing your global risk settings. If omitted, no additional per‑stock scaling is applied.
 - "min_confidence": an optional decimal between 0.0 and 1.0 (e.g., 0.6). If set, the bot will skip the trade if your confidence is below this threshold. Use this to enforce a minimum conviction level.
+- `limit_price`: (optional) a specific limit price for the order. **Required for extended‑hours trading** (pre‑market, after‑hours, weekends in paper mode). If the `session_info` shows a session other than "Regular", you MUST provide this field for BUY and SELL orders, otherwise the engine will use a default aggressive price.
+- `time_in_force`: (optional) "day" or "gtc". Default "day". Required together with `limit_price` for extended‑hours orders.
 
 You will also receive a summary of the most recent individual trades (last 20). Use this to gauge very short‑term momentum and whether the market is active enough for scalping. A high number of small trades with balanced buy/sell pressure and a tight price range suggests a liquid market suitable for capturing tiny percentages.
 - "news_sentiment_exit_threshold": an optional float between -1.0 and 1.0 (e.g., -0.5). If set, the bot will monitor the aggregate news sentiment for this stock. If the compound score drops below this threshold while the position is open, the position will be closed immediately. Use this to exit on strongly negative news.
@@ -653,6 +655,11 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
             "Use this to gauge market activity: pre‑market and after‑hours sessions have lower liquidity and wider spreads; "
             "the regular session (9:30 AM – 4:00 PM ET) has the highest volume and tightest spreads. "
             "Adjust your stock selection and risk parameters accordingly.\n"
+        )
+        prompt += (
+            "If the current session is not \"Regular\" (i.e., pre‑market, after‑hours, or closed), "
+            "you MUST include `limit_price` and `time_in_force` in your parameters for any BUY or SELL action. "
+            "The engine will reject market orders during extended hours.\n"
         )
     if vix is not None:
         prompt += f"\nCBOE Volatility Index (VIX): {vix:.2f}\n"
