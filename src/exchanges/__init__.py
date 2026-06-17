@@ -10,7 +10,6 @@ from .market_data import (
     get_quotes,
     get_order_book,
     get_multi_timeframe_bars,
-    get_tradable_pairs,
     get_tickers,
     get_multi_timeframe_ohlcv,
 )

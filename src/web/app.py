@@ -161,7 +161,6 @@ def config():
         actuator_model = settings.OPENAI_ACTUATOR_MODEL
 
     return {
-        "exchange_id": settings.EXCHANGE_ID,
         "trading_mode": settings.TRADING_MODE,
         "base_currency": settings.BASE_CURRENCY,
         "max_symbols": settings.MAX_SYMBOLS,
