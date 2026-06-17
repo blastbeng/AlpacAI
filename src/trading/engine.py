@@ -785,14 +785,14 @@ class TradingEngine:
         return total
 
     def _compute_performance_metrics(self) -> Dict[str, Any]:
-        """Analyze trade history to produce per-coin and per-strategy performance summaries."""
+        """Analyze trade history to produce per-symbol and per-strategy performance summaries."""
         from collections import defaultdict
 
         now = time.time()
-        coin_stats = defaultdict(lambda: {"trades": 0, "wins": 0, "total_pnl": 0.0, "last_trade_ts": 0})
+        symbol_stats = defaultdict(lambda: {"trades": 0, "wins": 0, "total_pnl": 0.0, "last_trade_ts": 0})
         strategy_stats = defaultdict(lambda: {"trades": 0, "wins": 0, "total_pnl": 0.0})
-        coin_stop_losses = defaultdict(int)
-        coin_hold_times = defaultdict(list)
+        symbol_stop_losses = defaultdict(int)
+        symbol_hold_times = defaultdict(list)
 
         for trade in self.trade_history:
             if trade.get("side") != "sell":
@@ -802,16 +802,16 @@ class TradingEngine:
             strategy = trade.get("strategy_type", "unknown")
             exit_reason = trade.get("exit_reason", "")
             if exit_reason == "stop_loss":
-                coin_stop_losses[symbol] += 1
+                symbol_stop_losses[symbol] += 1
             hold_time = trade.get("hold_time_seconds")
             if hold_time is not None:
-                coin_hold_times[symbol].append(hold_time)
+                symbol_hold_times[symbol].append(hold_time)
 
-            coin_stats[symbol]["trades"] += 1
-            coin_stats[symbol]["total_pnl"] += pnl
+            symbol_stats[symbol]["trades"] += 1
+            symbol_stats[symbol]["total_pnl"] += pnl
             if pnl > 0:
-                coin_stats[symbol]["wins"] += 1
-            coin_stats[symbol]["last_trade_ts"] = max(coin_stats[symbol]["last_trade_ts"], trade.get("timestamp", 0) / 1000.0)
+                symbol_stats[symbol]["wins"] += 1
+            symbol_stats[symbol]["last_trade_ts"] = max(symbol_stats[symbol]["last_trade_ts"], trade.get("timestamp", 0) / 1000.0)
 
             strategy_stats[strategy]["trades"] += 1
             strategy_stats[strategy]["total_pnl"] += pnl
@@ -819,18 +819,18 @@ class TradingEngine:
                 strategy_stats[strategy]["wins"] += 1
 
         # Convert to dicts with win rates
-        coin_perf = {}
-        for sym, s in coin_stats.items():
+        symbol_perf = {}
+        for sym, s in symbol_stats.items():
             win_rate = s["wins"] / s["trades"] if s["trades"] > 0 else 0.0
             avg_pnl = s["total_pnl"] / s["trades"] if s["trades"] > 0 else 0.0
-            coin_perf[sym] = {
+            symbol_perf[sym] = {
                 "trades": s["trades"],
                 "win_rate": round(win_rate, 3),
                 "avg_pnl": round(avg_pnl, 4),
                 "total_pnl": round(s["total_pnl"], 4),
                 "last_trade_seconds_ago": round(now - s["last_trade_ts"]) if s["last_trade_ts"] else None,
-                "stop_loss_hits": coin_stop_losses.get(sym, 0),
-                "avg_hold_time_seconds": round(sum(coin_hold_times[sym]) / len(coin_hold_times[sym]), 1) if coin_hold_times.get(sym) else None,
+                "stop_loss_hits": symbol_stop_losses.get(sym, 0),
+                "avg_hold_time_seconds": round(sum(symbol_hold_times[sym]) / len(symbol_hold_times[sym]), 1) if symbol_hold_times.get(sym) else None,
             }
 
         strategy_perf = {}
@@ -874,7 +874,7 @@ class TradingEngine:
                     break
 
         return {
-            "coin_performance": coin_perf,
+            "stock_performance": symbol_perf,
             "strategy_performance": strategy_perf,
             "equity_curve": {
                 "total_pnl": round(sum(t.get("realized_pnl", 0.0) for t in self.trade_history if t.get("side") == "sell"), 4),
@@ -1133,7 +1133,7 @@ class TradingEngine:
             save_trading_state("initial_balance", self.initial_balance)
 
         logger.info(
-            "Loaded trading state: %d coins, %d positions, %d trades",
+            "Loaded trading state: %d symbols, %d positions, %d trades",
             len(self.current_symbols),
             len(self.positions),
             len(self.trade_history),
@@ -1149,7 +1149,7 @@ class TradingEngine:
         # Also persist paper balances if in paper mode
         if settings.TRADING_MODE == "paper":
             await asyncio.to_thread(save_paper_balances, self.trader.balances)
-        logger.debug("Saved trading state: %d coins, %d positions, %d trades",
+        logger.debug("Saved trading state: %d symbols, %d positions, %d trades",
                      len(self.current_symbols), len(self.positions), len(self.trade_history))
 
     async def run(self):
@@ -2115,7 +2115,7 @@ class TradingEngine:
             if sym not in new_symbol_set:
                 del self._symbol_first_seen[sym]
 
-        # Trigger immediate backfill for newly selected coins
+        # Trigger immediate backfill for newly selected symbols
         old_symbol_set = {entry["symbol"] for entry in old_symbols}
         for entry in self.current_symbols:
             if entry["symbol"] not in old_symbols:
@@ -2643,7 +2643,7 @@ class TradingEngine:
                 pos for pos in self.positions.values() if pos.get("symbol") == symbol
             ]
 
-            # Compute per-coin budget for this coin
+            # Compute per-symbol budget for this symbol
             per_symbol_budget = base_balance / self.effective_max_symbols if self.effective_max_symbols > 0 else 0.0
 
             perf = self._compute_performance_metrics()
@@ -4984,7 +4984,7 @@ class TradingEngine:
                 except (ValueError, TypeError):
                     pass
 
-            # Apply per-coin position size multiplier if set by LLM in strategy params
+            # Apply per-symbol position size multiplier if set by LLM in strategy params
             per_coin_mult = params.get("position_size_multiplier")
             if per_coin_mult is not None:
                 try:
