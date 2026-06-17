@@ -1320,12 +1320,12 @@ class TradingEngine:
                     mid = (best_bid + best_ask) / 2
                     if mid > 0:
                         spread_pct = ((best_ask - best_bid) / mid) * 100
-                        coin_spreads[sym] = round(spread_pct, 4)
+                        symbol_spreads[sym] = round(spread_pct, 4)
                     # Depth: total volume within 1% of mid price
                     bid_vol = sum(b[1] for b in bids if b[0] >= mid * 0.99)
                     ask_vol = sum(a[1] for a in asks if a[0] <= mid * 1.01)
                     total_depth = bid_vol + ask_vol
-                    coin_depths[sym] = round(total_depth, 2)
+                    symbol_depths[sym] = round(total_depth, 2)
             except Exception as e:
                 logger.debug(f"Order book fetch failed for {sym} during coin selection: {e}")
 
@@ -1345,23 +1345,23 @@ class TradingEngine:
                 vola_score = min(1.0, change_24h / 20.0)
 
                 # Spread score: lower spread is better (1.0 for 0% spread, 0.0 for >=1% spread)
-                sp = coin_spreads.get(sym)
+                sp = symbol_spreads.get(sym)
                 if sp is not None:
                     spread_score = max(0.0, 1.0 - sp / 1.0)  # 1% spread -> score 0
                 else:
                     spread_score = 0.5  # unknown
 
                 # Depth score: log scale, cap at 1.0
-                depth = coin_depths.get(sym, 0)
+                depth = symbol_depths.get(sym, 0)
                 depth_score = min(1.0, math.log10(depth + 1) / 6.0) if depth > 0 else 0.0
 
                 momentum_score = 1.0 if (t.get('percentage', 0) or 0) > 0 else 0.5
 
                 # Composite score (weights adjusted to include depth)
                 score = (0.25 * vol_score + 0.25 * vola_score + 0.25 * spread_score + 0.15 * depth_score + 0.10 * momentum_score)
-                coin_scores[sym] = round(score, 3)
+                symbol_scores[sym] = round(score, 3)
             except Exception:
-                coin_scores[sym] = 0.0
+                symbol_scores[sym] = 0.0
 
         # Fetch news sentiment for all candidate coins
         news_sentiment = {}
@@ -1378,11 +1378,11 @@ class TradingEngine:
         # --- Build top opportunities list for the prompt ---
         top_opportunities = []
         # Combine score, 24h change, and sentiment for the best candidates
-        scored_symbols = sorted(sample_pairs, key=lambda s: coin_scores.get(s, 0), reverse=True)
+        scored_symbols = sorted(sample_pairs, key=lambda s: symbol_scores.get(s, 0), reverse=True)
         for sym in scored_symbols[:5]:  # top 5
             t = tickers.get(sym, {})
             change_24h = t.get('percentage')
-            score = coin_scores.get(sym, 0)
+            score = symbol_scores.get(sym, 0)
             base_coin = sym.split("/")[0] if "/" in sym else sym
             sentiment_val = None
             if base_coin in news_sentiment:
@@ -1454,13 +1454,13 @@ class TradingEngine:
         # Compute indicators for each coin with OHLCV data, for ALL timeframes
         symbol_indicators = {}
         for sym, tf_data in ohlcv_data.items():
-            coin_indicators[sym] = {}
+            symbol_indicators[sym] = {}
             for tf in settings.OHLCV_TIMEFRAMES:
                 if tf in tf_data and tf_data[tf]:
                     candles = tf_data[tf]
                     ind = compute_all_indicators(candles)
                     if ind:
-                        coin_indicators[sym][tf] = ind
+                        symbol_indicators[sym][tf] = ind
 
         # Fetch historical OHLCV from database for longer-term trend analysis (up to 30 days)
         historical_ohlcv_summary = {}
@@ -1686,11 +1686,11 @@ class TradingEngine:
             ohlcv_data=ohlcv_data,
             market_trend=market_trend,
             news_sentiment=news_sentiment,
-            symbol_indicators=coin_indicators,
+            symbol_indicators=symbol_indicators,
             daily_pnl=perf["equity_curve"].get("daily_pnl"),
-            symbol_scores=coin_scores,
-            symbol_spreads=coin_spreads,
-            symbol_depths=coin_depths,
+            symbol_scores=symbol_scores,
+            symbol_spreads=symbol_spreads,
+            symbol_depths=symbol_depths,
             historical_ohlcv_summary=historical_ohlcv_summary,
             correlation_matrix=correlation_matrix,
             session_info=session_info,
@@ -1711,22 +1711,22 @@ class TradingEngine:
             "market_limits": market_limits,
             "ohlcv_data": ohlcv_data,
             "news_sentiment": news_sentiment,
-            "coin_indicators": coin_indicators,
+            "symbol_indicators": symbol_indicators,
             "performance": perf,
             "session_info": session_info,
             "market_breadth": market_breadth,
             "trading_paused": trading_paused_bool,
             "open_positions": self.positions,
-            "coin_tenure": coin_tenure,
-            "coin_max_tenure": coin_max_tenure,
+            "symbol_tenure": symbol_tenure,
+            "symbol_max_tenure": symbol_max_tenure,
             "full_market_breadth": full_market_breadth,
             "base_balance": base_balance,
             "per_coin_budget": per_coin_budget,
             "max_symbols": self.effective_max_symbols,
             "current_symbols": self.current_symbols,
-            "coin_scores": coin_scores,
-            "coin_spreads": coin_spreads,
-            "coin_depths": coin_depths,
+            "symbol_scores": symbol_scores,
+            "symbol_spreads": symbol_spreads,
+            "symbol_depths": symbol_depths,
             "historical_ohlcv_summary": historical_ohlcv_summary,
             "correlation_matrix": correlation_matrix,
             "sentiment_trend": sentiment_trend,
@@ -1851,11 +1851,11 @@ class TradingEngine:
                                 mth = item.get("max_tenure_hours")
                                 if mth is not None:
                                     entry["max_tenure_hours"] = mth
-                                new_coins.append(entry)
+                                new_symbols.append(entry)
                         elif isinstance(item, str):
                             if item in available_pairs:
                                 default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
-                                new_coins.append({"symbol": item, "timeframe": default_tf})
+                                new_symbols.append({"symbol": item, "timeframe": default_tf})
                 elif isinstance(parsed, list):
                     # Old format: plain list of objects or strings
                     for item in parsed:
@@ -1869,18 +1869,18 @@ class TradingEngine:
                                 mth = item.get("max_tenure_hours")
                                 if mth is not None:
                                     entry["max_tenure_hours"] = mth
-                                new_coins.append(entry)
+                                new_symbols.append(entry)
                         elif isinstance(item, str):
                             if item in available_pairs:
                                 default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
-                                new_coins.append({"symbol": item, "timeframe": default_tf})
+                                new_symbols.append({"symbol": item, "timeframe": default_tf})
                 else:
                     logger.error("LLM coin selection response is neither a list nor a dict.")
 
                 # Deduplicate by symbol, keeping first occurrence
                 seen = set()
                 deduped = []
-                for entry in new_coins:
+                for entry in new_symbols:
                     sym = entry["symbol"]
                     if sym not in seen:
                         seen.add(sym)
@@ -2033,13 +2033,13 @@ class TradingEngine:
 
                 existing_symbols = {c['symbol']: c for c in self.current_symbols}
                 for coin in deduped[: self.effective_max_symbols]:
-                    if coin['symbol'] in existing_coins and 'entry_time' in existing_coins[coin['symbol']]:
-                        coin['entry_time'] = existing_coins[coin['symbol']]['entry_time']
+                    if coin['symbol'] in existing_symbols and 'entry_time' in existing_symbols[coin['symbol']]:
+                        coin['entry_time'] = existing_symbols[coin['symbol']]['entry_time']
                     else:
                         coin['entry_time'] = time.time()
                     # Preserve max_tenure_hours from existing coin if LLM didn't specify it
-                    if 'max_tenure_hours' not in coin and coin['symbol'] in existing_coins and 'max_tenure_hours' in existing_coins[coin['symbol']]:
-                        coin['max_tenure_hours'] = existing_coins[coin['symbol']]['max_tenure_hours']
+                    if 'max_tenure_hours' not in coin and coin['symbol'] in existing_symbols and 'max_tenure_hours' in existing_symbols[coin['symbol']]:
+                        coin['max_tenure_hours'] = existing_symbols[coin['symbol']]['max_tenure_hours']
                 self.current_symbols = deduped[: self.effective_max_symbols]
 
                 # If LLM explicitly chose zero coins, respect that and don't fall back to volume-based selection
@@ -2068,16 +2068,16 @@ class TradingEngine:
                 if per_coin_budget >= min_cost:
                     if self._is_excluded(sym, default_tf):
                         continue
-                    fallback_coins.append({"symbol": sym, "timeframe": default_tf})
-                if len(fallback_coins) >= self.effective_max_symbols:
+                    fallback_symbols.append({"symbol": sym, "timeframe": default_tf})
+                if len(fallback_symbols) >= self.effective_max_symbols:
                     break
             existing_symbols = {c['symbol']: c for c in self.current_symbols}
-            for coin in fallback_coins:
-                if coin['symbol'] in existing_coins and 'entry_time' in existing_coins[coin['symbol']]:
-                    coin['entry_time'] = existing_coins[coin['symbol']]['entry_time']
+            for coin in fallback_symbols:
+                if coin['symbol'] in existing_symbols and 'entry_time' in existing_symbols[coin['symbol']]:
+                    coin['entry_time'] = existing_symbols[coin['symbol']]['entry_time']
                 else:
                     coin['entry_time'] = time.time()
-            self.current_symbols = fallback_coins
+            self.current_symbols = fallback_symbols
 
         # Ensure all open positions remain in current_coins so they continue to be managed by the LLM strategy
         for symbol, pos in self.positions.items():
@@ -2158,7 +2158,7 @@ class TradingEngine:
             else:
                 pause_msg = f"⏱️ LLM set pause duration: {duration_str}"
 
-        if not self.current_coins:
+        if not self.current_symbols:
             logger.warning("No coins selected after evaluation. Bot will idle until next cycle.")
             if self.notifier:
                 msg = f"⚠️ No coins selected. Bot will idle.\n"
@@ -2183,9 +2183,9 @@ class TradingEngine:
         elif self.notifier:
             coin_reasoning = parsed.get("reasoning", "") if isinstance(parsed, dict) else ""
             if coin_reasoning:
-                msg = f"🔄 Coins updated: {', '.join(coin_labels)}\n💡 {coin_reasoning}"
+                msg = f"🔄 Coins updated: {', '.join(symbol_labels)}\n💡 {coin_reasoning}"
             else:
-                msg = f"🔄 Coins updated: {', '.join(coin_labels)}"
+                msg = f"🔄 Coins updated: {', '.join(symbol_labels)}"
             if pause_msg:
                 msg = pause_msg + "\n" + msg
             await self.notifier.send_notification(
@@ -2193,7 +2193,7 @@ class TradingEngine:
                 summary={
                     "action": "INFO",
                     "reason": "Coins updated",
-                    "coins": [c["symbol"] for c in self.current_coins],
+                    "coins": [c["symbol"] for c in self.current_symbols],
                     "coin_reasoning": coin_reasoning,
                     "pause_decision": pause_trading if isinstance(pause_trading, bool) else None,
                     "pause_reason": pause_reason,
@@ -3259,7 +3259,7 @@ class TradingEngine:
                 "historical_ohlcv": historical_ohlcv,
                 "min_order_amount": min_order_amount,
                 "min_order_cost": min_order_cost,
-                "all_coins": self.current_coins,
+                "all_coins": self.current_symbols,
                 "past_trades": past_trades,
                 "aggregate_sentiment": aggregate_sentiment,
                 "cycle_spent": self._cycle_spent,
