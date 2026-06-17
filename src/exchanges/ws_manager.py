@@ -20,6 +20,8 @@ class WebSocketManager:
         self._running = False
         self._tasks: List[asyncio.Task] = []
         self._reconnect_lock = asyncio.Lock()
+        self._stream_failures = 0
+        self.MAX_STREAM_FAILURES = 3
 
     @staticmethod
     def _plain(symbol: str) -> str:
@@ -94,16 +96,27 @@ class WebSocketManager:
     # Internal stream handling
     # ------------------------------------------------------------------
     async def _run_stream(self):
-        """Run the stream's event loop and reconnect on failure."""
+        """Run the stream's event loop and reconnect on failure, giving up after N consecutive failures."""
         while self._running:
+            self._stream_failures = 0  # reset for this connection attempt
             try:
                 logger.info("Connecting to Alpaca WebSocket stream...")
                 await self.stream.run()
             except Exception as e:
-                logger.error(f"Stream disconnected: {e}")
-                if self._running:
+                self._stream_failures += 1
+                logger.error(f"Stream disconnected: {e} (failure {self._stream_failures}/{self.MAX_STREAM_FAILURES})")
+                if self._running and self._stream_failures < self.MAX_STREAM_FAILURES:
                     await self._reconnect()
-            await asyncio.sleep(1)
+                    await asyncio.sleep(5)  # wait before next attempt
+                else:
+                    logger.warning(
+                        "Max stream failures reached. Giving up on WebSocket; engine will use REST polling."
+                    )
+                    self._running = False
+                    break
+            else:
+                # stream.run() returned cleanly (e.g., after stop())
+                break
 
     async def _reconnect(self):
         """Close the current stream, create a new one, and re‑subscribe."""
