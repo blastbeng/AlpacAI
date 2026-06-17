@@ -1103,9 +1103,9 @@ class TradingEngine:
         # Convert old format (list of strings) to new format if needed
         if raw_coins and isinstance(raw_coins[0], str):
             default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
-            self.current_coins = [{"symbol": s, "timeframe": default_tf} for s in raw_coins]
+            self.current_symbols = [{"symbol": s, "timeframe": default_tf} for s in raw_coins]
         else:
-            self.current_coins = raw_coins
+            self.current_symbols = raw_coins
         self.positions = state.get("positions", {})
         # Remove any position that lacks LLM-defined risk parameters.
         # Such positions cannot be managed safely.
@@ -1133,14 +1133,14 @@ class TradingEngine:
 
         logger.info(
             "Loaded trading state: %d coins, %d positions, %d trades",
-            len(self.current_coins),
+            len(self.current_symbols),
             len(self.positions),
             len(self.trade_history),
         )
 
     async def _save_state(self):
         """Persist current coins, positions, and trade history to SQLite."""
-        await asyncio.to_thread(save_trading_state, "current_coins", self.current_coins)
+        await asyncio.to_thread(save_trading_state, "current_coins", self.current_symbols)
         await asyncio.to_thread(save_trading_state, "positions", self.positions)
         # Keep only the last 1000 trades to avoid unbounded growth
         self.trade_history = self.trade_history[-1000:]
@@ -1149,7 +1149,7 @@ class TradingEngine:
         if settings.TRADING_MODE == "paper":
             await asyncio.to_thread(save_paper_balances, self.trader.balances)
         logger.debug("Saved trading state: %d coins, %d positions, %d trades",
-                     len(self.current_coins), len(self.positions), len(self.trade_history))
+                     len(self.current_symbols), len(self.positions), len(self.trade_history))
 
     async def run(self):
         """Main event‑driven loop using WebSocket ticker updates."""
@@ -1170,7 +1170,7 @@ class TradingEngine:
 
         # Initial coin selection and subscription update
         await self._reevaluate_symbols()
-        current_symbols = [entry["symbol"] for entry in self.current_coins]
+        current_symbols = [entry["symbol"] for entry in self.current_symbols]
         await self.ws_manager.update_subscriptions(current_symbols)
 
         while self._running:
@@ -1184,9 +1184,9 @@ class TradingEngine:
 
                 # Process any coin whose evaluation interval has elapsed
                 now = time.time()
-                for coin_entry in self.current_coins:
-                    symbol = coin_entry["symbol"]
-                    default_interval = self._timeframe_to_seconds(coin_entry["timeframe"])
+                for symbol_entry in self.current_symbols:
+                    symbol = symbol_entry["symbol"]
+                    default_interval = self._timeframe_to_seconds(symbol_entry["timeframe"])
                     interval = self._strategy_intervals.get(symbol, default_interval)
                     last_eval = self._last_strategy_eval.get(symbol, 0)
                     if now - last_eval >= interval:
