@@ -882,8 +882,8 @@ Maximum symbols to trade: {max_symbols}
 """
     if cycle_spent is not None and remaining_balance is not None:
         prompt += (
-            f"Amount already allocated to other coins in this cycle: {cycle_spent:.2f} {base_currency}\n"
-            f"Remaining available for this coin: {remaining_balance:.2f} {base_currency}\n"
+            f"Amount already allocated to other symbols in this cycle: {cycle_spent:.2f} {base_currency}\n"
+            f"Remaining available for this symbol: {remaining_balance:.2f} {base_currency}\n"
             "Your position_size_fraction must not require more than the remaining balance. "
             "If the remaining balance is low, reduce your fraction accordingly or output HOLD.\n"
         )
@@ -906,8 +906,8 @@ Maximum symbols to trade: {max_symbols}
     prompt += (
         f"**position_size_fraction** now represents a fraction of your **total {base_currency} balance** (0.1 to 1.0). "
         f"You may allocate more than the equal share for high‑confidence/high‑profit opportunities, and less for riskier ones. "
-        f"**Important:** The sum of position_size_fraction across all coins you intend to trade must not exceed 1.0, "
-        f"so that you leave enough capital for other coins. Plan your allocations accordingly.\n"
+        f"**Important:** The sum of position_size_fraction across all stocks you intend to trade must not exceed 1.0, "
+        f"so that you leave enough capital for other stocks. Plan your allocations accordingly.\n"
     )
     base_symbol = symbol.split('/')[0]
     quote_currency = symbol.split('/')[1]
@@ -957,7 +957,7 @@ Maximum symbols to trade: {max_symbols}
         prompt += (
             f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
             "Use this to gauge typical market activity: Asian session often has lower volatility, "
-            "European and US sessions have higher volume and volatility. Adjust your coin selection "
+            "European and US sessions have higher volume and volatility. Adjust your stock selection "
             "and risk parameters accordingly.\n"
         )
 
@@ -1107,7 +1107,7 @@ Maximum symbols to trade: {max_symbols}
             prompt += f"  Market impact component: {market_impact_score:.3f} (0-1, higher = lower price impact per unit of volume)\n"
         prompt += (
             "This score combines spread, order book depth at 0.1%, trade frequency, volatility, and market impact. "
-            "A score above 0.7 suggests the coin is highly suitable for scalping tiny percentages (e.g., 0.1-0.5% take‑profit). "
+            "A score above 0.7 suggests the stock is highly suitable for scalping tiny percentages (e.g., 0.1-0.5% take‑profit). "
             "The market impact component measures how much the price moves per unit of volume – a low impact means "
             "your orders are less likely to move the market against you. "
             "Use this to decide whether to employ a scalping strategy and how tight to set your take‑profit and stop‑loss.\n"
@@ -1140,7 +1140,7 @@ Maximum symbols to trade: {max_symbols}
             "sized to the per-coin budget. Use this to decide whether to reduce position_size_fraction "
             "or skip the trade entirely if slippage is too high. "
             "For scalping very small percentages, slippage above 0.05% may erode profitability. "
-            "If slippage is high, consider a smaller position or a different coin. "
+            "If slippage is high, consider a smaller position or a different stock. "
             f"Note: the engine will automatically cap your buy size to keep slippage below "
             f"{settings.MAX_SLIPPAGE_CAP_PCT}% (configurable).\n"
         )
@@ -1237,8 +1237,8 @@ Maximum symbols to trade: {max_symbols}
                 f"volume={summary['volume']}, candles={summary['candle_count']}\n"
             )
             prompt += (
-                "Use this longer‑term summary to assess the overall trend and avoid coins in prolonged decline. "
-                "Prefer coins with consistent upward momentum over the full period.\n"
+                "Use this longer‑term summary to assess the overall trend and avoid stocks in prolonged decline. "
+                "Prefer stocks with consistent upward momentum over the full period.\n"
             )
         # Provide raw candles for backtesting
         raw_candles_str = _format_raw_candles_compact(historical_ohlcv, max_candles=200)
@@ -1317,7 +1317,7 @@ Maximum symbols to trade: {max_symbols}
     if market_breadth:
         prompt += (
             f"\nMarket breadth: {market_breadth['positive_pct']}% of {market_breadth['total_count']} "
-            f"candidate coins have a positive 24h change ({market_breadth['positive_count']} positive).\n"
+            f"candidate stocks have a positive 24h change ({market_breadth['positive_count']} positive).\n"
             "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
             "Use this to gauge overall market participation and adjust your coin selection and risk parameters accordingly.\n"
         )
@@ -1399,7 +1399,7 @@ Maximum symbols to trade: {max_symbols}
         base = symbol.split("/")[0] if "/" in symbol else symbol
         articles = get_news_for_symbol(base, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
         if articles:
-            news_section = "Recent news articles for this coin:\n" + _format_news_for_prompt(articles)
+            news_section = "Recent news articles for this stock:\n" + _format_news_for_prompt(articles)
     if news_section:
         prompt += f"\n{news_section}\n"
         prompt += "Consider the detailed news headlines above when setting your confidence, position size, and max hold time. "
