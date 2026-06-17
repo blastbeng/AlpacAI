@@ -627,13 +627,13 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
                     lines.append(f"    Pivot Points: P={pp['pivot']:.6f} R1={pp['r1']:.6f} S1={pp['s1']:.6f} R2={pp['r2']:.6f} S2={pp['s2']:.6f}")
             prompt += "\n".join(lines) + "\n"
     if market_trend:
-        prompt += f"\nOverall market trend ({market_trend['symbol']}): 24h change {market_trend.get('change_24h')}%, last price {market_trend.get('last')}\n"
+        prompt += f"\nOverall market trend ({market_trend['symbol']}): daily change {market_trend.get('change_24h')}%, last price {market_trend.get('last')}\n"
     if session_info:
         prompt += (
             f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
-            "Use this to gauge typical market activity: Asian session often has lower volatility, "
-            "European and US sessions have higher volume and volatility. Adjust your stock selection "
-            "and risk parameters accordingly.\n"
+            "Use this to gauge market activity: pre‑market and after‑hours sessions have lower liquidity and wider spreads; "
+            "the regular session (9:30 AM – 4:00 PM ET) has the highest volume and tightest spreads. "
+            "Adjust your stock selection and risk parameters accordingly.\n"
         )
     if news_sentiment:
         prompt += "\n## News Sentiment\n"
@@ -658,12 +658,12 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
             "Improving sentiment may justify higher confidence; deteriorating sentiment may warrant caution.\n"
         )
     if volume_trends:
-        prompt += "\nVolume trend (24h volume relative to recent average):\n"
+        prompt += "\nVolume trend (daily volume relative to recent average):\n"
         for sym in available_symbols:
             if sym in volume_trends and volume_trends[sym] is not None:
                 prompt += f"  {sym}: {volume_trends[sym]:.2f}x\n"
         prompt += (
-            "A ratio > 1.0 means current 24h volume is above the recent average; "
+            "A ratio > 1.0 means current daily volume is above the recent average; "
             "> 2.0 suggests a significant spike that often precedes large moves. "
             "Use this to identify stocks with unusual activity. "
             "Prefer stocks with elevated volume when looking for breakout or momentum trades; "
@@ -672,14 +672,14 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
     if market_breadth:
         prompt += (
             f"\nMarket breadth: {market_breadth['positive_pct']}% of {market_breadth['total_count']} "
-            f"candidate stocks have a positive 24h change ({market_breadth['positive_count']} positive).\n"
+            f"candidate stocks have a positive daily change ({market_breadth['positive_count']} positive).\n"
             "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
             "Use this to gauge overall market participation and adjust your stock selection and risk parameters accordingly.\n"
         )
     if full_market_breadth:
         prompt += (
             f"\nFull market breadth (all available stocks): {full_market_breadth['positive_pct']}% of "
-            f"{full_market_breadth['total_count']} stocks have a positive 24h change "
+            f"{full_market_breadth['total_count']} stocks have a positive daily change "
             f"({full_market_breadth['positive_count']} positive).\n"
             "This is a broader measure than the candidate‑only breadth. "
             "Use it to confirm the overall market health. "
@@ -959,9 +959,9 @@ Maximum symbols to trade: {max_symbols}
     if session_info:
         prompt += (
             f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
-            "Use this to gauge typical market activity: Asian session often has lower volatility, "
-            "European and US sessions have higher volume and volatility. Adjust your stock selection "
-            "and risk parameters accordingly.\n"
+            "Use this to gauge market activity: pre‑market and after‑hours sessions have lower liquidity and wider spreads; "
+            "the regular session (9:30 AM – 4:00 PM ET) has the highest volume and tightest spreads. "
+            "Adjust your stock selection and risk parameters accordingly.\n"
         )
 
     # --- Volatility, order book imbalance, and position P&L context ---
@@ -1310,7 +1310,7 @@ Maximum symbols to trade: {max_symbols}
             "while deteriorating sentiment may warrant a smaller position or tighter stops.\n"
         )
     if volume_trend is not None:
-        prompt += f"\nVolume trend: {volume_trend:.2f}x (current 24h volume relative to recent average)\n"
+        prompt += f"\nVolume trend: {volume_trend:.2f}x (current daily volume relative to recent average)\n"
         prompt += (
             "A ratio > 1.0 means volume is above average; > 2.0 suggests a significant spike. "
             "Elevated volume confirms the strength of a price move and increases the reliability of technical signals. "
@@ -1320,14 +1320,14 @@ Maximum symbols to trade: {max_symbols}
     if market_breadth:
         prompt += (
             f"\nMarket breadth: {market_breadth['positive_pct']}% of {market_breadth['total_count']} "
-            f"candidate stocks have a positive 24h change ({market_breadth['positive_count']} positive).\n"
+            f"candidate stocks have a positive daily change ({market_breadth['positive_count']} positive).\n"
             "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
             "Use this to gauge overall market participation and adjust your stock selection and risk parameters accordingly.\n"
         )
     if full_market_breadth:
         prompt += (
             f"\nFull market breadth (all available symbols): {full_market_breadth['positive_pct']}% of "
-            f"{full_market_breadth['total_count']} symbols have a positive 24h change "
+            f"{full_market_breadth['total_count']} symbols have a positive daily change "
             f"({full_market_breadth['positive_count']} positive).\n"
             "This is a broader measure than the candidate‑only breadth. "
             "Use it to confirm the overall market health. "
