@@ -515,7 +515,7 @@ class TradingEngine:
                         t = tickers.get(sym, {})
                         return t.get('quoteVolume', 0) or 0
                     top_volume_pairs = sorted(sample_for_vol, key=_vol, reverse=True)[
-                        :settings.COIN_SELECTION_TOP_VOLUME_LIMIT
+                        :settings.SYMBOL_SELECTION_TOP_VOLUME_LIMIT
                     ]
                     symbols_to_refresh = set(top_volume_pairs) - current_symbols
                 except Exception as e:
@@ -695,7 +695,7 @@ class TradingEngine:
                         except Exception as e:
                             logger.warning(f"Market data download failed for {symbol} {tf}: {e}")
                         # Configurable delay between coins to avoid rate limits
-                        await asyncio.sleep(settings.OHLCV_DOWNLOAD_COIN_DELAY_SECONDS)
+                        await asyncio.sleep(settings.OHLCV_DOWNLOAD_SYMBOL_DELAY_SECONDS)
                     logger.info("Market data download cycle complete.")
                     # Clean up old OHLCV data (older than 30 days)
                     await asyncio.to_thread(cleanup_old_ohlcv, 30)
@@ -1238,15 +1238,15 @@ class TradingEngine:
             return
 
         # --- News-driven coin discovery: add trending coins not in the top 50 ---
-        if settings.NEWS_ENABLED and settings.NEWS_COIN_DISCOVERY_ENABLED and discover_trending_stocks is not None:
+        if settings.NEWS_ENABLED and settings.NEWS_SYMBOL_DISCOVERY_ENABLED and discover_trending_stocks is not None:
             try:
                 discovered = await asyncio.to_thread(
                     discover_trending_stocks,
                     self.base_currency,
                     available_pairs,
-                    max_coins=settings.NEWS_COIN_DISCOVERY_MAX_COINS,
-                    min_sentiment=settings.NEWS_COIN_DISCOVERY_MIN_SENTIMENT,
-                    min_articles=settings.NEWS_COIN_DISCOVERY_MIN_ARTICLES,
+                    max_coins=settings.NEWS_SYMBOL_DISCOVERY_MAX_SYMBOLS,
+                    min_sentiment=settings.NEWS_SYMBOL_DISCOVERY_MIN_SENTIMENT,
+                    min_articles=settings.NEWS_SYMBOL_DISCOVERY_MIN_ARTICLES,
                 )
                 # Add discovered coins to the front of the list so they are included in the sample
                 for pair in discovered:
@@ -1264,23 +1264,23 @@ class TradingEngine:
 
         # Fetch tickers for a subset to keep prompt size manageable
         # Apply sentiment filter if configured
-        if settings.COIN_SELECTION_MIN_SENTIMENT > -1.0 and settings.NEWS_ENABLED:
+        if settings.SYMBOL_SELECTION_MIN_SENTIMENT > -1.0 and settings.NEWS_ENABLED:
             # Pre-fetch sentiment for all available pairs (or a larger batch) to filter
             # To avoid too many DB calls, we can fetch sentiment for the first N pairs
-            candidate_pairs = available_pairs[:settings.COIN_SELECTION_MAX_PAIRS * 2]  # look at a larger pool
+            candidate_pairs = available_pairs[:settings.SYMBOL_SELECTION_CANDIDATE_LIMIT]  # look at a larger pool
             filtered_pairs = []
             for sym in candidate_pairs:
                 try:
                     base_coin = sym.split("/")[0] if "/" in sym else sym
                     agg = await asyncio.to_thread(get_aggregate_sentiment_from_db, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
-                    if agg and agg["avg_compound"] >= settings.COIN_SELECTION_MIN_SENTIMENT:
+                    if agg and agg["avg_compound"] >= settings.SYMBOL_SELECTION_MIN_SENTIMENT:
                         filtered_pairs.append(sym)
                     elif not agg:
                         # No sentiment data – include by default (or you can skip)
                         filtered_pairs.append(sym)
                 except Exception:
                     filtered_pairs.append(sym)  # include if error
-            sample_pairs = filtered_pairs[:settings.COIN_SELECTION_MAX_PAIRS]
+            sample_pairs = filtered_pairs[:settings.SYMBOL_SELECTION_CANDIDATE_LIMIT]
         else:
             sample_pairs = available_pairs[:settings.COIN_SELECTION_MAX_PAIRS]
 
@@ -1291,7 +1291,7 @@ class TradingEngine:
                 entry.split("/")[0] == sym.split("/")[0] and
                 entry.split("/")[1] == sym.split("/")[1] and
                 len(entry.split("/")) == 2
-                for entry in settings.EXCLUDED_PAIRS
+                for entry in settings.EXCLUDED_SYMBOLS
             )
         ]
 
@@ -1301,7 +1301,7 @@ class TradingEngine:
         def _volume(sym):
             t = tickers.get(sym, {})
             return t.get('quoteVolume', 0) or 0
-        sample_pairs = sorted(sample_pairs, key=_volume, reverse=True)[:settings.COIN_SELECTION_TOP_VOLUME_LIMIT]
+        sample_pairs = sorted(sample_pairs, key=_volume, reverse=True)[:settings.SYMBOL_SELECTION_TOP_VOLUME_LIMIT]
 
         # --- Fetch order books for these top coins to compute real spread/depth for scalping score ---
         top_n_for_ob = min(50, len(sample_pairs))
@@ -6314,7 +6314,7 @@ class TradingEngine:
 
     def _is_excluded(self, symbol: str, timeframe: str) -> bool:
         """Return True if (symbol, timeframe) is in the EXCLUDED_PAIRS list."""
-        for entry in settings.EXCLUDED_PAIRS:
+        for entry in settings.EXCLUDED_SYMBOLS:
             parts = entry.split("/")
             if len(parts) == 2:
                 # "SYMBOL" or "SYMBOL/*" → exclude all timeframes

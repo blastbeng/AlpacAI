@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Symbol selection limits
     SYMBOL_SELECTION_TOP_VOLUME_LIMIT: int = 50
     SYMBOL_SELECTION_MAX_SYMBOLS: int = 100
+    # Maximum number of candidate symbols to consider during symbol selection
+    # (fetches tickers/OHLCV for this many top-volume symbols)
+    SYMBOL_SELECTION_CANDIDATE_LIMIT: int = 200
     SYMBOL_SELECTION_MIN_SENTIMENT: float = -1.0   # -1.0 = disabled
     FALLBACK_MIN_24H_VOLUME: float = 0.0
     EXCLUDED_SYMBOLS: list[str] = []
