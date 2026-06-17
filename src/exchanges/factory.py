@@ -1,75 +1,42 @@
-import ccxt
-import ccxt.pro as ccxt_pro
+import logging
+from alpaca.trading.client import TradingClient
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.live import StockDataStream
 from src.config.settings import settings
 
-SUPPORTED_EXCHANGES = {
-    "binance": ccxt.binance,
-    "kraken": ccxt.kraken,
-    "kucoin": ccxt.kucoin,
-    "coinbase": ccxt.coinbase,
-}
+logger = logging.getLogger(__name__)
 
-def get_exchange() -> ccxt.Exchange:
-    """Return a configured ccxt exchange instance based on settings."""
-    exchange_id = settings.EXCHANGE_ID.lower()
-    if exchange_id not in SUPPORTED_EXCHANGES:
-        raise ValueError(
-            f"Unsupported exchange: {exchange_id}. "
-            f"Supported: {list(SUPPORTED_EXCHANGES.keys())}"
-        )
+def get_trading_client() -> TradingClient:
+    """Return an Alpaca TradingClient for order placement and account info."""
+    return TradingClient(
+        api_key=settings.ALPACA_API_KEY,
+        secret_key=settings.ALPACA_SECRET_KEY,
+        paper=settings.ALPACA_PAPER,
+        url_override=settings.ALPACA_BASE_URL,
+    )
 
-    exchange_class = SUPPORTED_EXCHANGES[exchange_id]
-    config = {}
+def get_data_client() -> StockHistoricalDataClient:
+    """Return an Alpaca StockHistoricalDataClient for market data (bars, quotes)."""
+    return StockHistoricalDataClient(
+        api_key=settings.ALPACA_API_KEY,
+        secret_key=settings.ALPACA_SECRET_KEY,
+        url_override=settings.ALPACA_DATA_URL,
+    )
 
-    if settings.TRADING_MODE == "live":
-        config["apiKey"] = settings.EXCHANGE_API_KEY
-        config["secret"] = settings.EXCHANGE_SECRET
-        if settings.EXCHANGE_PASSWORD:
-            config["password"] = settings.EXCHANGE_PASSWORD
+def get_streaming_client() -> StockDataStream:
+    """Return an Alpaca StockDataStream for real‑time WebSocket data."""
+    return StockDataStream(
+        api_key=settings.ALPACA_API_KEY,
+        secret_key=settings.ALPACA_SECRET_KEY,
+        url_override=settings.ALPACA_DATA_URL,
+    )
 
-    exchange = exchange_class(config)
-    exchange.timeout = settings.EXCHANGE_TIMEOUT
+# Keep the old names for backward compatibility during migration.
+# They will be removed once the engine is fully adapted.
+def get_exchange():
+    """Temporary wrapper: returns the trading client (used for orders/account)."""
+    return get_trading_client()
 
-    if settings.TRADING_MODE == "paper":
-        # Enable sandbox mode only if the exchange truly supports it
-        if exchange.has.get("sandbox", False):
-            exchange.set_sandbox_mode(True)
-
-    exchange.enableRateLimit = True
-    return exchange
-
-
-def get_pro_exchange() -> ccxt_pro.Exchange:
-    """Return a configured ccxt.pro exchange instance for WebSocket streams."""
-    exchange_id = settings.EXCHANGE_ID.lower()
-    if exchange_id not in SUPPORTED_EXCHANGES:
-        raise ValueError(
-            f"Unsupported exchange: {exchange_id}. "
-            f"Supported: {list(SUPPORTED_EXCHANGES.keys())}"
-        )
-
-    exchange_class = getattr(ccxt_pro, exchange_id)
-    config = {}
-
-    if settings.TRADING_MODE == "live":
-        config["apiKey"] = settings.EXCHANGE_API_KEY
-        config["secret"] = settings.EXCHANGE_SECRET
-        if settings.EXCHANGE_PASSWORD:
-            config["password"] = settings.EXCHANGE_PASSWORD
-
-    exchange = exchange_class(config)
-    exchange.timeout = settings.EXCHANGE_TIMEOUT
-
-    # Increase WebSocket ping interval to reduce keepalive timeouts
-    if exchange_id == "kucoin":
-        exchange.options["wsPingInterval"] = 30000   # 30 seconds (default is often 10s)
-    elif exchange_id == "binance":
-        exchange.options["wsPingInterval"] = 30000
-    # Add other exchanges as needed
-
-    if settings.TRADING_MODE == "paper":
-        if exchange.has.get("sandbox", False):
-            exchange.set_sandbox_mode(True)
-
-    exchange.enableRateLimit = True
-    return exchange
+def get_pro_exchange():
+    """Temporary wrapper: returns the streaming client (used for WebSocket)."""
+    return get_streaming_client()
