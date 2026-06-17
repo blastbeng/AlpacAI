@@ -1487,7 +1487,7 @@ Return a JSON object as specified.
         equity = performance.get("equity_curve", {})
         perf_text = f"""
 Historical Performance:
-- This coin's past performance: {json.dumps(coin_perf)} (stop_loss_hits = number of times stop-loss was triggered; avg_hold_time_seconds = average trade duration)
+- This stock's past performance: {json.dumps(coin_perf)} (stop_loss_hits = number of times stop-loss was triggered; avg_hold_time_seconds = average trade duration)
 - Overall equity curve: {json.dumps(equity)}
 - Strategy performance summary: {json.dumps(strategy_perf)}
 
