@@ -2,13 +2,13 @@ import asyncio
 import time
 import logging
 from functools import wraps
-import ccxt
+from alpaca.common.exceptions import RateLimitError
 
 logger = logging.getLogger(__name__)
 
 def retry_on_rate_limit(max_retries=3, base_delay=1.0):
     """
-    Decorator that retries a function if it raises ccxt.RateLimitExceeded.
+    Decorator that retries a function if it raises alpaca.common.exceptions.RateLimitError.
     Uses exponential backoff: delay = base_delay * (2 ** attempt).
     Works for both sync and async functions.
     """
@@ -19,12 +19,12 @@ def retry_on_rate_limit(max_retries=3, base_delay=1.0):
             for attempt in range(max_retries + 1):
                 try:
                     return await func(*args, **kwargs)
-                except ccxt.RateLimitExceeded as e:
+                except RateLimitError as e:
                     last_exception = e
                     if attempt < max_retries:
                         delay = base_delay * (2 ** attempt)
                         logger.warning(
-                            f"Rate limit exceeded in {func.__name__}, "
+                            f"Alpaca rate limit hit in {func.__name__}, "
                             f"retrying in {delay:.1f}s (attempt {attempt+1}/{max_retries})"
                         )
                         await asyncio.sleep(delay)
@@ -38,12 +38,12 @@ def retry_on_rate_limit(max_retries=3, base_delay=1.0):
             for attempt in range(max_retries + 1):
                 try:
                     return func(*args, **kwargs)
-                except ccxt.RateLimitExceeded as e:
+                except RateLimitError as e:
                     last_exception = e
                     if attempt < max_retries:
                         delay = base_delay * (2 ** attempt)
                         logger.warning(
-                            f"Rate limit exceeded in {func.__name__}, "
+                            f"Alpaca rate limit hit in {func.__name__}, "
                             f"retrying in {delay:.1f}s (attempt {attempt+1}/{max_retries})"
                         )
                         time.sleep(delay)
