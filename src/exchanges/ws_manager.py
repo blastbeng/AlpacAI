@@ -31,14 +31,11 @@ class WebSocketManager:
     # ------------------------------------------------------------------
     async def start(self):
         """Start the WebSocket stream and subscribe to initial symbols."""
-        print("DEBUG: ws_manager.start() entered", flush=True)
         logger.info("WebSocket manager starting...")
         self._running = True
         if self.symbols:
-            await asyncio.to_thread(self.stream.subscribe_quotes, list(self.symbols))
-            await asyncio.to_thread(self.stream.subscribe_trades, list(self.symbols))
-        self.stream.on_quote(self._on_quote)
-        self.stream.on_trade(self._on_trade)
+            await asyncio.to_thread(self.stream.subscribe_quotes, self._on_quote, *self.symbols)
+            await asyncio.to_thread(self.stream.subscribe_trades, self._on_trade, *self.symbols)
         self._tasks.append(asyncio.create_task(self._run_stream()))
         logger.info("WebSocket manager started (stream task created).")
 
@@ -64,8 +61,8 @@ class WebSocketManager:
             self.stream.unsubscribe_quotes(list(removed))
             self.stream.unsubscribe_trades(list(removed))
         if added:
-            self.stream.subscribe_quotes(list(added))
-            self.stream.subscribe_trades(list(added))
+            self.stream.subscribe_quotes(self._on_quote, *added)
+            self.stream.subscribe_trades(self._on_trade, *added)
         self.symbols = new_symbols
         for sym in removed:
             self.tickers.pop(sym, None)
@@ -119,10 +116,8 @@ class WebSocketManager:
             from src.exchanges.factory import get_streaming_client
             self.stream = get_streaming_client()
             if self.symbols:
-                self.stream.subscribe_quotes(list(self.symbols))
-                self.stream.subscribe_trades(list(self.symbols))
-            self.stream.on_quote(self._on_quote)
-            self.stream.on_trade(self._on_trade)
+                self.stream.subscribe_quotes(self._on_quote, *self.symbols)
+                self.stream.subscribe_trades(self._on_trade, *self.symbols)
             logger.info("Reconnection complete.")
 
     async def _on_quote(self, quote: Quote):
