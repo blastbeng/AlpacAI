@@ -1902,8 +1902,8 @@ class TradingEngine:
                 new_interval = parsed.get("coin_revaluation_interval_seconds")
                 if new_interval is not None:
                     if isinstance(new_interval, (int, float)) and new_interval >= 60:
-                        clamped = max(new_interval, MIN_COIN_REVALUATION_INTERVAL)
-                        self._coin_revaluation_interval = clamped
+                        clamped = max(new_interval, MIN_SYMBOL_REEVALUATION_INTERVAL)
+                        self._symbol_reevaluation_interval = clamped
                         logger.info(f"LLM set coin re-evaluation interval to {clamped}s (requested {new_interval}s)")
                     else:
                         logger.warning(f"Invalid coin_revaluation_interval_seconds: {new_interval}")
