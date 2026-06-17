@@ -313,7 +313,6 @@ class Settings(BaseSettings):
     # RSS Feeds
     RSS_FEEDS: list[str] = [
         "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US",
-        "https://www.marketwatch.com/feeds/headlines",
         "https://www.investing.com/rss/news.rss",
         "https://www.cnbc.com/id/100003114/device/rss/rss.html",
         "https://www.bloomberg.com/feeds/podcasts/etf_report.xml",
