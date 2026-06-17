@@ -1402,7 +1402,7 @@ Maximum symbols to trade: {max_symbols}
         prompt += "If sentiment is very negative, reduce max hold time to limit exposure.\n"
 
     prompt += f"""
-**Your primary objective is profit across short, medium, and long timeframes. Prioritize positions where you find the most profit potential, regardless of timeframe.** Use the ATR to set stop-loss and take-profit distances that respect the coin's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on your own risk:reward assessment. You have full freedom to choose the stop distance and reward:risk ratio that you believe will maximise profitability while managing risk.
+**Your primary objective is profit across short, medium, and long timeframes. Prioritize positions where you find the most profit potential, regardless of timeframe.** Use the ATR to set stop-loss and take-profit distances that respect the stock's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on your own risk:reward assessment. You have full freedom to choose the stop distance and reward:risk ratio that you believe will maximise profitability while managing risk.
 
 Interpret the order book metrics:
 - A high spread (>0.5%) suggests low liquidity – be cautious with large orders.
@@ -1491,13 +1491,13 @@ Historical Performance:
 - Overall equity curve: {json.dumps(equity)}
 - Strategy performance summary: {json.dumps(strategy_perf)}
 
-Use this data to decide whether to BUY, SELL, or HOLD. If the coin has a poor win rate or the overall equity curve is declining, be more conservative. Prefer strategies that have worked well historically.
+Use this data to decide whether to BUY, SELL, or HOLD. If the stock has a poor win rate or the overall equity curve is declining, be more conservative. Prefer strategies that have worked well historically.
 """
         perf_text += (
             "Use this performance data to calibrate your parameters:\n"
-            "- If the coin has a low win rate or negative average P&L, reduce position_size_fraction, "
+            "- If the stock has a low win rate or negative average P&L, reduce position_size_fraction, "
             "widen the stop (to avoid being stopped out prematurely), and shorten max_hold_time_seconds.\n"
-            "- If the coin has a high win rate and positive average P&L, you may increase position size "
+            "- If the stock has a high win rate and positive average P&L, you may increase position size "
             "and use tighter stops to lock in profits.\n"
             "- If stop_loss_hits is high, consider using a wider stop (larger stop_loss_pct or higher ATR multiplier) "
             "or switching to a longer timeframe.\n"
