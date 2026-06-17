@@ -162,7 +162,7 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o"
 
-    # Mind model (complex reasoning: coin selection, strategy generation)
+    # Mind model (complex reasoning: symbol selection, strategy generation)
     OLLAMA_MIND_MODEL: str = "deepseek-v4-flash"
     OPENAI_MIND_MODEL: str = "gpt-4o"
 
@@ -279,7 +279,7 @@ class Settings(BaseSettings):
     NEWS_ENABLED: bool = False
     NEWS_UPDATE_INTERVAL_MINUTES: int = 60
 
-    # Fast news refresh for currently tracked coins (minutes)
+    # Fast news refresh for currently tracked symbols (minutes)
     NEWS_FAST_UPDATE_INTERVAL_MINUTES: int = 5
 
     NEWS_API_KEY: Optional[str] = None       # for NewsAPI.org

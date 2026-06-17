@@ -605,7 +605,7 @@ def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
         _get_rate_limiter().wait("stocktwits")
         logger.debug(f"Fetching StockTwits for {symbol}...")
         base = symbol.split("/")[0]
-        # StockTwits uses tickers like BTC.X for crypto
+        # StockTwits uses tickers like AAPL.X for stocks
         ticker = f"{base}.X"
         url = f"https://api.stocktwits.com/api/2/streams/symbol/{ticker}.json"
         params = {"access_token": settings.STOCKTWITS_API_KEY, "limit": settings.STOCKTWITS_MAX_POSTS}

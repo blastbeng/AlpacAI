@@ -283,7 +283,7 @@ def cleanup_old_ohlcv(retention_days: int = 30):
 
 
 def get_performance() -> Dict[str, Any]:
-    """Return performance summary grouped by coin and timeframe, plus a TOTAL row."""
+    """Return performance summary grouped by symbol and timeframe, plus a TOTAL row."""
     conn = get_connection()
     rows = conn.execute("""
         SELECT

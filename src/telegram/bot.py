@@ -182,7 +182,7 @@ class TelegramBot:
             symbol = entry["symbol"]
             tf = entry["timeframe"]
             symbol_list.append(f"{symbol} ({tf})")
-        msg += f"<b>🪙 Tracked Symbols:</b> {', '.join(symbol_list) if symbol_list else 'None'}\n\n"
+        msg += f"<b>📈 Tracked Symbols:</b> {', '.join(symbol_list) if symbol_list else 'None'}\n\n"
 
         if positions:
             msg += "<b>📈 Open Positions:</b>\n"
@@ -276,7 +276,7 @@ class TelegramBot:
     async def cmd_performance(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
             return
-        """Show performance summary grouped by coin and timeframe."""
+        """Show performance summary grouped by symbol and timeframe."""
         # Check if there are any closed sell trades at all
         closed_sells = [t for t in self.engine.trade_history if t.get("side") == "sell"]
         if not closed_sells:
@@ -332,7 +332,7 @@ class TelegramBot:
     async def cmd_news_search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
             return
-        """Show recent news for a specific coin (e.g., /news BTC)."""
+        """Show recent news for a specific symbol (e.g., /news AAPL)."""
         if not context.args:
             await update.message.reply_text(
                 "Usage: /news <symbol>\nExample: /news AAPL",
