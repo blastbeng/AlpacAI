@@ -169,7 +169,7 @@ class TradingEngine:
             await asyncio.sleep(60)
 
     async def _periodic_reevaluate(self):
-        """Re-evaluate coin selection periodically."""
+        """Re-evaluate stock selection periodically."""
         while self._running:
             if self._reevaluate_running:
                 logger.warning("Symbol re-evaluation still running; skipping this cycle.")
@@ -188,7 +188,7 @@ class TradingEngine:
                     current_symbols = [entry["symbol"] for entry in self.current_symbols]
                     await self.ws_manager.update_subscriptions(current_symbols)
             except Exception as e:
-                logger.error(f"Coin re-evaluation error: {e}", exc_info=True)
+                logger.error(f"Stock re-evaluation error: {e}", exc_info=True)
             finally:
                 self._reevaluate_running = False
             try:
