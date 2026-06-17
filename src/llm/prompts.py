@@ -387,6 +387,7 @@ def build_stock_selection_prompt(
     open_positions: Optional[Dict[str, Dict[str, Any]]] = None,
     symbol_tenure: Optional[Dict[str, float]] = None,
     symbol_max_tenure: Optional[Dict[str, Optional[float]]] = None,
+    vix: Optional[float] = None,
 ) -> str:
     """Build a prompt to ask the LLM which stocks/ETFs to trade."""
     # Summarize tickers and limits for the prompt
@@ -652,6 +653,14 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
             "Use this to gauge market activity: pre‑market and after‑hours sessions have lower liquidity and wider spreads; "
             "the regular session (9:30 AM – 4:00 PM ET) has the highest volume and tightest spreads. "
             "Adjust your stock selection and risk parameters accordingly.\n"
+        )
+    if vix is not None:
+        prompt += f"\nCBOE Volatility Index (VIX): {vix:.2f}\n"
+        prompt += (
+            "VIX measures expected market volatility over the next 30 days. "
+            "High VIX (>30) indicates fear/uncertainty and often coincides with market bottoms; "
+            "low VIX (<15) indicates complacency and can precede sharp corrections. "
+            "Use this to gauge overall market risk and adjust position sizing accordingly.\n"
         )
     if news_sentiment:
         prompt += "\n## News Sentiment\n"
