@@ -113,16 +113,6 @@ class Settings(BaseSettings):
             raise ValueError("LLM_PROVIDER must be 'ollama' or 'openai'")
         return v
 
-    # Paper trading
-    PAPER_INITIAL_BALANCE: float = 10000.0
-
-    @field_validator("PAPER_INITIAL_BALANCE")
-    @classmethod
-    def validate_paper_initial_balance(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("PAPER_INITIAL_BALANCE must be positive")
-        return v
-
     @model_validator(mode="after")
     def check_credentials(self):
         if not self.ALPACA_API_KEY or not self.ALPACA_SECRET_KEY:

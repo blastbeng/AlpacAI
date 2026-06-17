@@ -101,21 +101,6 @@ class LiveTrader:
         orders = self.trading_client.get_orders(request)
         return [self._order_to_dict(o, o.symbol) for o in orders]
 
-    def reset_paper_balance(self, balance: float) -> bool:
-        """Reset the Alpaca paper account balance to the given amount. Returns True if successful."""
-        try:
-            # 1. Wipe all positions/orders (standard paper reset)
-            self.trading_client.reset_paper_account()
-            # 2. Set the starting cash to the desired amount
-            config = self.trading_client.get_account_configurations()
-            config.starting_cash = balance
-            self.trading_client.set_account_configurations(config)
-            logger.info(f"Paper account reset to {balance} USD")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to reset paper account: {e}")
-            return False
-
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
