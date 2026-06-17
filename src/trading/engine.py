@@ -1307,8 +1307,8 @@ class TradingEngine:
         # --- Fetch order books for these top coins to compute real spread/depth for scalping score ---
         top_n_for_ob = min(50, len(sample_pairs))
         top_by_vol = sample_pairs[:top_n_for_ob]  # already sorted by volume
-        coin_spreads: Dict[str, float] = {}
-        coin_depths: Dict[str, float] = {}
+        symbol_spreads: Dict[str, float] = {}
+        symbol_depths: Dict[str, float] = {}
         for sym in top_by_vol:
             try:
                 ob = await asyncio.to_thread(get_order_book, self.data_client, sym, 5)
@@ -1330,7 +1330,7 @@ class TradingEngine:
                 logger.debug(f"Order book fetch failed for {sym} during coin selection: {e}")
 
         # --- Compute scalping suitability scores for candidate coins ---
-        coin_scores: Dict[str, float] = {}
+        symbol_scores: Dict[str, float] = {}
         for sym in sample_pairs:
             try:
                 t = tickers.get(sym, {})
@@ -1452,7 +1452,7 @@ class TradingEngine:
             ohlcv_data = dict(results)
 
         # Compute indicators for each coin with OHLCV data, for ALL timeframes
-        coin_indicators = {}
+        symbol_indicators = {}
         for sym, tf_data in ohlcv_data.items():
             coin_indicators[sym] = {}
             for tf in settings.OHLCV_TIMEFRAMES:
@@ -1644,15 +1644,15 @@ class TradingEngine:
         trading_paused_bool = trading_paused_raw is not None and trading_paused_raw == b"1"
 
         # Compute coin tenure for the prompt
-        coin_tenure = {}
+        symbol_tenure = {}
         for sym, first_seen in self._symbol_first_seen.items():
-            coin_tenure[sym] = round(now - first_seen)
+            symbol_tenure[sym] = round(now - first_seen)
 
         # Compute current max tenure per coin for the prompt
-        coin_max_tenure = {}
+        symbol_max_tenure = {}
         for entry in self.current_symbols:
             if 'max_tenure_hours' in entry:
-                coin_max_tenure[entry['symbol']] = entry['max_tenure_hours']
+                symbol_max_tenure[entry['symbol']] = entry['max_tenure_hours']
 
         # --- Warn if trading was recently auto-resumed ---
         auto_resume_note = ""
@@ -1697,8 +1697,8 @@ class TradingEngine:
             sentiment_trend=sentiment_trend,
             trading_paused=trading_paused_bool,
             open_positions=self.positions,
-            symbol_tenure=coin_tenure,
-            symbol_max_tenure=coin_max_tenure,
+            symbol_tenure=symbol_tenure,
+            symbol_max_tenure=symbol_max_tenure,
             vix=vix,
             top_opportunities=top_opportunities,
         )
