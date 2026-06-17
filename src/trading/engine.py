@@ -72,8 +72,8 @@ class TradingEngine:
         self.pro_exchange = get_pro_exchange()
         self.ws_manager = WebSocketManager(self.pro_exchange, [])
         self.base_currency = settings.BASE_CURRENCY
-        self.max_coins = settings.MAX_COINS
-        self.effective_max_coins = self.max_coins
+        self.max_symbols = settings.MAX_COINS
+        self.effective_max_symbols = self.max_symbols
         self.redis = get_redis_client()
         self._exchange_semaphore = asyncio.Semaphore(3)  # max 3 concurrent API calls
 
@@ -1260,7 +1260,7 @@ class TradingEngine:
         # Fetch balance and compute per-coin budget
         balance = await asyncio.to_thread(self.trader.fetch_balance)
         base_balance = balance.get(self.base_currency, 0.0)
-        per_coin_budget = base_balance / self.max_coins if self.max_coins > 0 else 0.0
+        per_coin_budget = base_balance / self.max_symbols if self.max_symbols > 0 else 0.0
 
         # Fetch tickers for a subset to keep prompt size manageable
         # Apply sentiment filter if configured
@@ -1522,12 +1522,12 @@ class TradingEngine:
         min_costs = [lim['min_cost'] for lim in market_limits.values() if lim['min_cost'] > 0]
         if min_costs:
             min_min_cost = min(min_costs)
-            max_affordable = int(base_balance // min_min_cost) if min_min_cost > 0 else self.max_coins
+            max_affordable = int(base_balance // min_min_cost) if min_min_cost > 0 else self.max_symbols
         else:
             max_affordable = self.max_coins
-        self.effective_max_coins = max(1, min(self.max_coins, max_affordable)) if max_affordable > 0 else 0
+        self.effective_max_symbols = max(1, min(self.max_symbols, max_affordable)) if max_affordable > 0 else 0
 
-        if self.effective_max_coins == 0:
+        if self.effective_max_symbols == 0:
             logger.warning("Insufficient balance to trade any coin. Clearing coin list.")
             self.current_coins = []
             await asyncio.to_thread(self.redis.set, last_key, now)
@@ -1545,7 +1545,7 @@ class TradingEngine:
             return
 
         # Recompute per-coin budget with the effective max
-        per_coin_budget = base_balance / self.effective_max_coins
+        per_coin_budget = base_balance / self.effective_max_symbols
 
         # Compute pairwise correlation matrix from OHLCV close prices
         correlation_matrix: Dict[str, Dict[str, float]] = {}
@@ -1678,7 +1678,7 @@ class TradingEngine:
         prompt = build_stock_selection_prompt(
             available_symbols=sample_pairs,
             current_symbols=self.current_coins,
-            max_symbols=self.effective_max_coins,
+            max_symbols=self.effective_max_symbols,
             base_currency=self.base_currency,
             tickers=tickers,
             base_balance=base_balance,
@@ -1895,8 +1895,8 @@ class TradingEngine:
                 ]
 
                 # Use the LLM's chosen number of coins to update effective_max_coins
-                if llm_max_coins is not None and isinstance(llm_max_coins, int) and 0 <= llm_max_coins <= self.max_coins:
-                    self.effective_max_coins = llm_max_coins
+                if llm_max_coins is not None and isinstance(llm_max_coins, int) and 0 <= llm_max_coins <= self.max_symbols:
+                    self.effective_max_symbols = llm_max_coins
                 else:
                     # Fallback: use the length of the deduped list, capped at the engine's max
                     self.effective_max_coins = min(len(deduped), self.effective_max_coins)
