@@ -1480,14 +1480,6 @@ class TradingEngine:
             else:
                 sentiment_trend[base_coin] = None
 
-        # Volume trend (24h volume spike detection)
-        volume_trends: Dict[str, Optional[float]] = {}
-        for sym in sample_pairs:
-            t = tickers.get(sym, {})
-            vol = t.get('quoteVolume', 0) or 0
-            if vol > 0:
-                volume_trends[sym] = await self._compute_volume_trend(sym, vol)
-
         # Overall market trend (use BTC/USDT as benchmark)
         market_trend = None
         btc_symbol = "BTC/USDT"
@@ -1803,16 +1795,13 @@ class TradingEngine:
             relative_strength_btc=relative_strength_btc,
             session_info=session_info,
             sentiment_trend=sentiment_trend,
-            volume_trends=volume_trends,
-            market_breadth=market_breadth,
             btc_dominance=global_market.get("btc_dominance") if global_market else None,
             total_market_cap=global_market if global_market else None,
             altcoin_season=altcoin_season,
             trading_paused=trading_paused_bool,
             open_positions=self.positions,
             coin_tenure=coin_tenure,
-            coin_max_tenure=coin_max_tenure,
-            full_market_breadth=full_market_breadth,
+            coin_max_tenure=coin_max_tenure,,
         )
         if auto_resume_note:
             prompt += "\n" + auto_resume_note
@@ -1847,8 +1836,7 @@ class TradingEngine:
             "historical_ohlcv_summary": historical_ohlcv_summary,
             "correlation_matrix": correlation_matrix,
             "relative_strength_btc": relative_strength_btc,
-            "sentiment_trend": sentiment_trend,
-            "volume_trends": volume_trends,
+            "sentiment_trend": sentiment_trend
         }
         market_hash = compute_market_hash(market_snapshot)
         # Compute prompt complexity for temperature selection

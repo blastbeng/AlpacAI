@@ -382,9 +382,6 @@ def build_stock_selection_prompt(
     correlation_matrix: Optional[Dict[str, Dict[str, float]]] = None,
     session_info: Optional[Dict[str, Any]] = None,
     sentiment_trend: Optional[Dict[str, Optional[float]]] = None,
-    volume_trends: Optional[Dict[str, Optional[float]]] = None,
-    market_breadth: Optional[Dict[str, Any]] = None,
-    full_market_breadth: Optional[Dict[str, Any]] = None,
     top_opportunities: Optional[List[Dict[str, Any]]] = None,
     trading_paused: Optional[bool] = None,
     open_positions: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -677,35 +674,6 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
             "A positive delta means sentiment is improving; a negative delta means it is deteriorating. "
             "Use this to gauge whether the narrative is strengthening or weakening. "
             "Improving sentiment may justify higher confidence; deteriorating sentiment may warrant caution.\n"
-        )
-    if volume_trends:
-        prompt += "\nVolume trend (daily volume relative to recent average):\n"
-        for sym in available_symbols:
-            if sym in volume_trends and volume_trends[sym] is not None:
-                prompt += f"  {sym}: {volume_trends[sym]:.2f}x\n"
-        prompt += (
-            "A ratio > 1.0 means current daily volume is above the recent average; "
-            "> 2.0 suggests a significant spike that often precedes large moves. "
-            "Use this to identify stocks with unusual activity. "
-            "Prefer stocks with elevated volume when looking for breakout or momentum trades; "
-            "be cautious with low-volume stocks as moves may lack conviction.\n"
-        )
-    if market_breadth:
-        prompt += (
-            f"\nMarket breadth: {market_breadth['positive_pct']}% of {market_breadth['total_count']} "
-            f"candidate stocks have a positive daily change ({market_breadth['positive_count']} positive).\n"
-            "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
-            "Use this to gauge overall market participation and adjust your stock selection and risk parameters accordingly.\n"
-        )
-    if full_market_breadth:
-        prompt += (
-            f"\nFull market breadth (all available stocks): {full_market_breadth['positive_pct']}% of "
-            f"{full_market_breadth['total_count']} stocks have a positive daily change "
-            f"({full_market_breadth['positive_count']} positive).\n"
-            "This is a broader measure than the candidate‑only breadth. "
-            "Use it to confirm the overall market health. "
-            "If the full breadth is very low (<25%) while the candidate breadth is moderate, "
-            "the market may be more fragile than it appears – consider pausing or reducing risk.\n"
         )
     if news_section:
         prompt += f"\n{news_section}\n"
