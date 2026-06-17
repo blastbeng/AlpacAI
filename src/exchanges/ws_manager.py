@@ -112,12 +112,22 @@ class WebSocketManager:
                 await self.stream.run()
             except AttributeError as e:
                 self._stream_failures += 1
-                logger.error(
-                    f"Stream connection failed with AttributeError: {e}. "
-                    f"This usually means the stream object is not properly initialised. "
-                    f"Check ALPACA_STREAM_URL and ALPACA_DATA_FEED settings. "
-                    f"(failure {self._stream_failures}/{self.MAX_STREAM_FAILURES})"
-                )
+                err_msg = str(e)
+                if "NoneType" in err_msg or "is_running" in err_msg:
+                    logger.error(
+                        f"Stream connection failed with AttributeError: {e}. "
+                        f"This usually means the WebSocket connection was rejected – "
+                        f"possibly because another app or script is already using the same Alpaca API key. "
+                        f"Ensure no other instance is running. "
+                        f"(failure {self._stream_failures}/{self.MAX_STREAM_FAILURES})"
+                    )
+                else:
+                    logger.error(
+                        f"Stream connection failed with AttributeError: {e}. "
+                        f"This usually means the stream object is not properly initialised. "
+                        f"Check ALPACA_STREAM_URL and ALPACA_DATA_FEED settings. "
+                        f"(failure {self._stream_failures}/{self.MAX_STREAM_FAILURES})"
+                    )
                 if self._running and self._stream_failures < self.MAX_STREAM_FAILURES:
                     await self._reconnect()
                     await asyncio.sleep(5)
