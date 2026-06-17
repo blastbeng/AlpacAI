@@ -172,10 +172,10 @@ def get_bars_range(
 
 # Keep old names for backward compatibility during migration.
 # They will be removed once the engine is fully adapted.
-def get_tradable_pairs(trading_client: TradingClient, base_currency: str) -> List[str]:
-    """Return a list of trading pairs (e.g., 'AAPL/USD') for all tradable assets."""
+def get_tradable_symbols(trading_client: TradingClient) -> List[str]:
+    """Return a list of trading symbols (e.g., 'AAPL/USD') for all tradable US equities."""
     symbols = get_tradable_assets(trading_client)
-    return [f"{sym}/{base_currency}" for sym in symbols]
+    return [f"{sym}/USD" for sym in symbols]
 
 
 def get_tickers(exchange, symbols: Optional[List[str]] = None) -> Dict[str, Any]:
