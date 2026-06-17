@@ -172,7 +172,7 @@ class TradingEngine:
         """Re-evaluate coin selection periodically."""
         while self._running:
             if self._reevaluate_running:
-                logger.warning("Coin re-evaluation still running; skipping this cycle.")
+                logger.warning("Symbol re-evaluation still running; skipping this cycle.")
                 await asyncio.sleep(self._symbol_reevaluation_interval)
                 continue
             self._reevaluate_running = True
@@ -1238,7 +1238,7 @@ class TradingEngine:
             logger.warning("No available pairs found.")
             return
 
-        # --- News-driven coin discovery: add trending coins not in the top 50 ---
+        # --- News-driven symbol discovery: add trending symbols not in the top 50 ---
         if settings.NEWS_ENABLED and settings.NEWS_SYMBOL_DISCOVERY_ENABLED and discover_trending_stocks is not None:
             try:
                 discovered = await asyncio.to_thread(
@@ -1249,12 +1249,12 @@ class TradingEngine:
                     min_sentiment=settings.NEWS_SYMBOL_DISCOVERY_MIN_SENTIMENT,
                     min_articles=settings.NEWS_SYMBOL_DISCOVERY_MIN_ARTICLES,
                 )
-                # Add discovered coins to the front of the list so they are included in the sample
+                # Add discovered symbols to the front of the list so they are included in the sample
                 for pair in discovered:
                     if pair not in available_pairs:
                         available_pairs.insert(0, pair)
                 if discovered:
-                    logger.info(f"Added {len(discovered)} news-discovered coins to candidate pool.")
+                    logger.info(f"Added {len(discovered)} news-discovered symbols to candidate pool.")
             except Exception as e:
                 logger.warning(f"News coin discovery failed: {e}")
 
@@ -1526,12 +1526,12 @@ class TradingEngine:
         self.effective_max_symbols = max(1, min(self.max_symbols, max_affordable)) if max_affordable > 0 else 0
 
         if self.effective_max_symbols == 0:
-            logger.warning("Insufficient balance to trade any coin. Clearing coin list.")
+            logger.warning("Insufficient balance to trade any symbol. Clearing symbol list.")
             self.current_symbols = []
             await asyncio.to_thread(self.redis.set, last_key, now)
             if self.notifier:
                 await self.notifier.send_notification(
-                    f"⚠️ Insufficient {self.base_currency} balance ({base_balance:.2f}) to trade any coin. "
+                    f"⚠️ Insufficient {self.base_currency} balance ({base_balance:.2f}) to trade any symbol. "
                     f"Min cost required: {min_min_cost:.2f}. Depositing funds or resetting paper balance will fix this.",
                     summary={
                         "action": "HOLD",
@@ -1892,14 +1892,14 @@ class TradingEngine:
                     if not self._is_excluded(e["symbol"], e["timeframe"])
                 ]
 
-                # Use the LLM's chosen number of coins to update effective_max_coins
+                # Use the LLM's chosen number of symbols to update effective_max_symbols
                 if llm_max_stocks is not None and isinstance(llm_max_stocks, int) and 0 <= llm_max_stocks <= self.max_symbols:
                     self.effective_max_symbols = llm_max_stocks
                 else:
                     # Fallback: use the length of the deduped list, capped at the engine's max
                     self.effective_max_symbols = min(len(deduped), self.effective_max_symbols)
 
-                # Optional: LLM can set the global coin re-evaluation interval
+                # Optional: LLM can set the global symbol re-evaluation interval
                 new_interval = parsed.get("stock_revaluation_interval_seconds")
                 if new_interval is not None:
                     if isinstance(new_interval, (int, float)) and new_interval >= 60:
@@ -2042,18 +2042,18 @@ class TradingEngine:
                         coin['max_tenure_hours'] = existing_symbols[coin['symbol']]['max_tenure_hours']
                 self.current_symbols = deduped[: self.effective_max_symbols]
 
-                # If LLM explicitly chose zero coins, respect that and don't fall back to volume-based selection
+                # If LLM explicitly chose zero symbols, respect that and don't fall back to volume-based selection
                 if not deduped or self.effective_max_symbols == 0:
                     self.current_symbols = []
                     self.effective_max_symbols = 0
-                    logger.info("LLM selected 0 coins – pausing trading until next evaluation.")
+                    logger.info("LLM selected 0 symbols – pausing trading until next evaluation.")
 
             except json.JSONDecodeError:
                 logger.error("Failed to parse coin selection response.")
 
-        # Fallback: if LLM returned no coins, pick top-volume affordable coins
+        # Fallback: if LLM returned no symbols, pick top-volume affordable symbols
         if not self.current_symbols:
-            logger.warning("LLM returned no coins – using volume-based fallback.")
+            logger.warning("LLM returned no symbols – using volume-based fallback.")
             # Sort sample_pairs by 24h volume descending
             sorted_pairs = sorted(sample_pairs, key=_volume, reverse=True)
             fallback_symbols: List[Dict[str, str]] = []
@@ -2079,14 +2079,14 @@ class TradingEngine:
                     coin['entry_time'] = time.time()
             self.current_symbols = fallback_symbols
 
-        # Ensure all open positions remain in current_coins so they continue to be managed by the LLM strategy
+        # Ensure all open positions remain in current_symbols so they continue to be managed by the LLM strategy
         for symbol, pos in self.positions.items():
             if not any(entry["symbol"] == symbol for entry in self.current_symbols):
                 tf = pos.get("timeframe") or (settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h")
                 self.current_symbols.append({"symbol": symbol, "timeframe": tf})
-                logger.info(f"Keeping {symbol} in current_coins due to open position (timeframe={tf})")
+                logger.info(f"Keeping {symbol} in current_symbols due to open position (timeframe={tf})")
 
-        # If trading is paused, keep ONLY coins with open positions.
+        # If trading is paused, keep ONLY symbols with open positions.
         # The LLM may have just set pause_trading = true, so re-read Redis.
         paused_now = await asyncio.to_thread(self.redis.get, "trading:paused")
         if paused_now and paused_now == b"1":
@@ -2096,13 +2096,13 @@ class TradingEngine:
             removed = before_count - len(self.current_symbols)
             if removed > 0:
                 logger.info(
-                    "Trading paused: removed %d coin(s) without open positions. "
+                    "Trading paused: removed %d symbol(s) without open positions. "
                     "Remaining: %s",
                     removed,
                     [c["symbol"] for c in self.current_symbols],
                 )
 
-        # Update coin tenure tracking
+        # Update symbol tenure tracking
         now_ts = time.time()
         new_symbol_set = {entry["symbol"] for entry in self.current_symbols}
         for sym in new_symbol_set:
@@ -2118,17 +2118,17 @@ class TradingEngine:
             if entry["symbol"] not in old_symbols:
                 sym = entry["symbol"]
                 tf = entry["timeframe"]
-                logger.info(f"Triggering immediate backfill for newly selected coin {sym} ({tf})")
+                logger.info(f"Triggering immediate backfill for newly selected symbol {sym} ({tf})")
                 asyncio.create_task(self._backfill_new_symbol(sym, tf))
 
-        # Also trigger immediate news fetch for newly selected coins
+        # Also trigger immediate news fetch for newly selected symbols
         if settings.NEWS_ENABLED:
             for sym in new_symbols:
-                logger.info(f"Triggering immediate news fetch for newly selected coin {sym}")
+                logger.info(f"Triggering immediate news fetch for newly selected symbol {sym}")
                 asyncio.create_task(self._fetch_and_store_news_for_symbol(sym))
 
         symbol_labels = [f"{c['symbol']}({c['timeframe']})" for c in self.current_symbols]
-        logger.info(f"Selected coins: {symbol_labels}")
+        logger.info(f"Selected symbols: {symbol_labels}")
 
         # Build a pause/resume message if the LLM provided a decision
         pause_msg = ""
@@ -2159,7 +2159,7 @@ class TradingEngine:
                 pause_msg = f"⏱️ LLM set pause duration: {duration_str}"
 
         if not self.current_symbols:
-            logger.warning("No coins selected after evaluation. Bot will idle until next cycle.")
+            logger.warning("No symbols selected after evaluation. Bot will idle until next cycle.")
             if self.notifier:
                 msg = f"⚠️ No stocks selected. Bot will idle.\n"
                 msg += f"Balance: {base_balance:.2f} {self.base_currency}, "
@@ -2519,7 +2519,7 @@ class TradingEngine:
         assigned_tf = symbol_entry["timeframe"]
         tf_seconds = self._timeframe_to_seconds(assigned_tf)
 
-        # --- Maximum coin tenure (per-coin, set by LLM) ---
+        # --- Maximum symbol tenure (per-symbol, set by LLM) ---
         max_tenure_hours = symbol_entry.get('max_tenure_hours')
         if max_tenure_hours is not None and max_tenure_hours > 0 and 'entry_time' in symbol_entry:
             tenure_seconds = max_tenure_hours * 3600
@@ -3037,7 +3037,7 @@ class TradingEngine:
             else:
                 min_order_cost = None
 
-            # Past trades for this specific coin (last 10 closed sells)
+            # Past trades for this specific symbol (last 10 closed sells)
             past_trades = [
                 t for t in self.trade_history
                 if t.get("symbol") == symbol and t.get("side") == "sell"
@@ -3054,7 +3054,7 @@ class TradingEngine:
                 except Exception as e:
                     logger.debug(f"Could not fetch aggregate sentiment for {symbol}: {e}")
 
-            # Sentiment trend for this coin
+            # Sentiment trend for this symbol
             sentiment_trend_val = None
             if aggregate_sentiment:
                 base_coin = symbol.split("/")[0] if "/" in symbol else symbol
@@ -3209,7 +3209,7 @@ class TradingEngine:
                 max_dust_sweep_reviews=settings.MAX_DUST_SWEEP_REVIEWS,
             )
             logger.debug(f"LLM prompt for {symbol}: {len(prompt)} chars")
-            # Build a market snapshot dict for caching (per-coin)
+            # Build a market snapshot dict for caching (per-symbol)
             market_snapshot = {
                 "symbol": symbol,
                 "ticker": ticker,
@@ -6379,4 +6379,4 @@ class TradingEngine:
         paused_raw = await asyncio.to_thread(self.redis.get, "trading:paused")
         if paused_raw and paused_raw == b"1":
             self.current_symbols = [c for c in self.current_symbols if c["symbol"] != symbol]
-            logger.info(f"Trading paused: removed {symbol} from current_coins after position closed.")
+            logger.info(f"Trading paused: removed {symbol} from current_symbols after position closed.")
