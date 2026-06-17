@@ -12,7 +12,7 @@ from src.config.settings import settings
 from src.exchanges.fees import get_fee_rate
 from src.exchanges.factory import get_exchange, get_pro_exchange, get_data_client
 from src.exchanges.ws_manager import WebSocketManager
-from src.exchanges.market_data import get_available_pairs, get_tickers, get_order_book, get_multi_timeframe_ohlcv
+from src.exchanges.market_data import get_available_pairs, get_tickers, get_order_book, get_multi_timeframe_ohlcv, get_quotes
 from src.trading.paper_simulator import PaperSimulator
 from src.trading.live_trader import LiveTrader
 from src.llm.cache import get_cached_llm_response, compute_market_hash
@@ -390,6 +390,29 @@ class TradingEngine:
                     return result
         except Exception as e:
             logger.warning(f"Failed to fetch Fear & Greed Index: {e}")
+        return None
+
+    async def _fetch_vix(self) -> Optional[float]:
+        """Fetch the current CBOE Volatility Index (VIX) value, cached in Redis."""
+        cache_key = "vix:value"
+        try:
+            cached = await asyncio.to_thread(self.redis.get, cache_key)
+            if cached:
+                return float(cached)
+        except Exception:
+            pass
+
+        try:
+            quotes = await asyncio.to_thread(get_quotes, self.data_client, ["VIX"])
+            vix_quote = quotes.get("VIX", {})
+            last = vix_quote.get("last") or vix_quote.get("bid") or vix_quote.get("ask")
+            if last is not None:
+                vix_value = float(last)
+                ttl = getattr(settings, 'VIX_CACHE_TTL_SECONDS', 300)  # 5 minutes default
+                await asyncio.to_thread(self.redis.setex, cache_key, ttl, str(vix_value))
+                return vix_value
+        except Exception as e:
+            logger.warning(f"Failed to fetch VIX: {e}")
         return None
 
     async def _fetch_global_market_data(self) -> Optional[Dict[str, Any]]:
@@ -1463,6 +1486,25 @@ class TradingEngine:
                 except Exception as e:
                     logger.debug(f"Could not fetch news sentiment for {sym}: {e}")
 
+        # --- Build top opportunities list for the prompt ---
+        top_opportunities = []
+        # Combine score, 24h change, and sentiment for the best candidates
+        scored_symbols = sorted(sample_pairs, key=lambda s: coin_scores.get(s, 0), reverse=True)
+        for sym in scored_symbols[:5]:  # top 5
+            t = tickers.get(sym, {})
+            change_24h = t.get('percentage')
+            score = coin_scores.get(sym, 0)
+            base_coin = sym.split("/")[0] if "/" in sym else sym
+            sentiment_val = None
+            if base_coin in news_sentiment:
+                sentiment_val = news_sentiment[base_coin].get("avg_compound")
+            top_opportunities.append({
+                "symbol": sym,
+                "score": score,
+                "change_24h": change_24h,
+                "sentiment": sentiment_val,
+            })
+
         # Sentiment trend (delta from previous cycle)
         sentiment_trend: Dict[str, Optional[float]] = {}
         for sym in sample_pairs:
@@ -1771,6 +1813,7 @@ class TradingEngine:
             except (ValueError, TypeError):
                 pass
 
+        vix = await self._fetch_vix()
         prompt = build_stock_selection_prompt(
             available_symbols=sample_pairs,
             current_symbols=self.current_coins,
@@ -1797,8 +1840,8 @@ class TradingEngine:
             open_positions=self.positions,
             symbol_tenure=coin_tenure,
             symbol_max_tenure=coin_max_tenure,
-            vix=None,
-            top_opportunities=None,
+            vix=vix,
+            top_opportunities=top_opportunities,
         )
         if auto_resume_note:
             prompt += "\n" + auto_resume_note
@@ -1833,7 +1876,9 @@ class TradingEngine:
             "historical_ohlcv_summary": historical_ohlcv_summary,
             "correlation_matrix": correlation_matrix,
             "relative_strength_btc": relative_strength_btc,
-            "sentiment_trend": sentiment_trend
+            "sentiment_trend": sentiment_trend,
+            "vix": vix,
+            "top_opportunities": top_opportunities,
         }
         market_hash = compute_market_hash(market_snapshot)
         # Compute prompt complexity for temperature selection
