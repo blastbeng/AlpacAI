@@ -1259,7 +1259,7 @@ Maximum symbols to trade: {max_symbols}
         prompt += f"\nRecent closed trades (last {len(recent_trades)}):\n{json.dumps(recent_trades)}\n"
         prompt += "Use these outcomes to adapt your strategy. If recent trades are losing, become more conservative.\n"
 
-    # --- Past trades for this specific coin ---
+    # --- Past trades for this symbol ---
     if past_trades:
         prompt += f"\nPast closed trades for {symbol} (last {len(past_trades)}):\n"
         for t in past_trades:
@@ -1392,8 +1392,7 @@ Maximum symbols to trade: {max_symbols}
     # --- News section (detailed articles) ---
     news_section = ""
     if settings.NEWS_ENABLED:
-        base = symbol.split("/")[0] if "/" in symbol else symbol
-        articles = get_news_for_symbol(base, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+        articles = get_news_for_symbol(symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
         if articles:
             news_section = "Recent news articles for this stock:\n" + _format_news_for_prompt(articles)
     if news_section:
