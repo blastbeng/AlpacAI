@@ -39,7 +39,7 @@ DB_PATH = settings.DATABASE_PATH
 
 
 def _normalize_symbol(symbol: str) -> str:
-    """Extract the base coin from a trading pair (e.g., 'NIM/USDT' -> 'NIM')."""
+    """Extract the base symbol from a trading pair (e.g., 'AAPL/USD' -> 'AAPL')."""
     return symbol.split("/")[0] if "/" in symbol else symbol
 
 

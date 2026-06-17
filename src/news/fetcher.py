@@ -152,19 +152,19 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
     if not settings.NEWS_ENABLED:
         return []
 
-    # Use base coin (e.g., "BTC") for caching, not the full pair
-    base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+    # Use base symbol (e.g., "AAPL") for caching, not the full pair
+    base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
 
     start_time = time.time()
-    logger.debug(f"Fetching news for {symbol} (base coin: {base_coin})...")
+    logger.debug(f"Fetching news for {symbol} (base symbol: {base_symbol})...")
 
     redis_client = get_redis_client()
-    cache_key = f"news:{base_coin}:{_source_fingerprint()}"
+    cache_key = f"news:{base_symbol}:{_source_fingerprint()}"
     cached = redis_client.get(cache_key)
     if cached:
         try:
             articles = json.loads(cached)
-            logger.debug(f"News for {base_coin} served from cache ({len(articles)} articles)")
+            logger.debug(f"News for {base_symbol} served from cache ({len(articles)} articles)")
             return articles
         except Exception:
             pass
@@ -211,7 +211,7 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
     try:
         redis_client.setex(cache_key, settings.NEWS_CACHE_TTL_SECONDS, json.dumps(unique))
     except Exception as e:
-        logger.warning(f"Failed to cache news for {base_coin}: {e}")
+        logger.warning(f"Failed to cache news for {base_symbol}: {e}")
 
     total_time = time.time() - start_time
     logger.debug(f"News for {symbol}: {len(unique)} articles from {len(enabled)} sources in {total_time:.2f}s")
@@ -250,7 +250,7 @@ def get_aggregate_sentiment(symbol: str) -> Optional[Dict[str, Any]]:
 def discover_trending_stocks(
     base_currency: str,
     existing_pairs: List[str],
-    max_coins: int = 5,
+    max_symbols: int = 5,
     min_sentiment: float = 0.3,
     min_articles: int = 3,
 ) -> List[str]:
@@ -258,7 +258,7 @@ def discover_trending_stocks(
     Discover trending stocks not already in existing_pairs by looking at
     top daily gainers among tradable assets and filtering by positive news sentiment.
     """
-    if not settings.NEWS_ENABLED or not settings.NEWS_COIN_DISCOVERY_ENABLED:
+    if not settings.NEWS_ENABLED or not settings.NEWS_SYMBOL_DISCOVERY_ENABLED:
         return []
 
     from src.exchanges.factory import get_data_client
@@ -297,12 +297,12 @@ def discover_trending_stocks(
         agg = get_aggregate_sentiment_from_db(base, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
         if agg and agg["total_articles"] >= min_articles and agg["avg_compound"] >= min_sentiment:
             candidates.append((sym, agg["avg_compound"]))
-        if len(candidates) >= max_coins:
+        if len(candidates) >= max_symbols:
             break
 
     # Sort by sentiment descending and take top N
     candidates.sort(key=lambda x: x[1], reverse=True)
-    discovered = [pair for pair, _ in candidates[:max_coins]]
+    discovered = [pair for pair, _ in candidates[:max_symbols]]
     if discovered:
         logger.info(f"News-driven stock discovery found: {discovered}")
     return discovered

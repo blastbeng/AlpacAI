@@ -11,7 +11,7 @@ from src.utils.redis_client import get_redis_client, check_redis_connection
 from src.llm.prompts import get_cached_news_summary
 from src.exchanges.market_data import get_quotes, get_multi_timeframe_bars
 
-app = FastAPI(title="Crypto Trading Bot")
+app = FastAPI(title="Stock Trading Bot")
 
 logger = logging.getLogger(__name__)
 

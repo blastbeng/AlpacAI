@@ -296,7 +296,7 @@ class TelegramBot:
                 )
                 return
 
-            msg = "<b>🚀 Performance by Coin</b>\n\n"
+            msg = "<b>🚀 Performance by Symbol</b>\n\n"
             for r in rows:
                 symbol = r["symbol"]
                 tf = r.get("timeframe") or "—"
@@ -335,23 +335,23 @@ class TelegramBot:
         """Show recent news for a specific coin (e.g., /news BTC)."""
         if not context.args:
             await update.message.reply_text(
-                "Usage: /news <coin>\nExample: /news BTC",
+                "Usage: /news <symbol>\nExample: /news AAPL",
                 reply_markup=self.keyboard,
             )
             return
 
-        coin = context.args[0].upper()
-        # Remove any trailing "/USDT" if user typed a pair
-        if "/" in coin:
-            coin = coin.split("/")[0]
+        symbol = context.args[0].upper()
+        # Remove any trailing "/USD" if user typed a pair
+        if "/" in symbol:
+            symbol = symbol.split("/")[0]
 
-        articles = await asyncio.to_thread(get_news_for_symbol, coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+        articles = await asyncio.to_thread(get_news_for_symbol, symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
         if not articles:
-            await update.message.reply_text(f"No recent news for {coin}.", reply_markup=self.keyboard)
+            await update.message.reply_text(f"No recent news for {symbol}.", reply_markup=self.keyboard)
             return
 
         formatted = await asyncio.to_thread(_format_news_for_prompt, articles)
-        msg = f"*{coin}*\n{formatted}"
+        msg = f"*{symbol}*\n{formatted}"
         # Send as plain text to avoid Markdown parsing errors
         await update.message.reply_text(msg, parse_mode=None, reply_markup=self.keyboard)
 
@@ -428,7 +428,7 @@ class TelegramBot:
             messages = []
             for entry in symbols:
                 symbol = entry["symbol"]
-                base_coin = symbol.split("/")[0] if "/" in symbol else symbol
+                base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
                 try:
                     news_data = await asyncio.to_thread(get_cached_news_summary, symbol)
                     summary_text = news_data["summary"]
@@ -469,8 +469,8 @@ class TelegramBot:
             msg = "<b>📰 News Article Counts</b>\n\n"
             for entry in symbols:
                 symbol = entry["symbol"]
-                base_coin = symbol.split("/")[0] if "/" in symbol else symbol
-                articles = await asyncio.to_thread(get_news_for_symbol, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+                base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
+                articles = await asyncio.to_thread(get_news_for_symbol, base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
                 msg += f"<b>{symbol}</b>: {len(articles)} articles\n"
             await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
         except Exception as e:
@@ -574,7 +574,7 @@ class TelegramBot:
         allowed_keys = {
             "symbol", "action", "confidence", "reason",
             "price", "amount", "realized_pnl", "exit_reason", "mode",
-            "coins", "daily_pnl", "target_amount", "strategy_type",
+            "symbols", "daily_pnl", "target_amount", "strategy_type",
             "sentiment", "backtest", "indicators",
             "timestamp",
         }
@@ -583,7 +583,7 @@ class TelegramBot:
             if key in summary:
                 value = summary[key]
                 # If coins is a list of dicts, keep only the symbols
-                if key == "coins" and isinstance(value, list):
+                if key == "symbols" and isinstance(value, list):
                     if value and isinstance(value[0], dict):
                         value = [c.get("symbol", c) for c in value]
                 # Compact sentiment to just the numeric compound value (e.g., 0.05 or -0.05)
