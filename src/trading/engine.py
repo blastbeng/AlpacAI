@@ -1195,15 +1195,15 @@ class TradingEngine:
                         trading_paused = paused is not None and paused == b"1"
                         try:
                             await asyncio.wait_for(
-                                self._process_symbol(coin_entry, trading_paused=trading_paused),
+                                self._process_symbol(symbol_entry, trading_paused=trading_paused),
                                 timeout=settings.LLM_TIMEOUT + 10  # slightly longer than the LLM timeout
                             )
                         except asyncio.TimeoutError:
-                            logger.error(f"Timeout processing coin {coin_entry['symbol']} – skipping.")
+                            logger.error(f"Timeout processing symbol {symbol_entry['symbol']} – skipping.")
                             if self.notifier:
                                 await self.notifier.send_notification(
-                                    f"⏱️ Processing timeout for {coin_entry['symbol']} – skipping this cycle.",
-                                    summary={"symbol": coin_entry["symbol"], "action": "SKIP", "reason": "Processing timeout"}
+                                    f"⏱️ Processing timeout for {symbol_entry['symbol']} – skipping this cycle.",
+                                    summary={"symbol": symbol_entry["symbol"], "action": "SKIP", "reason": "Processing timeout"}
                                 )
                         self._last_strategy_eval[symbol] = now
 
