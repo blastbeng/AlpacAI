@@ -12,7 +12,6 @@ from src.exchanges.fees import get_fee_rate
 from src.exchanges.factory import get_trading_client, get_streaming_client, get_data_client
 from src.exchanges.ws_manager import WebSocketManager
 from src.exchanges.market_data import get_tradable_assets, get_quotes, get_order_book, get_multi_timeframe_bars, get_bars_range
-from src.trading.paper_simulator import PaperSimulator
 from src.trading.live_trader import LiveTrader
 from src.llm.cache import get_cached_llm_response, compute_market_hash
 from src.llm.prompts import (
@@ -77,17 +76,7 @@ class TradingEngine:
         self.redis = get_redis_client()
         self._exchange_semaphore = asyncio.Semaphore(3)  # max 3 concurrent API calls
 
-        if settings.TRADING_MODE == "paper":
-            self.trader = PaperSimulator(
-                data_client=self.data_client,
-                trading_client=self.exchange,
-                base_currency=self.base_currency,
-                initial_balance=settings.PAPER_INITIAL_BALANCE,
-                redis_client=self.redis,
-                ws_manager=self.ws_manager,
-            )
-        else:
-            self.trader = LiveTrader(self.exchange)
+        self.trader = LiveTrader(self.exchange)
 
         self.current_symbols: List[Dict[str, str]] = []   # each dict: {"symbol": ..., "timeframe": ...}
         self.positions: Dict[str, Dict[str, Any]] = {}  # symbol -> position info
@@ -100,9 +89,6 @@ class TradingEngine:
         self._symbol_reevaluation_interval = SYMBOL_REEVALUATION_INTERVAL
         self.notifier = None
         self._load_state()
-        # Restore paper simulator state from trade history
-        if settings.TRADING_MODE == "paper":
-            self._restore_paper_state()
         self._ensure_cost_basis()
         # Ensure trading is not paused on startup and no stale pause keys remain
         pause_keys = [
@@ -690,60 +676,6 @@ class TradingEngine:
 
             await asyncio.sleep(settings.MARKET_DATA_REFRESH_SECONDS)
 
-    def _restore_paper_state(self):
-        """Load paper balances and reconcile with trade history.
-
-        Instead of trusting the saved balances (which may be stale if a
-        crash occurred before they were persisted), we always replay the
-        full trade history from the initial balance.  This guarantees that
-        the in-memory balances are consistent with the recorded trades.
-        """
-        saved_balances = load_paper_balances()
-
-        # Always reconcile: replay trade history to compute expected balances
-        expected_balances: Dict[str, float] = {self.base_currency: self.initial_balance}
-        for trade in self.trade_history:
-            symbol = trade["symbol"]
-            base, quote = symbol.split("/")
-            side = trade["side"]
-            amount = trade["amount"]
-            cost = trade.get("cost", amount * trade["price"])
-            fee = trade.get("fee", {})
-            fee_cost = float(fee.get("cost", 0) or 0)
-            fee_currency = fee.get("currency", "")
-
-            if side == "buy":
-                expected_balances[quote] = expected_balances.get(quote, 0) - cost
-                net_base = amount - (fee_cost if fee_currency == base else 0)
-                expected_balances[base] = expected_balances.get(base, 0) + net_base
-            elif side == "sell":
-                net_quote = cost - (fee_cost if fee_currency == quote else 0)
-                expected_balances[quote] = expected_balances.get(quote, 0) + net_quote
-                expected_balances[base] = expected_balances.get(base, 0) - amount
-
-        # Compare with saved balances and log warnings for mismatches
-        if saved_balances:
-            for currency in set(list(expected_balances.keys()) + list(saved_balances.keys())):
-                expected_val = round(expected_balances.get(currency, 0), 8)
-                saved_val = round(saved_balances.get(currency, 0), 8)
-                if abs(expected_val - saved_val) > 0.01:
-                    logger.warning(
-                        "Paper balance mismatch for %s: expected=%s, saved=%s. Using reconciled balance.",
-                        currency, expected_val, saved_val,
-                    )
-
-        self.trader.balances = expected_balances
-        logger.info("Reconciled paper balances from trade history: %s", expected_balances)
-
-        # Persist the reconciled balances so they are up-to-date on disk
-        save_paper_balances(self.trader.balances)
-
-        # Populate the simulator's trade list so the web dashboard can show history
-        self.trader.trades = list(self.trade_history)
-
-        # Positions are already loaded by _load_state() – nothing more to do.
-        logger.info("Paper state restored: %d positions, %d trades",
-                     len(self.positions), len(self.trade_history))
 
     def _ensure_cost_basis(self):
         """If positions lack cost_basis, compute it from amount and price (backward compat)."""
@@ -1108,12 +1040,8 @@ class TradingEngine:
         if "initial_balance" in state:
             self.initial_balance = float(state["initial_balance"])
         else:
-            # Compute and persist initial balance
-            if settings.TRADING_MODE == "paper":
-                self.initial_balance = settings.PAPER_INITIAL_BALANCE
-            else:
-                balance = self.trader.fetch_balance()
-                self.initial_balance = balance.get(self.base_currency, 0.0)
+            balance = self.trader.fetch_balance()
+            self.initial_balance = balance.get(self.base_currency, 0.0)
             save_trading_state("initial_balance", self.initial_balance)
 
         logger.info(
@@ -1130,9 +1058,6 @@ class TradingEngine:
         # Keep only the last 1000 trades to avoid unbounded growth
         self.trade_history = self.trade_history[-1000:]
         await asyncio.to_thread(save_trading_state, "trade_history", self.trade_history)
-        # Also persist paper balances if in paper mode
-        if settings.TRADING_MODE == "paper":
-            await asyncio.to_thread(save_paper_balances, self.trader.balances)
         logger.debug("Saved trading state: %d symbols, %d positions, %d trades",
                      len(self.current_symbols), len(self.positions), len(self.trade_history))
 
@@ -5250,9 +5175,6 @@ class TradingEngine:
                 order["timeframe"] = timeframe
                 self.trade_history.append(order)
                 await asyncio.to_thread(insert_trade, order)
-                # Persist paper balances immediately
-                if settings.TRADING_MODE == "paper":
-                    await asyncio.to_thread(save_paper_balances, self.trader.balances)
                 await self._save_state()
                 if self.notifier:
                     buy_msg = f"🟢 BUY {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
@@ -5417,9 +5339,6 @@ class TradingEngine:
                 await self._remove_symbol_if_paused(symbol)
                 self.trade_history.append(order)
                 await asyncio.to_thread(insert_trade, order)
-                # Persist paper balances immediately
-                if settings.TRADING_MODE == "paper":
-                    await asyncio.to_thread(save_paper_balances, self.trader.balances)
                 await self._save_state()
                 if self.notifier:
                     # Human-readable labels for common exit reasons
@@ -6066,8 +5985,6 @@ class TradingEngine:
 
             self.trade_history.append(order)
             await asyncio.to_thread(insert_trade, order)
-            if settings.TRADING_MODE == "paper":
-                await asyncio.to_thread(save_paper_balances, self.trader.balances)
             await self._save_state()
 
             if self.notifier:
@@ -6223,8 +6140,6 @@ class TradingEngine:
 
             self.trade_history.append(order)
             await asyncio.to_thread(insert_trade, order)
-            if settings.TRADING_MODE == "paper":
-                await asyncio.to_thread(save_paper_balances, self.trader.balances)
             await self._save_state()
 
             if self.notifier:
