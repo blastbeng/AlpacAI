@@ -316,7 +316,6 @@ class Settings(BaseSettings):
         "https://www.marketwatch.com/feeds/headlines",
         "https://www.investing.com/rss/news.rss",
         "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-        "https://www.reuters.com/tools/rss",
         "https://www.bloomberg.com/feeds/podcasts/etf_report.xml",
     ]
 
