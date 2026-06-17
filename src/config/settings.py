@@ -37,6 +37,13 @@ class Settings(BaseSettings):
             raise ValueError("MAX_COINS must be at least 1")
         return v
 
+    # Coin selection limits
+    COIN_SELECTION_TOP_VOLUME_LIMIT: int = 50
+    COIN_SELECTION_MAX_PAIRS: int = 100
+    COIN_SELECTION_MIN_SENTIMENT: float = -1.0   # -1.0 = disabled
+    FALLBACK_MIN_24H_VOLUME: float = 0.0
+    EXCLUDED_PAIRS: list[str] = []
+
     # Maximum number of consecutive "keep paused" LLM decisions before the engine
     # force‑resumes trading with a reduced risk multiplier.
     PAUSE_MAX_CONSECUTIVE_KEEP: int = 3
@@ -84,6 +91,18 @@ class Settings(BaseSettings):
         if not isinstance(v, list) or not all(isinstance(tf, str) for tf in v):
             raise ValueError("OHLCV_TIMEFRAMES must be a list of strings")
         return v
+
+    # Fear & Greed Index (crypto – disabled by default for stocks)
+    FEAR_GREED_ENABLED: bool = False
+    FEAR_GREED_CACHE_TTL_SECONDS: int = 3600
+
+    # Global market data (crypto – disabled by default)
+    GLOBAL_MARKET_DATA_CACHE_TTL_SECONDS: int = 1800
+
+    # Altcoin Season Index (crypto – disabled by default)
+    ALTCOIN_SEASON_ENABLED: bool = False
+    ALTCOIN_SEASON_CACHE_TTL_SECONDS: int = 3600
+    CMC_API_KEY: Optional[str] = None
 
     @field_validator("LLM_PROVIDER")
     @classmethod
@@ -277,6 +296,12 @@ class Settings(BaseSettings):
     NEWS_INITIAL_FETCH_TIMEOUT_SECONDS: float = 60.0   # max seconds for initial news fetch on startup
     NEWS_RETENTION_SECONDS: int = 86400   # delete articles older than 24 hours
 
+    # News-driven coin discovery
+    NEWS_COIN_DISCOVERY_ENABLED: bool = False
+    NEWS_COIN_DISCOVERY_MAX_COINS: int = 5
+    NEWS_COIN_DISCOVERY_MIN_SENTIMENT: float = 0.3
+    NEWS_COIN_DISCOVERY_MIN_ARTICLES: int = 3
+
     # Facebook (Graph API)
     FACEBOOK_PAGE_ACCESS_TOKEN: Optional[str] = None
     FACEBOOK_PAGE_ID: Optional[str] = None
@@ -284,20 +309,12 @@ class Settings(BaseSettings):
 
     # RSS Feeds
     RSS_FEEDS: list[str] = [
-        "https://cointelegraph.com/rss",
-        "https://decrypt.co/feed",
-        "https://cryptoslate.com/feed/",
-        "https://bitcoinmagazine.com/feed",
-        "https://bitcoinist.com/feed/",
-        "https://www.newsbtc.com/feed/",
-        "https://cryptopotato.com/feed/",
-        "https://coinjournal.net/feed/",
-        "https://cryptobriefing.com/feed/",
-        "https://beincrypto.com/feed/",
-        "https://coingape.com/feed/",
-        "https://dailyhodl.com/feed/",
-        "https://www.cryptonewsz.com/feed/",
-        "https://www.cryptopolitan.com/feed/",
+        "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US",
+        "https://www.marketwatch.com/feeds/headlines",
+        "https://www.investing.com/rss/news.rss",
+        "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+        "https://www.reuters.com/tools/rss",
+        "https://www.bloomberg.com/feeds/podcasts/etf_report.xml",
     ]
 
     # YouTube Data API v3
@@ -310,6 +327,14 @@ class Settings(BaseSettings):
     # StockTwits API
     STOCKTWITS_API_KEY: Optional[str] = None
     STOCKTWITS_MAX_POSTS: int = 5
+
+    # Crypto-specific news source limits (ignored if keys not set)
+    CRYPTOPANIC_MAX_POSTS: int = 5
+    CRYPTOCOMPARE_MAX_ARTICLES: int = 5
+    LUNARCRUSH_MAX_ARTICLES: int = 5
+    SANTIMENT_MAX_ARTICLES: int = 5
+    MESSARI_MAX_ARTICLES: int = 5
+    COINMARKETCAP_MAX_ARTICLES: int = 5
 
     # Rate limiting for news providers
     NEWS_RATE_LIMIT_ENABLED: bool = True
