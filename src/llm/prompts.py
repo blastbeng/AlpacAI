@@ -428,8 +428,8 @@ def build_stock_selection_prompt(
 
     prompt = f"""Current base currency: {base_currency}
 Your available {base_currency} balance: {base_balance:.2f}
-Maximum number of coins to trade: {max_coins}
-Budget per coin (balance / max_coins): {per_coin_budget:.2f} {base_currency}
+Maximum number of stocks to trade: {max_coins}
+Budget per stock: {per_coin_budget:.2f} {base_currency}
 Available timeframes: {json.dumps(settings.OHLCV_TIMEFRAMES)}
 Currently tracked coins (with assigned timeframes): {json.dumps(current_coins) if current_coins else "None"}"""
 
@@ -480,13 +480,13 @@ Currently tracked coins (with assigned timeframes): {json.dumps(current_coins) i
 Available trading pairs with market data and minimum trade cost (in {base_currency}):
 {json.dumps(ticker_summary, indent=2)}
 
-**Your primary objective is profit across short, medium, and long timeframes. Prioritize coins where you find the most profit potential, regardless of timeframe.** Prioritize coins with strong momentum, high volume, and clear trends on multiple timeframes. Avoid coins that are flat or declining on all timeframes. You may keep current coins only if they still show potential on at least one timeframe.
+**Your primary objective is profit across short, medium, and long timeframes. Prioritize stocks where you find the most profit potential, regardless of timeframe.** Prioritize stocks with strong momentum, high volume, and clear trends on multiple timeframes. Avoid stocks that are flat or declining on all timeframes. You may keep current stocks only if they still show potential on at least one timeframe.
 
-Select between 0 and {max_coins} coins to trade. If market conditions are extremely unfavorable (e.g., high losses, poor momentum, negative sentiment), you may select 0 coins to pause trading until the next evaluation. You decide the exact number based on how many high‑quality opportunities you see. If market conditions are poor, you may choose fewer coins (even 0 or 1) to concentrate capital on the best setup. If many strong setups exist, you may select up to {max_coins}. You MUST only select coins where the per-coin budget ({per_coin_budget:.2f} {base_currency}) is greater than or equal to the coin's min_trade_cost. Skip any coin that does not meet this requirement. Prefer coins with high volume and positive momentum. You may keep some current coins if they are still promising and meet the budget requirement, or replace them. **Prefer to keep coins that have been tracked for a while** – they have more historical data and the bot has already invested in learning their behaviour. Only drop a coin if it shows clear deterioration (e.g., negative momentum on all timeframes, poor win rate, or strongly negative sentiment).
+Select between 0 and {max_coins} stocks to trade. If market conditions are extremely unfavorable (e.g., high losses, poor momentum, negative sentiment), you may select 0 stocks to pause trading until the next evaluation. You decide the exact number based on how many high‑quality opportunities you see. If market conditions are poor, you may choose fewer stocks (even 0 or 1) to concentrate capital on the best setup. If many strong setups exist, you may select up to {max_coins}. You MUST only select stocks where the per-stock budget ({per_coin_budget:.2f} {base_currency}) is greater than or equal to the stock's min_trade_cost. Skip any stock that does not meet this requirement. Prefer stocks with high volume and positive momentum. You may keep some current stocks if they are still promising and meet the budget requirement, or replace them. **Prefer to keep stocks that have been tracked for a while** – they have more historical data and the bot has already invested in learning their behaviour. Only drop a stock if it shows clear deterioration (e.g., negative momentum on all timeframes, poor win rate, or strongly negative sentiment).
 
-**Use the historical performance data to guide your selection.** Prefer coins that have a positive average P&L and a win rate above 50% in recent trades. Avoid coins that have a string of losses or a negative average P&L, unless there is a strong technical or news‑driven reason to include them.
+**Use the historical performance data to guide your selection.** Prefer stocks that have a positive average P&L and a win rate above 50% in recent trades. Avoid stocks that have a string of losses or a negative average P&L, unless there is a strong technical or news‑driven reason to include them.
 
-Each symbol can only appear once in your selection. Choose the single best timeframe for each coin based on the multi-timeframe OHLCV data.
+Each symbol can only appear once in your selection. Choose the single best timeframe for each stock based on the multi-timeframe OHLCV data.
 
 **Output ONLY the raw JSON object. Do NOT wrap it in ```json fences. Do NOT include any text before or after the JSON.**
 
@@ -629,30 +629,12 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
             prompt += "\n".join(lines) + "\n"
     if market_trend:
         prompt += f"\nOverall market trend ({market_trend['symbol']}): 24h change {market_trend.get('change_24h')}%, last price {market_trend.get('last')}\n"
-    if fear_greed_index:
-        prompt += (
-            f"\nCrypto Fear & Greed Index: {fear_greed_index['value']} "
-            f"({fear_greed_index['classification']})\n"
-            "This index reflects overall market sentiment (0 = Extreme Fear, 100 = Extreme Greed). "
-            "Use it to gauge the general mood: extreme fear may present buying opportunities, "
-            "extreme greed may signal a market top. Adjust your coin selection and risk parameters accordingly.\n"
-        )
     if session_info:
         prompt += (
             f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
             "Use this to gauge typical market activity: Asian session often has lower volatility, "
             "European and US sessions have higher volume and volatility. Adjust your coin selection "
             "and risk parameters accordingly.\n"
-        )
-    if relative_strength_btc:
-        prompt += "\nRelative strength vs BTC (ratio = coin_price / btc_price; relative_24h_pct = outperformance vs BTC over 24h):\n"
-        for sym, data in relative_strength_btc.items():
-            rel_str = f"{data['relative_24h_pct']:+.2f}%" if data['relative_24h_pct'] is not None else "N/A"
-            prompt += f"  {sym}: ratio={data['ratio']:.8f}, 24h rel={rel_str}\n"
-        prompt += (
-            "A rising ratio means the coin is outperforming BTC, which is a bullish signal. "
-            "A falling ratio means it's underperforming. Use this to identify coins with strong relative momentum. "
-            "Prefer coins with positive relative 24h performance, but use your own judgement.\n"
         )
     if news_sentiment:
         prompt += "\n## News Sentiment\n"
@@ -706,39 +688,6 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
             "If the full breadth is very low (<25%) while the candidate breadth is moderate, "
             "the market may be more fragile than it appears – consider pausing or reducing risk.\n"
         )
-    if btc_dominance is not None:
-        prompt += f"\nBitcoin dominance: {btc_dominance:.2f}%\n"
-        prompt += (
-            "Bitcoin dominance measures BTC's share of the total crypto market cap. "
-            "High or rising dominance (>55%) often means altcoins underperform as capital flows into BTC; "
-            "low or falling dominance (<45%) signals 'altseason' where altcoins outperform. "
-            "Use this to bias your selection: prefer BTC when dominance is rising, "
-            "and consider more altcoins when dominance is falling.\n"
-        )
-    if total_market_cap:
-        mc_usd = total_market_cap.get("total_market_cap_usd")
-        mc_change = total_market_cap.get("market_cap_change_24h_usd")
-        if mc_usd is not None:
-            prompt += f"\nTotal crypto market cap: ${mc_usd:,.0f}\n"
-        if mc_change is not None:
-            prompt += f"Total market cap 24h change: {mc_change:+.2f}%\n"
-        if mc_usd is not None or mc_change is not None:
-            prompt += (
-                "The total market cap indicates the overall size and health of the crypto market. "
-                "A rising market cap confirms an expanding market (risk-on); a falling market cap suggests contraction (risk-off). "
-                "Use this alongside market breadth and Fear & Greed to gauge the macro environment.\n"
-            )
-    if altcoin_season:
-        value = altcoin_season.get("value", 50)
-        desc = altcoin_season.get("description", "")
-        prompt += f"\nAltcoin Season Index: {value} ({desc})\n"
-        prompt += (
-            "This index indicates whether altcoins are outperforming Bitcoin. "
-            "A value above 75 means 'Altcoin Season' (altcoins are strongly outperforming BTC); "
-            "below 25 means 'Bitcoin Season' (BTC is dominating). "
-            "Use this to bias your coin selection: during Altcoin Season, prefer altcoins; "
-            "during Bitcoin Season, prefer BTC or reduce altcoin exposure.\n"
-        )
     if news_section:
         prompt += f"\n{news_section}\n"
     prompt += (
@@ -751,10 +700,10 @@ Example: {{"coins": [{{"symbol": "BTC/USDT", "timeframe": "1h", "max_tenure_hour
         perf_text = f"""
 Historical Performance Data:
 Overall equity curve: {json.dumps(performance.get('equity_curve', {}))}
-Per-coin performance (win rate, avg P&L, total trades): {json.dumps(performance.get('coin_performance', {}), indent=2)}
+Per-stock performance (win rate, avg P&L, total trades): {json.dumps(performance.get('coin_performance', {}), indent=2)}
 Per-strategy performance: {json.dumps(performance.get('strategy_performance', {}), indent=2)}
 
-Use this historical data to select coins that have been profitable in the past, and to avoid coins with poor performance. Prefer strategies that have shown higher win rates and average P&L.
+Use this historical data to select stocks that have been profitable in the past, and to avoid stocks with poor performance. Prefer strategies that have shown higher win rates and average P&L.
 """
         prompt += perf_text
         if daily_pnl is not None:
