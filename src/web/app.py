@@ -8,8 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from src.config.settings import settings
 from src.utils.redis_client import get_redis_client, check_redis_connection
-from src.utils.retry import retry_on_rate_limit
 from src.llm.prompts import get_cached_news_summary
+from src.exchanges.market_data import get_quotes, get_multi_timeframe_bars
 
 app = FastAPI(title="Crypto Trading Bot")
 
@@ -30,11 +30,6 @@ def get_engine():
     if _engine is None:
         raise HTTPException(status_code=503, detail="Engine not initialized")
     return _engine
-
-@retry_on_rate_limit(max_retries=3, base_delay=1.0)
-def _fetch_ticker_with_retry(exchange, symbol: str):
-    """Fetch ticker with built-in rate-limit retry. Runs in a sync thread."""
-    return exchange.fetch_ticker(symbol)
 
 @app.get("/")
 async def root():
@@ -180,13 +175,13 @@ def config():
 @app.get("/api/ohlcv/{symbol:path}")
 async def ohlcv(symbol: str, timeframe: str = "1h", limit: int = 24):
     engine = get_engine()
-    exchange = engine.exchange
     try:
-        ohlcv_data = await asyncio.to_thread(
-            exchange.fetch_ohlcv, symbol, timeframe, limit=limit
+        bars = await asyncio.to_thread(
+            get_multi_timeframe_bars, engine.data_client, symbol, [timeframe], limit=limit
         )
+        candles = bars.get(timeframe, [])
         result = []
-        for candle in ohlcv_data:
+        for candle in candles:
             result.append({
                 "timestamp": candle[0],
                 "open": candle[1],
@@ -202,7 +197,7 @@ async def ohlcv(symbol: str, timeframe: str = "1h", limit: int = 24):
 @app.get("/api/ticker/{symbol:path}")
 async def ticker(symbol: str):
     engine = get_engine()
-    # 1) Try the WebSocket cache first – no exchange call
+    # 1) Try the WebSocket cache first
     ticker_data = engine.ws_manager.get_ticker(symbol)
     if ticker_data is not None:
         return {
@@ -213,32 +208,26 @@ async def ticker(symbol: str):
             "change_24h": ticker_data.get("percentage"),
         }
 
-    # 2) Fallback only if WebSocket is down AND we have no cached data
+    # 2) Fallback to REST only if WebSocket is unhealthy
     if not engine.ws_manager.healthy:
         logger.warning(f"WebSocket unhealthy, falling back to REST for {symbol}")
         try:
-            ticker_data = await asyncio.to_thread(
-                _fetch_ticker_with_retry, engine.exchange, symbol
+            quotes = await asyncio.to_thread(
+                get_quotes, engine.data_client, [symbol]
             )
-            return {
-                "symbol": symbol,
-                "last": ticker_data.get("last"),
-                "bid": ticker_data.get("bid"),
-                "ask": ticker_data.get("ask"),
-                "change_24h": ticker_data.get("percentage"),
-            }
+            q = quotes.get(symbol)
+            if q:
+                return {
+                    "symbol": symbol,
+                    "last": q.get("last"),
+                    "bid": q.get("bid"),
+                    "ask": q.get("ask"),
+                    "change_24h": q.get("change_24h"),
+                }
         except Exception as e:
-            logger.warning(f"Ticker fetch failed for {symbol}: {e}")
-            return {
-                "symbol": symbol,
-                "error": str(e),
-                "last": None,
-                "bid": None,
-                "ask": None,
-                "change_24h": None,
-            }
+            logger.warning(f"REST ticker fetch failed for {symbol}: {e}")
 
-    # 3) WebSocket is healthy but no ticker yet (symbol just subscribed)
+    # 3) WebSocket healthy but no ticker yet (symbol just subscribed)
     return {
         "symbol": symbol,
         "last": None,
@@ -269,22 +258,22 @@ async def tickers(symbols: str = ""):
         else:
             result[sym] = None  # mark as missing
 
-    # 2) Fallback to REST only if WebSocket is unhealthy AND we have missing symbols
+    # 2) Fallback to REST only if WebSocket unhealthy AND we have missing symbols
     if not engine.ws_manager.healthy:
         missing = [sym for sym in symbol_list if result.get(sym) is None]
         if missing:
             try:
-                tickers_data = await asyncio.to_thread(
-                    engine.exchange.fetch_tickers, missing
+                quotes = await asyncio.to_thread(
+                    get_quotes, engine.data_client, missing
                 )
                 for sym in missing:
-                    t = tickers_data.get(sym)
-                    if t:
+                    q = quotes.get(sym)
+                    if q:
                         result[sym] = {
-                            "last": t.get("last"),
-                            "bid": t.get("bid"),
-                            "ask": t.get("ask"),
-                            "change_24h": t.get("percentage"),
+                            "last": q.get("last"),
+                            "bid": q.get("bid"),
+                            "ask": q.get("ask"),
+                            "change_24h": q.get("change_24h"),
                         }
                     else:
                         result[sym] = {"last": None, "bid": None, "ask": None, "change_24h": None}
