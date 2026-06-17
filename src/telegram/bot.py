@@ -145,7 +145,7 @@ class TelegramBot:
         ]
         for key in keys:
             await asyncio.to_thread(self.redis.delete, key)
-        self.engine.trigger_coin_reevaluation()
+        self.engine.trigger_symbol_reevaluation()
         await self.send_notification(
             "▶️ Trading resumed manually.",
             summary={"action": "RESUME", "reason": "Manual resume"}
@@ -156,7 +156,7 @@ class TelegramBot:
         if not self._is_authorized(update):
             return
         try:
-            coins = self.engine.current_coins
+            symbols = self.engine.current_symbols
             positions = self.engine.positions
             balance = await asyncio.to_thread(self.engine.trader.fetch_balance)
         except Exception as e:
@@ -177,12 +177,12 @@ class TelegramBot:
             actuator_model = settings.OPENAI_ACTUATOR_MODEL
         msg += f"<b>🧠 LLM Mind:</b> {mind_provider} / {mind_model}\n"
         msg += f"<b>🧠 LLM Actuator:</b> {actuator_provider} / {actuator_model}\n\n"
-        coin_list = []
-        for entry in coins:
+        symbol_list = []
+        for entry in symbols:
             symbol = entry["symbol"]
             tf = entry["timeframe"]
-            coin_list.append(f"{symbol} ({tf})")
-        msg += f"<b>🪙 Tracked Coins:</b> {', '.join(coin_list) if coin_list else 'None'}\n\n"
+            symbol_list.append(f"{symbol} ({tf})")
+        msg += f"<b>🪙 Tracked Symbols:</b> {', '.join(symbol_list) if symbol_list else 'None'}\n\n"
 
         if positions:
             msg += "<b>📈 Open Positions:</b>\n"
@@ -240,7 +240,11 @@ class TelegramBot:
             # Fetch current price
             current_price = None
             try:
-                ticker = await asyncio.to_thread(self.engine.exchange.fetch_ticker, sym)
+                ticker = self.engine.ws_manager.get_ticker(sym)
+                if ticker is None:
+                    from src.exchanges.market_data import get_quotes
+                    quotes = await asyncio.to_thread(get_quotes, self.engine.data_client, [sym])
+                    ticker = quotes.get(sym)
                 current_price = ticker.get('last') if ticker else None
             except Exception as e:
                 logger.warning(f"Could not fetch current price for {sym}: {e}")
@@ -413,16 +417,16 @@ class TelegramBot:
     async def cmd_news(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
             return
-        """Show LLM-generated news summaries for all tracked coins (same as web card)."""
+        """Show LLM-generated news summaries for all tracked symbols (same as web card)."""
         try:
-            coins = self.engine.current_coins
-            if not coins:
-                await update.message.reply_text("No coins currently tracked.")
+            symbols = self.engine.current_symbols
+            if not symbols:
+                await update.message.reply_text("No symbols currently tracked.")
                 return
 
             await update.message.reply_text("Generating news summaries...")
             messages = []
-            for entry in coins:
+            for entry in symbols:
                 symbol = entry["symbol"]
                 base_coin = symbol.split("/")[0] if "/" in symbol else symbol
                 try:
@@ -455,15 +459,15 @@ class TelegramBot:
     async def cmd_news_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
             return
-        """Show news article counts for tracked coins."""
+        """Show news article counts for tracked symbols."""
         try:
-            coins = self.engine.current_coins
-            if not coins:
-                await update.message.reply_text("No coins currently tracked.")
+            symbols = self.engine.current_symbols
+            if not symbols:
+                await update.message.reply_text("No symbols currently tracked.")
                 return
 
             msg = "<b>📰 News Article Counts</b>\n\n"
-            for entry in coins:
+            for entry in symbols:
                 symbol = entry["symbol"]
                 base_coin = symbol.split("/")[0] if "/" in symbol else symbol
                 articles = await asyncio.to_thread(get_news_for_symbol, base_coin, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
