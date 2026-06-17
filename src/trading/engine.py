@@ -3329,7 +3329,7 @@ class TradingEngine:
                 if (rsi < 30 and macd_hist < 0) or (rsi > 70 and macd_hist > 0):
                     _conflicting = True
             strategy_complexity = self._compute_prompt_complexity(
-                num_candidates=len(self.current_coins),
+                num_candidates=len(self.current_symbols),
                 market_breadth=getattr(self, '_market_breadth', None),
                 fear_greed=None,
                 volatility_percentile=atr_percentile,
