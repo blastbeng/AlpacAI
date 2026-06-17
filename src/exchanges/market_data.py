@@ -170,9 +170,9 @@ def get_bars_range(
 
 # Keep old names for backward compatibility during migration.
 # They will be removed once the engine is fully adapted.
-def get_available_pairs(exchange, base_currency: str) -> List[str]:
+def get_tradable_pairs(trading_client: TradingClient, base_currency: str) -> List[str]:
     """Return a list of trading pairs (e.g., 'AAPL/USD') for all tradable assets."""
-    symbols = get_tradable_assets(exchange)
+    symbols = get_tradable_assets(trading_client)
     return [f"{sym}/{base_currency}" for sym in symbols]
 
 

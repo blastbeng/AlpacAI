@@ -11,7 +11,7 @@ from src.config.settings import settings
 from src.exchanges.fees import get_fee_rate
 from src.exchanges.factory import get_exchange, get_pro_exchange, get_data_client
 from src.exchanges.ws_manager import WebSocketManager
-from src.exchanges.market_data import get_available_pairs, get_tickers, get_order_book, get_multi_timeframe_ohlcv, get_quotes, get_bars_range
+from src.exchanges.market_data import get_tradable_pairs, get_tickers, get_order_book, get_multi_timeframe_ohlcv, get_quotes, get_bars_range
 from src.trading.paper_simulator import PaperSimulator
 from src.trading.live_trader import LiveTrader
 from src.llm.cache import get_cached_llm_response, compute_market_hash
@@ -296,7 +296,7 @@ class TradingEngine:
             self._full_breadth_running = True
             try:
                 available_pairs = await asyncio.to_thread(
-                    get_available_pairs, self.exchange, self.base_currency
+                    get_tradable_pairs, self.exchange, self.base_currency
                 )
                 if available_pairs:
                     # Limit to 500 pairs to avoid excessive API calls
@@ -505,7 +505,7 @@ class TradingEngine:
                 symbols_to_refresh = set()
                 try:
                     available_pairs = await asyncio.to_thread(
-                        get_available_pairs, self.exchange, self.base_currency
+                        get_tradable_pairs, self.exchange, self.base_currency
                     )
                     # Fetch tickers for a subset to determine top volume coins
                     # (limit to 200 to avoid excessive API calls)
@@ -979,7 +979,7 @@ class TradingEngine:
     async def _reconcile_positions(self):
         """Detect and handle external changes: delisted coins, externally sold positions."""
         # --- Delisted coins ---
-        available_pairs = await asyncio.to_thread(get_available_pairs, self.exchange, self.base_currency)
+        available_pairs = await asyncio.to_thread(get_tradable_pairs, self.exchange, self.base_currency)
         for entry in list(self.current_coins):
             coin = entry["symbol"]
             if coin not in available_pairs:
@@ -1232,7 +1232,7 @@ class TradingEngine:
             return
 
         old_coins = list(self.current_coins)
-        available_pairs = await asyncio.to_thread(get_available_pairs, self.exchange, self.base_currency)
+        available_pairs = await asyncio.to_thread(get_tradable_pairs, self.exchange, self.base_currency)
         if not available_pairs:
             logger.warning("No available pairs found.")
             return
