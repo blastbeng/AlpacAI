@@ -120,11 +120,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def check_credentials(self):
-        if self.TRADING_MODE == "live":
-            if not self.ALPACA_API_KEY or not self.ALPACA_SECRET_KEY:
-                raise ValueError(
-                    "ALPACA_API_KEY and ALPACA_SECRET_KEY are required when TRADING_MODE='live'"
-                )
+        if not self.ALPACA_API_KEY or not self.ALPACA_SECRET_KEY:
+            raise ValueError(
+                "ALPACA_API_KEY and ALPACA_SECRET_KEY are required for both paper and live trading"
+            )
         return self
 
     @model_validator(mode="after")
