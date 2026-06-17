@@ -1229,10 +1229,10 @@ class TradingEngine:
         last_key = "trading:last_coin_eval"
         last_eval = await asyncio.to_thread(self.redis.get, last_key)
         now = time.time()
-        if last_eval and (now - float(last_eval)) < self._coin_revaluation_interval and self.current_coins:
+        if last_eval and (now - float(last_eval)) < self._coin_revaluation_interval and self.current_symbols:
             return
 
-        old_coins = list(self.current_coins)
+        old_coins = list(self.current_symbols)
         available_pairs = await asyncio.to_thread(get_tradable_symbols, self.exchange)
         if not available_pairs:
             logger.warning("No available pairs found.")
@@ -1527,7 +1527,7 @@ class TradingEngine:
 
         if self.effective_max_symbols == 0:
             logger.warning("Insufficient balance to trade any coin. Clearing coin list.")
-            self.current_coins = []
+            self.current_symbols = []
             await asyncio.to_thread(self.redis.set, last_key, now)
             if self.notifier:
                 await self.notifier.send_notification(
@@ -1650,7 +1650,7 @@ class TradingEngine:
 
         # Compute current max tenure per coin for the prompt
         coin_max_tenure = {}
-        for entry in self.current_coins:
+        for entry in self.current_symbols:
             if 'max_tenure_hours' in entry:
                 coin_max_tenure[entry['symbol']] = entry['max_tenure_hours']
 
@@ -1675,7 +1675,7 @@ class TradingEngine:
 
         prompt = build_stock_selection_prompt(
             available_symbols=sample_pairs,
-            current_symbols=self.current_coins,
+            current_symbols=self.current_symbols,
             max_symbols=self.effective_max_symbols,
             base_currency=self.base_currency,
             tickers=tickers,
@@ -1723,7 +1723,7 @@ class TradingEngine:
             "base_balance": base_balance,
             "per_coin_budget": per_coin_budget,
             "max_symbols": self.effective_max_symbols,
-            "current_coins": self.current_coins,
+            "current_symbols": self.current_symbols,
             "coin_scores": coin_scores,
             "coin_spreads": coin_spreads,
             "coin_depths": coin_depths,
@@ -2031,7 +2031,7 @@ class TradingEngine:
                     else:
                         logger.warning(f"Invalid global_risk_multiplier: {global_risk_mult}")
 
-                existing_coins = {c['symbol']: c for c in self.current_coins}
+                existing_coins = {c['symbol']: c for c in self.current_symbols}
                 for coin in deduped[: self.effective_max_coins]:
                     if coin['symbol'] in existing_coins and 'entry_time' in existing_coins[coin['symbol']]:
                         coin['entry_time'] = existing_coins[coin['symbol']]['entry_time']
@@ -2040,11 +2040,11 @@ class TradingEngine:
                     # Preserve max_tenure_hours from existing coin if LLM didn't specify it
                     if 'max_tenure_hours' not in coin and coin['symbol'] in existing_coins and 'max_tenure_hours' in existing_coins[coin['symbol']]:
                         coin['max_tenure_hours'] = existing_coins[coin['symbol']]['max_tenure_hours']
-                self.current_coins = deduped[: self.effective_max_coins]
+                self.current_symbols = deduped[: self.effective_max_coins]
 
                 # If LLM explicitly chose zero coins, respect that and don't fall back to volume-based selection
                 if not deduped or self.effective_max_symbols == 0:
-                    self.current_coins = []
+                    self.current_symbols = []
                     self.effective_max_symbols = 0
                     logger.info("LLM selected 0 coins – pausing trading until next evaluation.")
 
@@ -2052,7 +2052,7 @@ class TradingEngine:
                 logger.error("Failed to parse coin selection response.")
 
         # Fallback: if LLM returned no coins, pick top-volume affordable coins
-        if not self.current_coins:
+        if not self.current_symbols:
             logger.warning("LLM returned no coins – using volume-based fallback.")
             # Sort sample_pairs by 24h volume descending
             sorted_pairs = sorted(sample_pairs, key=_volume, reverse=True)
