@@ -95,7 +95,7 @@ def _get_enabled_sources() -> List[str]:
         sources.append("stocktwits")
     if settings.RSS_FEEDS and "rss" not in _permanently_disabled_sources:
         sources.append("rss")
-    logger.info(f"News sources auto-enabled: {sources}")
+    logger.debug(f"News sources auto-enabled: {sources}")
     return sources
 
 
@@ -156,7 +156,7 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
     base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
 
     start_time = time.time()
-    logger.info(f"Fetching news for {symbol} (base symbol: {base_symbol})...")
+    logger.debug(f"Fetching news for {symbol} (base symbol: {base_symbol})...")
 
     redis_client = get_redis_client()
     cache_key = f"news:{base_symbol}:{_source_fingerprint()}"
@@ -164,7 +164,7 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
     if cached:
         try:
             articles = json.loads(cached)
-            logger.info(f"News for {base_symbol} served from cache ({len(articles)} articles)")
+            logger.debug(f"News for {base_symbol} served from cache ({len(articles)} articles)")
             return articles
         except Exception:
             pass
@@ -172,7 +172,7 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
     articles: List[Dict[str, str]] = []
 
     enabled = _get_enabled_sources()
-    logger.info(f"Enabled news sources for {symbol}: {enabled}")
+    logger.debug(f"Enabled news sources for {symbol}: {enabled}")
     for source in enabled:
         source_start = time.time()
         if source == "newsapi":
@@ -193,7 +193,7 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
             articles.extend(_fetch_rss(symbol))
         source_time = time.time() - source_start
         if source_time > 2.0:
-            logger.info(f"Slow news source '{source}' for {symbol}: {source_time:.2f}s")
+            logger.debug(f"Slow news source '{source}' for {symbol}: {source_time:.2f}s")
 
     # Deduplicate by URL
     seen = set()
@@ -216,7 +216,7 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
     total_time = time.time() - start_time
     logger.info(f"News for {symbol}: {len(unique)} articles from {len(enabled)} sources in {total_time:.2f}s")
     if total_time > 5.0:
-        logger.info(f"News fetch for {symbol} took {total_time:.2f}s – consider reducing sources or increasing cache TTL")
+        logger.debug(f"News fetch for {symbol} took {total_time:.2f}s – consider reducing sources or increasing cache TTL")
 
     return unique
 
@@ -297,7 +297,7 @@ def _fetch_newsapi(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("newsapi")
-        logger.info(f"Fetching NewsAPI for {symbol}...")
+        logger.debug(f"Fetching NewsAPI for {symbol}...")
         url = "https://newsapi.org/v2/everything"
         params = {
             "q": f"{symbol.split('/')[0]} stock",
@@ -342,7 +342,7 @@ def _fetch_newsapi(symbol: str) -> List[Dict[str, str]]:
                 "summary": description[:300],
                 "sentiment": sentiment,
             })
-        logger.info(f"NewsAPI returned {len(articles)} articles for {symbol}")
+        logger.debug(f"NewsAPI returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"NewsAPI fetch failed for {symbol}: {e}")
@@ -363,7 +363,7 @@ def _fetch_twitter(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("twitter")
-        logger.info(f"Fetching Twitter for {symbol}...")
+        logger.debug(f"Fetching Twitter for {symbol}...")
         client = tweepy.Client(bearer_token=settings.TWITTER_BEARER_TOKEN, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
         query = f"${symbol.split('/')[0]} stock -is:retweet lang:en"
         tweets = client.search_recent_tweets(
@@ -385,7 +385,7 @@ def _fetch_twitter(symbol: str) -> List[Dict[str, str]]:
                     "summary": tweet.text,
                     "sentiment": sentiment,
                 })
-        logger.info(f"Twitter returned {len(articles)} articles for {symbol}")
+        logger.debug(f"Twitter returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"Twitter fetch failed for {symbol}: {e}")
@@ -406,7 +406,7 @@ def _fetch_reddit(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("reddit")
-        logger.info(f"Fetching Reddit for {symbol}...")
+        logger.debug(f"Fetching Reddit for {symbol}...")
         reddit = praw.Reddit(
             client_id=settings.REDDIT_CLIENT_ID,
             client_secret=settings.REDDIT_CLIENT_SECRET,
@@ -434,7 +434,7 @@ def _fetch_reddit(symbol: str) -> List[Dict[str, str]]:
                 "summary": reddit_summary,
                 "sentiment": sentiment,
             })
-        logger.info(f"Reddit returned {len(articles)} articles for {symbol}")
+        logger.debug(f"Reddit returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"Reddit fetch failed for {symbol}: {e}")
@@ -450,7 +450,7 @@ def _fetch_facebook(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("facebook")
-        logger.info(f"Fetching Facebook for {symbol}...")
+        logger.debug(f"Fetching Facebook for {symbol}...")
         url = f"https://graph.facebook.com/v19.0/{settings.FACEBOOK_PAGE_ID}/posts"
         params = {
             "fields": "message,created_time,permalink_url",
@@ -477,7 +477,7 @@ def _fetch_facebook(symbol: str) -> List[Dict[str, str]]:
                 "summary": message[:300],
                 "sentiment": sentiment,
             })
-        logger.info(f"Facebook returned {len(articles)} articles for {symbol}")
+        logger.debug(f"Facebook returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"Facebook fetch failed for {symbol}: {e}")
@@ -493,7 +493,7 @@ def _fetch_youtube(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("youtube")
-        logger.info(f"Fetching YouTube for {symbol}...")
+        logger.debug(f"Fetching YouTube for {symbol}...")
         url = "https://www.googleapis.com/youtube/v3/search"
         params = {
             "part": "snippet",
@@ -524,7 +524,7 @@ def _fetch_youtube(symbol: str) -> List[Dict[str, str]]:
                 "summary": description[:300],
                 "sentiment": sentiment,
             })
-        logger.info(f"YouTube returned {len(articles)} articles for {symbol}")
+        logger.debug(f"YouTube returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"YouTube fetch failed for {symbol}: {e}")
@@ -541,7 +541,7 @@ def _fetch_googlenews(symbol: str) -> List[Dict[str, str]]:
     """Fetch news from Google News RSS feed."""
     try:
         _get_rate_limiter().wait("googlenews")
-        logger.info(f"Fetching Google News for {symbol}...")
+        logger.debug(f"Fetching Google News for {symbol}...")
         base = symbol.split("/")[0]
         url = f"https://news.google.com/rss/search?q={base}+stock&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(url)
@@ -561,7 +561,7 @@ def _fetch_googlenews(symbol: str) -> List[Dict[str, str]]:
                 "summary": summary[:300],
                 "sentiment": sentiment,
             })
-        logger.info(f"Google News returned {len(articles)} articles for {symbol}")
+        logger.debug(f"Google News returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"Google News fetch failed for {symbol}: {e}")
@@ -577,7 +577,7 @@ def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
         return []
     try:
         _get_rate_limiter().wait("stocktwits")
-        logger.info(f"Fetching StockTwits for {symbol}...")
+        logger.debug(f"Fetching StockTwits for {symbol}...")
         base = symbol.split("/")[0]
         # StockTwits uses tickers like AAPL.X for stocks
         ticker = f"{base}.X"
@@ -613,7 +613,7 @@ def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
                 "summary": body[:300],
                 "sentiment": {"label": label, "compound": compound},
             })
-        logger.info(f"StockTwits returned {len(articles)} articles for {symbol}")
+        logger.debug(f"StockTwits returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
         logger.warning(f"StockTwits fetch failed for {symbol}: {e}")
@@ -642,7 +642,7 @@ def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
 
             if feed_content is None:
                 _get_rate_limiter().wait(feed_url)
-                logger.info(f"Fetching RSS feed: {feed_url}")
+                logger.debug(f"Fetching RSS feed: {feed_url}")
                 headers = {
                     "User-Agent": "Mozilla/5.0 (compatible; AlpacAI/1.0; +https://github.com/your-repo)"
                 }
@@ -700,13 +700,13 @@ def _fetch_rss(symbol: str) -> List[Dict[str, str]]:
                 logger.warning(f"RSS fetch failed for {feed_url}: {e}")
         except Exception as e:
             logger.warning(f"RSS fetch failed for {feed_url}: {e}")
-    logger.info(f"RSS total articles for {symbol}: {len(articles)}")
+    logger.debug(f"RSS total articles for {symbol}: {len(articles)}")
     return articles
 
 
 def test_rss_feeds():
     """Check each configured RSS feed and log whether it is reachable."""
-    logger.info(f"Testing {len(settings.RSS_FEEDS)} RSS feeds...")
+    logger.debug(f"Testing {len(settings.RSS_FEEDS)} RSS feeds...")
     for url in settings.RSS_FEEDS:
         try:
             resp = httpx.get(
@@ -716,7 +716,7 @@ def test_rss_feeds():
                 follow_redirects=True,
             )
             if resp.status_code == 200:
-                logger.info(f"RSS OK: {url}")
+                logger.debug(f"RSS OK: {url}")
             else:
                 logger.warning(f"RSS {url} returned {resp.status_code}")
         except Exception as e:
