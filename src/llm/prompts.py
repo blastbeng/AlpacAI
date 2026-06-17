@@ -868,7 +868,7 @@ Current ticker: {json.dumps(ticker)}
 Order book (top 5 levels): {json.dumps(order_book)}
 Current balances: {json.dumps(balance)}
 """
-    # --- Portfolio context: total base balance and all tracked coins ---
+    # --- Portfolio context: total base balance and all tracked symbols ---
     base_balance = balance.get(base_currency, 0.0)
     prompt += f"\nTotal {base_currency} balance available: {base_balance:.2f}\n"
     if all_symbols:
