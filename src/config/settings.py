@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # Override the trading API base URL (default: paper). The SDK appends /v2,
     # so do NOT include /v2 in this value unless you are using a custom proxy
     # that expects it.
-    ALPACA_ENDPOINT: str = "https://paper-api.alpaca.markets/v2"
+    ALPACA_ENDPOINT: str = "https://paper-api.alpaca.markets"
 
     # Trading mode
     TRADING_MODE: str = "paper"   # "paper" or "live"
