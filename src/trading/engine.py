@@ -66,7 +66,7 @@ MAX_TAKE_PROFIT_REVIEWS = 10   # force-sell after this many consecutive take-pro
 
 class TradingEngine:
     def __init__(self):
-        self.trading_client = get_trading_client()
+        self.exchange = get_trading_client()
         self.data_client = get_data_client()
         self.streaming_client = get_streaming_client()
         self.ws_manager = WebSocketManager(self.streaming_client, [])
@@ -77,7 +77,6 @@ class TradingEngine:
         self._exchange_semaphore = asyncio.Semaphore(3)  # max 3 concurrent API calls
 
         self.trader = LiveTrader(self.trading_client)
-        self.exchange = self.trading_client   # alias for Alpaca TradingClient (used by get_tradable_assets, get_asset, etc.)
 
         self.current_symbols: List[Dict[str, str]] = []   # each dict: {"symbol": ..., "timeframe": ...}
         self.positions: Dict[str, Dict[str, Any]] = {}  # symbol -> position info
