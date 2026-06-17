@@ -978,19 +978,19 @@ class TradingEngine:
 
     async def _reconcile_positions(self):
         """Detect and handle external changes: delisted coins, externally sold positions."""
-        # --- Delisted coins ---
+        # --- Delisted stocks ---
         plain_assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
         available_pairs = [f"{sym}/USD" for sym in plain_assets]
         for entry in list(self.current_symbols):
-            coin = entry["symbol"]
-            if coin not in available_pairs:
-                logger.warning(f"Coin {coin} no longer available. Removing from tracking.")
+            symbol = entry["symbol"]
+            if symbol not in available_pairs:
+                logger.warning(f"Stock {symbol} no longer available. Removing from tracking.")
                 self.current_symbols.remove(entry)
-                if coin in self.positions:
-                    pos = self.positions.pop(coin)
+                if symbol in self.positions:
+                    pos = self.positions.pop(symbol)
                     cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
                     trade = {
-                        "symbol": coin,
+                        "symbol": symbol,
                         "side": "sell",
                         "amount": pos["amount"],
                         "price": 0.0,
@@ -1004,8 +1004,8 @@ class TradingEngine:
                     }
                     self.trade_history.append(trade)
                     await asyncio.to_thread(insert_trade, trade)
-                    logger.warning(f"Delisted coin {coin}: recorded forced sell of {pos['amount']} at 0.")
-                    await self._remove_symbol_if_paused(coin)
+                    logger.warning(f"Delisted stock {symbol}: recorded forced sell of {pos['amount']} at 0.")
+                    await self._remove_symbol_if_paused(symbol)
 
         # --- Externally modified balances ---
         for symbol, pos in list(self.positions.items()):
