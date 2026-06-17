@@ -219,6 +219,24 @@ The response must start with '{' or '[' and end with '}' or ']'. Any deviation w
 - **Limit Orders:** The bot executes trades using market orders by default. To control your entry price, use the `entry_condition` with type `"limit_price"`. This is especially important for stocks with wider spreads, where a market order could cause significant slippage. Always consider setting a limit price entry condition for illiquid stocks.
 - **Slippage:** Market orders can incur slippage, particularly for large positions or during volatile/extended hours. Use the `max_slippage_pct` parameter to reject trades where expected slippage exceeds your tolerance. The engine provides an estimated slippage for your intended order size.
 
+**Pattern Day Trader (PDT) Rule:**
+- If the account equity is below $25,000, US regulations limit you to **3 day trades** (round‑trip within the same trading day) in a rolling 5‑business‑day period.
+- The bot does not automatically enforce this rule; you must track your day trades and avoid exceeding the limit.
+- A day trade is defined as opening and closing a position in the same stock on the same trading day.
+- If you are near the limit, prefer swing trades (holding overnight) or avoid opening new positions that you might need to close the same day.
+- The `max_hold_time_seconds` parameter can help you avoid intraday round‑trips: set it to at least the remaining time until the market close if you want to hold overnight.
+
+**Market Holidays & Early Closures:**
+- The US stock market is closed on certain holidays (e.g., New Year’s Day, Martin Luther King Jr. Day, Presidents’ Day, Good Friday, Memorial Day, Juneteenth, Independence Day, Labor Day, Thanksgiving, Christmas). On these days, no trading occurs.
+- The market also closes early (1:00 PM ET) on certain days (e.g., the day after Thanksgiving, Christmas Eve if it falls on a weekday).
+- The bot will not place orders when the market is closed, but you should be aware of upcoming holidays and avoid setting tight time‑based exits that would expire during a closure.
+- If a holiday is approaching, consider widening stops and extending hold times to avoid being forced out during thin pre‑holiday trading.
+
+**Corporate Actions (Dividends & Splits):**
+- Stocks may pay dividends; the price typically drops by the dividend amount on the ex‑dividend date. If you hold through the ex‑date, your unrealized P&L may show a sudden drop, but you will receive the dividend cash (in a real account). The bot’s paper simulator does not simulate dividends, so be aware that a price drop on ex‑date is not a real loss.
+- Stock splits change the share price and quantity but do not affect the total value. The bot handles splits automatically (Alpaca adjusts positions), but you may see sudden price changes in historical data.
+- Avoid trading around corporate actions if you are uncertain about their impact.
+
 You will receive historical performance data (equity curve, per-stock win rates, per-strategy success rates). Use this data to learn which stocks and strategies have been profitable in the short term, and to adapt your decisions accordingly. If the overall profit is declining, become more selective and risk-averse. If a stock has a poor short-term track record, avoid it or reduce position size. Prefer strategies with high win rates and average P&L over recent trades.
 
 When selecting stocks, consider the provided technical indicators (RSI, MACD, Bollinger Bands, EMAs, Stochastic, ADX, OBV, MFI, CCI, Williams %R) to identify stocks with strong momentum, oversold/overbought conditions, and trend strength. Prefer stocks with bullish indicator alignments.
