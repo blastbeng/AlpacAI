@@ -686,8 +686,8 @@ class TradingEngine:
                     now_ms = int(time.time() * 1000)
                     start_ms = now_ms - 30 * 24 * 60 * 60 * 1000  # 30 days ago
                     for symbol_entry in self.current_symbols:
-                        symbol = coin_entry["symbol"]
-                        tf = coin_entry["timeframe"]
+                        symbol = symbol_entry["symbol"]
+                        tf = symbol_entry["timeframe"]
                         logger.debug(f"Downloading market data for {symbol} ({tf})")
                         try:
                             await self._backfill_ohlcv(symbol, tf, start_ms, now_ms)
