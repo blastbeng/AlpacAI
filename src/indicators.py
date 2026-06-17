@@ -79,15 +79,21 @@ def compute_stochastic(
     period: int = 14, smooth_k: int = 3
 ) -> Tuple[Optional[float], Optional[float]]:
     """Compute Stochastic Oscillator %K and %D."""
-    if len(closes) < period:
+    min_len = period + smooth_k - 1
+    if len(closes) < min_len:
         return None, None
+
+    # Fast %K for the most recent bar
     recent_high = max(highs[-period:])
     recent_low = min(lows[-period:])
     if recent_high == recent_low:
-        return 50.0, 50.0
-    fast_k = ((closes[-1] - recent_low) / (recent_high - recent_low)) * 100
+        fast_k = 50.0
+    else:
+        fast_k = ((closes[-1] - recent_low) / (recent_high - recent_low)) * 100
+
+    # Collect the last smooth_k %K values for %D
     k_values = []
-    for i in range(-period, 0):
+    for i in range(-smooth_k, 0):
         start = i - period + 1
         end = i + 1 if i + 1 != 0 else None
         h = max(highs[start:end])
@@ -96,9 +102,8 @@ def compute_stochastic(
             k_values.append(50.0)
         else:
             k_values.append(((closes[i] - l) / (h - l)) * 100)
-    if len(k_values) < smooth_k:
-        return fast_k, None
-    slow_d = sum(k_values[-smooth_k:]) / smooth_k
+
+    slow_d = sum(k_values) / smooth_k
     return fast_k, slow_d
 
 

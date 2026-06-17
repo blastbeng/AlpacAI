@@ -2555,11 +2555,17 @@ class TradingEngine:
                     base = symbol.split("/")[0]
                     quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
                     ticker = quotes.get(base)
+            if ticker is None:
+                logger.warning(f"No ticker data for {symbol}, skipping.")
+                return
             current_price = ticker['last']
+
             order_book = self.ws_manager.get_order_book(symbol)
             if order_book is None:
                 async with self._exchange_semaphore:
                     order_book = await asyncio.to_thread(get_order_book, self.data_client, symbol.split("/")[0], 20)
+            if order_book is None:
+                order_book = {"bids": [], "asks": []}
             # Fetch recent trades for micro-momentum and liquidity assessment
             recent_trades_raw = self.ws_manager.get_trades(symbol)
 
