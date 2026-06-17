@@ -2601,17 +2601,9 @@ class TradingEngine:
             order_book = self.ws_manager.get_order_book(symbol)
             if order_book is None:
                 async with self._exchange_semaphore:
-                    order_book = await asyncio.to_thread(get_order_book, self.exchange, symbol, 20)
+                    order_book = await asyncio.to_thread(get_order_book, self.data_client, symbol, 20)
             # Fetch recent trades for micro-momentum and liquidity assessment
             recent_trades_raw = self.ws_manager.get_trades(symbol)
-            if not recent_trades_raw:
-                try:
-                    async with self._exchange_semaphore:
-                        recent_trades_raw = await asyncio.to_thread(
-                            self.exchange.fetch_trades, symbol, limit=20
-                        )
-                except Exception as e:
-                    logger.debug(f"Could not fetch recent trades for {symbol}: {e}")
 
             # Compute Cumulative Volume Delta (CVD) from recent trades
             cvd = None
@@ -2638,7 +2630,7 @@ class TradingEngine:
                 try:
                     async with self._exchange_semaphore:
                         ohlcv_data = await asyncio.to_thread(
-                            get_multi_timeframe_ohlcv, self.exchange, symbol, settings.OHLCV_TIMEFRAMES, limit=100
+                            get_multi_timeframe_ohlcv, self.data_client, symbol, settings.OHLCV_TIMEFRAMES, limit=100
                         )
                 except Exception as e:
                     logger.warning(f"OHLCV fetch failed for {symbol}: {e}")
@@ -3030,13 +3022,18 @@ class TradingEngine:
                 for t in recent_trades
             ]
 
-            # Fetch minimum order size for this symbol
-            market = self.exchange.markets.get(symbol, {})
-            limits = market.get('limits', {})
-            min_amount_raw = limits.get('amount', {}).get('min')
-            min_cost_raw = limits.get('cost', {}).get('min')
-            min_order_amount = float(min_amount_raw) if min_amount_raw is not None else None
-            min_order_cost = float(min_cost_raw) if min_cost_raw is not None else None
+            # Fetch minimum order size for this symbol from Alpaca asset info
+            base_asset = symbol.split('/')[0]
+            try:
+                asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+                min_order_amount = float(asset.min_order_size) if asset.min_order_size else None
+            except Exception:
+                min_order_amount = None
+            # Compute min order cost from min amount and current price
+            if min_order_amount is not None and current_price:
+                min_order_cost = min_order_amount * current_price
+            else:
+                min_order_cost = None
 
             # Past trades for this specific coin (last 10 closed sells)
             past_trades = [
