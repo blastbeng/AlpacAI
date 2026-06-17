@@ -73,6 +73,8 @@ def get_quotes(
                     if b.open and b.open > 0:
                         result[sym]["change_24h"] = ((b.close - b.open) / b.open) * 100
                     result[sym]["last"] = b.close  # use close as "last"
+                    result[sym]["percentage"] = result[sym]["change_24h"]
+                    result[sym]["quoteVolume"] = result[sym]["volume"]
     except Exception as e:
         logger.warning(f"Could not fetch daily bars for volume/change: {e}")
     return result
