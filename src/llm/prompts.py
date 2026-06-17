@@ -423,10 +423,10 @@ def build_stock_selection_prompt(
 
     prompt = f"""Current base currency: {base_currency}
 Your available {base_currency} balance: {base_balance:.2f}
-Maximum number of stocks to trade: {max_coins}
-Budget per stock: {per_coin_budget:.2f} {base_currency}
+Maximum number of stocks to trade: {max_symbols}
+Budget per stock: {per_symbol_budget:.2f} {base_currency}
 Available timeframes: {json.dumps(settings.OHLCV_TIMEFRAMES)}
-Currently tracked stocks (with assigned timeframes): {json.dumps(current_coins) if current_coins else "None"}"""
+Currently tracked stocks (with assigned timeframes): {json.dumps(current_symbols) if current_symbols else "None"}"""
 
     # --- Open positions summary ---
     if open_positions:
@@ -447,9 +447,9 @@ Currently tracked stocks (with assigned timeframes): {json.dumps(current_coins) 
             "If you resume, new positions can be opened alongside these.\n"
         )
 
-    if coin_tenure:
+    if symbol_tenure:
         prompt += "\n**Stock tenure (how long each stock has been continuously tracked, in seconds):**\n"
-        for sym, sec in coin_tenure.items():
+        for sym, sec in symbol_tenure.items():
             prompt += f"  {sym}: {sec:.0f}s\n"
         prompt += (
             "Stocks that have been tracked for longer periods allow the bot to accumulate more "
@@ -458,9 +458,9 @@ Currently tracked stocks (with assigned timeframes): {json.dumps(current_coins) 
             "reason to drop them (e.g., delisting, severe negative sentiment, consistent losses, "
             "or budget constraints). Only replace a stock if the new candidate is clearly superior.\n"
         )
-    if coin_max_tenure:
+    if symbol_max_tenure:
         prompt += "\n**Current max tenure per stock (hours, if set):**\n"
-        for sym, hours in coin_max_tenure.items():
+        for sym, hours in symbol_max_tenure.items():
             if hours is not None:
                 prompt += f"  {sym}: {hours:.1f}h\n"
         prompt += (
@@ -477,7 +477,7 @@ Available trading pairs with market data and minimum trade cost (in {base_curren
 
 **Your primary objective is profit across short, medium, and long timeframes. Prioritize stocks where you find the most profit potential, regardless of timeframe.** Prioritize stocks with strong momentum, high volume, and clear trends on multiple timeframes. Avoid stocks that are flat or declining on all timeframes. You may keep current stocks only if they still show potential on at least one timeframe.
 
-Select between 0 and {max_coins} stocks to trade. If market conditions are extremely unfavorable (e.g., high losses, poor momentum, negative sentiment), you may select 0 stocks to pause trading until the next evaluation. You decide the exact number based on how many high‑quality opportunities you see. If market conditions are poor, you may choose fewer stocks (even 0 or 1) to concentrate capital on the best setup. If many strong setups exist, you may select up to {max_coins}. You MUST only select stocks where the per-stock budget ({per_coin_budget:.2f} {base_currency}) is greater than or equal to the stock's min_trade_cost. Skip any stock that does not meet this requirement. Prefer stocks with high volume and positive momentum. You may keep some current stocks if they are still promising and meet the budget requirement, or replace them. **Prefer to keep stocks that have been tracked for a while** – they have more historical data and the bot has already invested in learning their behaviour. Only drop a stock if it shows clear deterioration (e.g., negative momentum on all timeframes, poor win rate, or strongly negative sentiment).
+Select between 0 and {max_symbols} stocks to trade. If market conditions are extremely unfavorable (e.g., high losses, poor momentum, negative sentiment), you may select 0 stocks to pause trading until the next evaluation. You decide the exact number based on how many high‑quality opportunities you see. If market conditions are poor, you may choose fewer stocks (even 0 or 1) to concentrate capital on the best setup. If many strong setups exist, you may select up to {max_symbols}. You MUST only select stocks where the per-stock budget ({per_symbol_budget:.2f} {base_currency}) is greater than or equal to the stock's min_trade_cost. Skip any stock that does not meet this requirement. Prefer stocks with high volume and positive momentum. You may keep some current stocks if they are still promising and meet the budget requirement, or replace them. **Prefer to keep stocks that have been tracked for a while** – they have more historical data and the bot has already invested in learning their behaviour. Only drop a stock if it shows clear deterioration (e.g., negative momentum on all timeframes, poor win rate, or strongly negative sentiment).
 
 **Use the historical performance data to guide your selection.** Prefer stocks that have a positive average P&L and a win rate above 50% in recent trades. Avoid stocks that have a string of losses or a negative average P&L, unless there is a strong technical or news‑driven reason to include them.
 
@@ -487,7 +487,7 @@ Each symbol can only appear once in your selection. Choose the single best timef
 
 Return a JSON object with the following fields:
 - "coins": a JSON array of objects, each with "symbol" and "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h"). Each object may optionally include "max_tenure_hours" (a positive float, hours) to force-sell the stock after that many hours in the portfolio. Omit or set to null for no limit.
-- "max_coins": an integer between 0 and {max_coins} indicating how many stocks you actually want to trade. Set to 0 to pause trading. This must equal the length of the "coins" array.
+- "max_coins": an integer between 0 and {max_symbols} indicating how many stocks you actually want to trade. Set to 0 to pause trading. This must equal the length of the "coins" array.
 - "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
 You may optionally include "coin_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.
@@ -519,11 +519,11 @@ Example: {{"coins": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours": 
         "- Only pause if NO such opportunities exist, or if the account is in significant drawdown with no high‑confidence setups.\n"
         "- Avoid pausing solely because of a bad market index (e.g., high fear, low breadth). A fearful market often presents the best buying opportunities.\n"
     )
-    if coin_scores:
+    if symbol_scores:
         prompt += "\nScalping suitability scores (0-1, higher = better for quick small profits):\n"
         for sym in available_pairs:
-            if sym in coin_scores:
-                prompt += f"  {sym}: {coin_scores[sym]:.3f}\n"
+            if sym in symbol_scores:
+                prompt += f"  {sym}: {symbol_scores[sym]:.3f}\n"
         prompt += (
             "Prioritise coins with higher scores, but use your own judgement. "
             "The score combines volume, volatility, spread, and momentum.\n"
@@ -544,14 +544,14 @@ Example: {{"coins": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours": 
             "Even if the overall market looks bad, one or more of these may still offer a profitable scalp. "
             "Use this list to decide whether to pause or to trade a reduced number of stocks.\n"
         )
-    if coin_spreads or coin_depths:
+    if symbol_spreads or symbol_depths:
         prompt += "\nOrder book metrics for top stocks (lower spread & higher depth = better for scalping):\n"
         for sym in available_pairs:
             parts = []
-            if sym in coin_spreads:
-                parts.append(f"spread={coin_spreads[sym]:.3f}%")
-            if sym in coin_depths:
-                parts.append(f"depth={coin_depths[sym]:.2f}")
+            if sym in symbol_spreads:
+                parts.append(f"spread={symbol_spreads[sym]:.3f}%")
+            if sym in symbol_depths:
+                parts.append(f"depth={symbol_depths[sym]:.2f}")
             if parts:
                 prompt += f"  {sym}: {', '.join(parts)}\n"
         prompt += "Prefer stocks with spread < 0.2% and high depth for scalping very small percentages.\n"
@@ -576,9 +576,9 @@ Example: {{"coins": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours": 
             "Use this longer-term data to assess sustained trends and avoid stocks in prolonged decline. "
             "Prefer stocks with consistent upward momentum over the full period.\n"
         )
-    if coin_indicators:
+    if symbol_indicators:
         prompt += "\nTechnical indicators for candidate stocks:\n"
-        for sym, tf_indicators in coin_indicators.items():
+        for sym, tf_indicators in symbol_indicators.items():
             lines = [f"{sym}:"]
             for tf, ind in tf_indicators.items():
                 lines.append(f"  [{tf}]")
