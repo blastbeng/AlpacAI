@@ -333,7 +333,7 @@ The bot will NOT use any default values for required parameters. If you omit any
 """
 
 def build_stock_selection_prompt(
-    available_pairs: List[str],
+    available_symbols: List[str],
     current_symbols: List[Dict[str, str]],
     max_symbols: int,
     base_currency: str,
@@ -366,7 +366,7 @@ def build_stock_selection_prompt(
     """Build a prompt to ask the LLM which stocks/ETFs to trade."""
     # Summarize tickers and limits for the prompt
     ticker_summary = {}
-    for symbol in available_pairs:
+    for symbol in available_symbols:
         if symbol in tickers:
             t = tickers[symbol]
             limits = market_limits.get(symbol, {})
@@ -377,15 +377,14 @@ def build_stock_selection_prompt(
                 "min_trade_cost": limits.get("min_cost"),  # now always a number
             }
             if settings.NEWS_ENABLED:
-                base = symbol.split("/")[0] if "/" in symbol else symbol
-                agg = get_aggregate_sentiment_from_db(base, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+                agg = get_aggregate_sentiment_from_db(symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
                 if agg:
                     ticker_summary[symbol]["sentiment"] = agg
 
     # Build OHLCV summary if provided
     ohlcv_summary = {}
     if ohlcv_data:
-        for symbol in available_pairs:
+        for symbol in available_symbols:
             if symbol in ohlcv_data:
                 tf_data = ohlcv_data[symbol]
                 summary = {}
@@ -410,13 +409,12 @@ def build_stock_selection_prompt(
     news_section = ""
     if settings.NEWS_ENABLED:
         news_lines = []
-        pairs_to_check = available_pairs[:50]
-        for pair in pairs_to_check:
-            base = pair.split("/")[0] if "/" in pair else pair
-            articles = get_news_for_symbol(base, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+        symbols_to_check = available_symbols[:50]
+        for sym in symbols_to_check:
+            articles = get_news_for_symbol(sym, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
             if articles:
                 formatted = _format_news_for_prompt(articles)
-                news_lines.append(f"**{pair}**\n{formatted}")
+                news_lines.append(f"**{sym}**\n{formatted}")
         if news_lines:
             news_section = "Recent news for top stocks:\n\n" + "\n\n".join(news_lines)
 
@@ -471,7 +469,7 @@ Currently tracked stocks (with assigned timeframes): {json.dumps(current_symbols
         )
 
     prompt += f"""
-Available trading pairs with market data and minimum trade cost (in {base_currency}):
+Available symbols with market data and minimum trade cost (in {base_currency}):
 {json.dumps(ticker_summary, indent=2)}
 
 **Your primary objective is profit across short, medium, and long timeframes. Prioritize stocks where you find the most profit potential, regardless of timeframe.** Prioritize stocks with strong momentum, high volume, and clear trends on multiple timeframes. Avoid stocks that are flat or declining on all timeframes. You may keep current stocks only if they still show potential on at least one timeframe.
@@ -520,7 +518,7 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
     )
     if symbol_scores:
         prompt += "\nScalping suitability scores (0-1, higher = better for quick small profits):\n"
-        for sym in available_pairs:
+        for sym in available_symbols:
             if sym in symbol_scores:
                 prompt += f"  {sym}: {symbol_scores[sym]:.3f}\n"
         prompt += (
@@ -545,7 +543,7 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
         )
     if symbol_spreads or symbol_depths:
         prompt += "\nOrder book metrics for top stocks (lower spread & higher depth = better for scalping):\n"
-        for sym in available_pairs:
+        for sym in available_symbols:
             parts = []
             if sym in symbol_spreads:
                 parts.append(f"spread={symbol_spreads[sym]:.3f}%")
@@ -557,7 +555,7 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
     if ohlcv_summary:
         prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
     if correlation_matrix:
-        # Trim to only include pairs that appear in the candidate list
+        # Trim to only include symbols that appear in the candidate list
         trimmed = {}
         for sym_a, row in correlation_matrix.items():
             trimmed[sym_a] = {sym_b: v for sym_b, v in row.items()}
@@ -633,10 +631,9 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
     if news_sentiment:
         prompt += "\n## News Sentiment\n"
         prompt += "Aggregate sentiment from recent news articles (compound score -1 to +1, higher = more positive):\n"
-        for sym in available_pairs:
-            base = sym.split("/")[0] if "/" in sym else sym
-            if base in news_sentiment:
-                ns = news_sentiment[base]
+        for sym in available_symbols:
+            if sym in news_sentiment:
+                ns = news_sentiment[sym]
                 prompt += (
                     f"- {sym}: compound={ns['avg_compound']}, "
                     f"positive={ns['positive']}, negative={ns['negative']}, "
@@ -655,7 +652,7 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
         )
     if volume_trends:
         prompt += "\nVolume trend (24h volume relative to recent average):\n"
-        for sym in available_pairs:
+        for sym in available_symbols:
             if sym in volume_trends and volume_trends[sym] is not None:
                 prompt += f"  {sym}: {volume_trends[sym]:.2f}x\n"
         prompt += (
@@ -1322,8 +1319,8 @@ Maximum symbols to trade: {max_symbols}
         )
     if full_market_breadth:
         prompt += (
-            f"\nFull market breadth (all available pairs): {full_market_breadth['positive_pct']}% of "
-            f"{full_market_breadth['total_count']} pairs have a positive 24h change "
+            f"\nFull market breadth (all available symbols): {full_market_breadth['positive_pct']}% of "
+            f"{full_market_breadth['total_count']} symbols have a positive 24h change "
             f"({full_market_breadth['positive_count']} positive).\n"
             "This is a broader measure than the candidate‑only breadth. "
             "Use it to confirm the overall market health. "
