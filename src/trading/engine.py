@@ -1645,7 +1645,7 @@ class TradingEngine:
 
         # Compute coin tenure for the prompt
         coin_tenure = {}
-        for sym, first_seen in self._coin_first_seen.items():
+        for sym, first_seen in self._symbol_first_seen.items():
             coin_tenure[sym] = round(now - first_seen)
 
         # Compute current max tenure per coin for the prompt
@@ -2106,11 +2106,11 @@ class TradingEngine:
         now_ts = time.time()
         new_symbols = {entry["symbol"] for entry in self.current_symbols}
         for sym in new_symbols:
-            if sym not in self._coin_first_seen:
-                self._coin_first_seen[sym] = now_ts
-        for sym in list(self._coin_first_seen.keys()):
+            if sym not in self._symbol_first_seen:
+                self._symbol_first_seen[sym] = now_ts
+        for sym in list(self._symbol_first_seen.keys()):
             if sym not in new_symbols:
-                del self._coin_first_seen[sym]
+                del self._symbol_first_seen[sym]
 
         # Trigger immediate backfill for newly selected coins
         old_symbols = {entry["symbol"] for entry in old_coins}
