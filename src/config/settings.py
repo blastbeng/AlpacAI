@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     # Base currency
     BASE_CURRENCY: str = "USD"
 
-    # Max stocks to trade
-    MAX_COINS: int = 10
+    # Max symbols to trade simultaneously
+    MAX_SYMBOLS: int = 10
 
     @field_validator("TRADING_MODE")
     @classmethod
@@ -30,19 +30,19 @@ class Settings(BaseSettings):
             raise ValueError("TRADING_MODE must be 'paper' or 'live'")
         return v
 
-    @field_validator("MAX_COINS")
+    @field_validator("MAX_SYMBOLS")
     @classmethod
-    def validate_max_coins(cls, v: int) -> int:
+    def validate_max_symbols(cls, v: int) -> int:
         if v < 1:
-            raise ValueError("MAX_COINS must be at least 1")
+            raise ValueError("MAX_SYMBOLS must be at least 1")
         return v
 
-    # Coin selection limits
-    COIN_SELECTION_TOP_VOLUME_LIMIT: int = 50
-    COIN_SELECTION_MAX_PAIRS: int = 100
-    COIN_SELECTION_MIN_SENTIMENT: float = -1.0   # -1.0 = disabled
+    # Symbol selection limits
+    SYMBOL_SELECTION_TOP_VOLUME_LIMIT: int = 50
+    SYMBOL_SELECTION_MAX_SYMBOLS: int = 100
+    SYMBOL_SELECTION_MIN_SENTIMENT: float = -1.0   # -1.0 = disabled
     FALLBACK_MIN_24H_VOLUME: float = 0.0
-    EXCLUDED_PAIRS: list[str] = []
+    EXCLUDED_SYMBOLS: list[str] = []
 
     # Maximum number of consecutive "keep paused" LLM decisions before the engine
     # force‑resumes trading with a reduced risk multiplier.
@@ -78,8 +78,8 @@ class Settings(BaseSettings):
     # Market data download interval (seconds)
     MARKET_DATA_REFRESH_SECONDS: int = 300
 
-    # OHLCV download staggering
-    OHLCV_DOWNLOAD_COIN_DELAY_SECONDS: float = 2.0
+    # OHLCV download staggering (delay between symbols)
+    OHLCV_DOWNLOAD_SYMBOL_DELAY_SECONDS: float = 2.0
 
     # Maximum number of OHLCV candles to insert in a single backfill call.
     # Prevents memory exhaustion and timeouts when backfilling large ranges.
@@ -296,11 +296,11 @@ class Settings(BaseSettings):
     NEWS_INITIAL_FETCH_TIMEOUT_SECONDS: float = 60.0   # max seconds for initial news fetch on startup
     NEWS_RETENTION_SECONDS: int = 86400   # delete articles older than 24 hours
 
-    # News-driven coin discovery
-    NEWS_COIN_DISCOVERY_ENABLED: bool = False
-    NEWS_COIN_DISCOVERY_MAX_COINS: int = 5
-    NEWS_COIN_DISCOVERY_MIN_SENTIMENT: float = 0.3
-    NEWS_COIN_DISCOVERY_MIN_ARTICLES: int = 3
+    # News-driven symbol discovery
+    NEWS_SYMBOL_DISCOVERY_ENABLED: bool = False
+    NEWS_SYMBOL_DISCOVERY_MAX_SYMBOLS: int = 5
+    NEWS_SYMBOL_DISCOVERY_MIN_SENTIMENT: float = 0.3
+    NEWS_SYMBOL_DISCOVERY_MIN_ARTICLES: int = 3
 
     # Facebook (Graph API)
     FACEBOOK_PAGE_ACCESS_TOKEN: Optional[str] = None
@@ -334,6 +334,7 @@ class Settings(BaseSettings):
     LUNARCRUSH_MAX_ARTICLES: int = 5
     SANTIMENT_MAX_ARTICLES: int = 5
     MESSARI_MAX_ARTICLES: int = 5
+    # (crypto-specific – will be removed in a later step)
     COINMARKETCAP_MAX_ARTICLES: int = 5
 
     # Rate limiting for news providers
