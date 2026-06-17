@@ -11,7 +11,7 @@ from src.config.settings import settings
 from src.exchanges.fees import get_fee_rate
 from src.exchanges.factory import get_exchange, get_pro_exchange, get_data_client
 from src.exchanges.ws_manager import WebSocketManager
-from src.exchanges.market_data import get_available_pairs, get_tickers, get_order_book, get_multi_timeframe_ohlcv, get_quotes
+from src.exchanges.market_data import get_available_pairs, get_tickers, get_order_book, get_multi_timeframe_ohlcv, get_quotes, get_bars_range
 from src.trading.paper_simulator import PaperSimulator
 from src.trading.live_trader import LiveTrader
 from src.llm.cache import get_cached_llm_response, compute_market_hash
@@ -586,10 +586,10 @@ class TradingEngine:
             try:
                 async with self._exchange_semaphore:
                     candles = await asyncio.to_thread(
-                        self.exchange.fetch_ohlcv, symbol, timeframe, since=since, limit=500
+                        get_bars_range, self.data_client, symbol, timeframe, start_ms=since, limit=500
                     )
             except Exception as e:
-                logger.warning(f"fetch_ohlcv failed for {symbol} {timeframe} at {since}: {e}")
+                logger.warning(f"get_bars_range failed for {symbol} {timeframe} at {since}: {e}")
                 break
 
             if not candles:

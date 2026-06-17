@@ -132,6 +132,42 @@ def get_multi_timeframe_bars(
     return result
 
 
+def get_bars_range(
+    data_client: StockHistoricalDataClient,
+    symbol: str,
+    timeframe: str,
+    start_ms: int,
+    limit: int = 500,
+) -> List[List[float]]:
+    """Fetch OHLCV bars from a start timestamp (ms) up to the present.
+
+    Returns a list of candles [timestamp_ms, open, high, low, close, volume].
+    """
+    from datetime import datetime, timezone
+    alpaca_tf = TIMEFRAME_MAP.get(timeframe)
+    if not alpaca_tf:
+        logger.warning(f"Unsupported timeframe: {timeframe}")
+        return []
+    start_dt = datetime.fromtimestamp(start_ms / 1000.0, tz=timezone.utc)
+    request = StockBarsRequest(
+        symbol_or_symbols=[symbol],
+        timeframe=alpaca_tf,
+        start=start_dt,
+        limit=limit,
+    )
+    try:
+        bars = data_client.get_stock_bars(request)
+        symbol_bars = bars.get(symbol, [])
+        candles = [
+            [int(bar.timestamp.timestamp() * 1000), bar.open, bar.high, bar.low, bar.close, bar.volume]
+            for bar in symbol_bars
+        ]
+        return candles
+    except Exception as e:
+        logger.warning(f"Failed to fetch bars range for {symbol} {timeframe}: {e}")
+        return []
+
+
 # Keep old names for backward compatibility during migration.
 # They will be removed once the engine is fully adapted.
 def get_available_pairs(exchange, base_currency: str) -> List[str]:
