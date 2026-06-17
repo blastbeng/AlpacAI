@@ -221,32 +221,6 @@ def fetch_news_for_symbol(symbol: str) -> List[Dict[str, str]]:
     return unique
 
 
-def get_aggregate_sentiment(symbol: str) -> Optional[Dict[str, Any]]:
-    """
-    Return an aggregate sentiment summary for a symbol.
-    Returns None if no articles are available.
-    """
-    articles = fetch_news_for_symbol(symbol)
-    if not articles:
-        return None
-    compounds = [a["sentiment"]["compound"] for a in articles if "sentiment" in a]
-    if not compounds:
-        return None
-    avg_compound = sum(compounds) / len(compounds)
-    # Count labels
-    labels = [a["sentiment"]["label"] for a in articles if "sentiment" in a]
-    pos = labels.count("positive")
-    neg = labels.count("negative")
-    neu = labels.count("neutral")
-    return {
-        "avg_compound": round(avg_compound, 4),
-        "positive": pos,
-        "negative": neg,
-        "neutral": neu,
-        "total_articles": len(articles),
-    }
-
-
 def discover_trending_stocks(
     base_currency: str,
     existing_pairs: List[str],

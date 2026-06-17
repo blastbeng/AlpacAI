@@ -214,15 +214,6 @@ def save_trading_state(key: str, value: Any):
     conn.close()
 
 
-@retry_on_db_lock()
-def delete_trading_state(key: str):
-    """Remove a trading state key."""
-    conn = get_connection()
-    conn.execute("DELETE FROM trading_state WHERE key = ?", (key,))
-    conn.commit()
-    conn.close()
-
-
 # ---------- Paper balance helpers ----------
 
 @retry_on_db_lock()

@@ -53,7 +53,7 @@ from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm, LLMStrategy
 from src.strategies.validator import validate_signal
 from src.utils.redis_client import get_redis_client
-from src.database import load_trading_state, save_trading_state, delete_trading_state, insert_trade, get_performance, store_news_articles, get_aggregate_sentiment_from_db, get_news_for_symbol, get_ohlcv, get_latest_ohlcv_timestamp, insert_ohlcv_batch, save_paper_balances, load_paper_balances, cleanup_old_ohlcv
+from src.database import load_trading_state, save_trading_state, insert_trade, get_performance, store_news_articles, get_aggregate_sentiment_from_db, get_news_for_symbol, get_ohlcv, get_latest_ohlcv_timestamp, insert_ohlcv_batch, save_paper_balances, load_paper_balances, cleanup_old_ohlcv
 
 logger = logging.getLogger(__name__)
 
@@ -383,22 +383,6 @@ class TradingEngine:
         return None
 
 
-
-    def _get_news_summary(self, symbol: str) -> str:
-        """Return a very short summary of the latest news article for the symbol."""
-        if not settings.NEWS_ENABLED:
-            return ""
-        try:
-            base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
-            articles = get_news_for_symbol(base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
-            if articles:
-                # Use the most recent article's title, truncated
-                title = articles[0].get("title", "")
-                if title:
-                    return title[:80] + ("..." if len(title) > 80 else "")
-        except Exception:
-            pass
-        return ""
 
     async def _compute_volume_trend(self, symbol: str, current_volume: float) -> Optional[float]:
         """Compute volume trend as ratio of current 24h volume to EMA of past volumes.
