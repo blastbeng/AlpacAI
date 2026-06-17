@@ -228,13 +228,13 @@
         .green { color: var(--green); }
         .red { color: var(--red); }
 
-        .clickable-coin {
+        .clickable-symbol {
             cursor: pointer;
             color: var(--accent);
             text-decoration: underline;
             text-underline-offset: 2px;
         }
-        .clickable-coin:hover {
+        .clickable-symbol:hover {
             opacity: 0.8;
         }
 
@@ -343,7 +343,7 @@
 
             <div class="card">
                 <h2>📈 Tracked Symbols</h2>
-                <div id="coins">-</div>
+                <div id="symbols">-</div>
             </div>
 
             <div class="card">
@@ -456,13 +456,13 @@
             }
 
             // Symbols
-            const symbolsDiv = document.getElementById('coins');
+            const symbolsDiv = document.getElementById('symbols');
             symbolsDiv.innerHTML = '';
             if (data.current_symbols && data.current_symbols.length > 0) {
                 data.current_symbols.forEach(entry => {
                     const span = document.createElement('span');
                     span.textContent = `📈 ${entry.symbol} (${entry.timeframe})`;
-                    span.className = 'clickable-coin';
+                    span.className = 'clickable-symbol';
                     span.style.marginRight = '8px';
                     span.onclick = () => openChart(entry.symbol, entry.timeframe);
                     symbolsDiv.appendChild(span);
@@ -526,7 +526,7 @@
                         const row = posBody.insertRow();
                         const symCell = row.insertCell();
                         symCell.textContent = sym;
-                        symCell.className = 'clickable-coin';
+                        symCell.className = 'clickable-symbol';
                         symCell.onclick = () => openChart(sym);
                         row.insertCell().textContent = pos.timeframe || '?';
                         row.insertCell().textContent = amount.toFixed(6);
