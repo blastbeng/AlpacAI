@@ -4443,7 +4443,8 @@ class TradingEngine:
                     if not self.ws_manager.healthy:
                         # Fallback to REST when WebSocket is down
                         try:
-                            ticker = await asyncio.to_thread(self.exchange.fetch_ticker, symbol)
+                            tickers_map = get_tickers(self.data_client, [symbol])
+                            ticker = tickers_map.get(symbol.split("/")[0])
                         except Exception:
                             continue
                     else:
