@@ -2609,14 +2609,21 @@ class TradingEngine:
                 if llm_pause_time_raw:
                     try:
                         llm_pause_time = float(llm_pause_time_raw)
-                        if time.time() - llm_pause_time < MIN_LLM_PAUSE_DURATION:
-                            remaining = MIN_LLM_PAUSE_DURATION - (time.time() - llm_pause_time)
+                        _min_pause = MIN_LLM_PAUSE_DURATION
+                        try:
+                            raw = await asyncio.to_thread(self.redis.get, "trading:min_llm_pause_duration")
+                            if raw:
+                                _min_pause = int(raw)
+                        except Exception:
+                            pass
+                        if time.time() - llm_pause_time < _min_pause:
+                            remaining = _min_pause - (time.time() - llm_pause_time)
                             logger.info(f"Ignoring LLM resume request: minimum pause duration not elapsed ({remaining:.0f}s remaining).")
                             if self.notifier:
                                 await self.notifier.send_notification(
                                     f"⏸️ LLM resume request ignored: minimum pause duration "
-                                    f"({MIN_LLM_PAUSE_DURATION}s) not yet elapsed ({remaining:.0f}s remaining).",
-                                    summary={"action": "RESUME", "reason": f"LLM resume blocked by minimum pause duration ({MIN_LLM_PAUSE_DURATION}s)", "model_type": "actuator"}
+                                    f"({_min_pause}s) not yet elapsed ({remaining:.0f}s remaining).",
+                                    summary={"action": "RESUME", "reason": f"LLM resume blocked by minimum pause duration ({_min_pause}s)", "model_type": "actuator"}
                                 )
                             return
                     except (ValueError, TypeError):
