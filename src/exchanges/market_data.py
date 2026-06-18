@@ -133,7 +133,6 @@ def get_multi_timeframe_bars(
         except Exception as e:
             logger.warning(f"Failed to fetch bars for {symbol} {tf}: {e}")
             result[tf] = []
-        time.sleep(0.3)  # small delay to avoid rate limits
     return result
 
 
