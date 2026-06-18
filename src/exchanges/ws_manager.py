@@ -68,8 +68,8 @@ class WebSocketManager:
         removed = self.symbols - new_symbols
         added = new_symbols - self.symbols
         if removed:
-            self.stream.unsubscribe_quotes(list(removed))
-            self.stream.unsubscribe_trades(list(removed))
+            self.stream.unsubscribe_quotes(*removed)
+            self.stream.unsubscribe_trades(*removed)
         if added:
             self.stream.subscribe_quotes(self._on_quote, *added)
             self.stream.subscribe_trades(self._on_trade, *added)
