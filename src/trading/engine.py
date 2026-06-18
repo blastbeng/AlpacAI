@@ -2605,13 +2605,30 @@ class TradingEngine:
 
                 existing_symbols = {c['symbol']: c for c in self.current_symbols}
                 for entry in deduped[: self.effective_max_symbols]:
-                    if entry['symbol'] in existing_symbols and 'entry_time' in existing_symbols[entry['symbol']]:
-                        entry['entry_time'] = existing_symbols[entry['symbol']]['entry_time']
+                    sym = entry['symbol']
+                    new_tf = entry['timeframe']
+                    if sym in existing_symbols:
+                        old_entry = existing_symbols[sym]
+                        if 'entry_time' in old_entry:
+                            entry['entry_time'] = old_entry['entry_time']
+                        else:
+                            entry['entry_time'] = time.time()
+                        
+                        # Preserve max_tenure_hours from existing symbol if LLM didn't specify it
+                        if 'max_tenure_hours' not in entry and 'max_tenure_hours' in old_entry:
+                            entry['max_tenure_hours'] = old_entry['max_tenure_hours']
+                            
+                        # Check if timeframe changed for an existing symbol
+                        old_tf = old_entry.get('timeframe')
+                        if old_tf != new_tf:
+                            logger.info(f"Timeframe changed for {sym}: {old_tf} -> {new_tf}")
+                            if sym in self.positions:
+                                self.positions[sym]['timeframe'] = new_tf
+                                # Clear max hold expired flags since the timeframe context changed
+                                self.positions[sym].pop("_max_hold_expired", None)
+                                self.positions[sym].pop("_max_hold_expired_count", None)
                     else:
                         entry['entry_time'] = time.time()
-                    # Preserve max_tenure_hours from existing symbol if LLM didn't specify it
-                    if 'max_tenure_hours' not in entry and entry['symbol'] in existing_symbols and 'max_tenure_hours' in existing_symbols[entry['symbol']]:
-                        entry['max_tenure_hours'] = existing_symbols[entry['symbol']]['max_tenure_hours']
                 self.current_symbols = deduped[: self.effective_max_symbols]
 
                 # If LLM explicitly chose zero symbols, respect that and don't fall back to volume-based selection
