@@ -452,11 +452,7 @@ Currently tracked stocks (with assigned timeframes): {json.dumps(current_symbols
 Available symbols with market data and minimum trade cost (in {base_currency}):
 {json.dumps(ticker_summary, indent=2)}
 
-**Your primary objective is profit across short, medium, and long timeframes. Prioritize stocks where you find the most profit potential, regardless of timeframe.** Prioritize stocks with strong momentum, high volume, and clear trends on multiple timeframes. Avoid stocks that are flat or declining on all timeframes. You may keep current stocks only if they still show potential on at least one timeframe.
-
 Select between 0 and {max_symbols} stocks to trade. If market conditions are extremely unfavorable (e.g., high losses, poor momentum, negative sentiment), you may select 0 stocks to pause trading until the next evaluation. You decide the exact number based on how many high‑quality opportunities you see. If market conditions are poor, you may choose fewer stocks (even 0 or 1) to concentrate capital on the best setup. If many strong setups exist, you may select up to {max_symbols}. You MUST only select stocks where the per-stock budget ({per_symbol_budget:.2f} {base_currency}) is greater than or equal to the stock's min_trade_cost. Skip any stock that does not meet this requirement. Prefer stocks with high volume and positive momentum. You may keep some current stocks if they are still promising and meet the budget requirement, or replace them. **Prefer to keep stocks that have been tracked for a while** – they have more historical data and the bot has already invested in learning their behaviour. Only drop a stock if it shows clear deterioration (e.g., negative momentum on all timeframes, poor win rate, or strongly negative sentiment).
-
-**Use the historical performance data to guide your selection.** Prefer stocks that have a positive average P&L and a win rate above 50% in recent trades. Avoid stocks that have a string of losses or a negative average P&L, unless there is a strong technical or news‑driven reason to include them.
 
 Each symbol can only appear once in your selection. Choose the single best timeframe for each stock based on the multi-timeframe OHLCV data.
 
