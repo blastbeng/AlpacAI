@@ -4923,7 +4923,7 @@ class TradingEngine:
             try:
                 ticker = self.ws_manager.get_ticker(pos['symbol'])
                 if ticker is None:
-                    tickers_map = await asyncio.to_thread(get_quotes, self.data_client, [pos['symbol'].split("/")[0]])
+                    tickers_map = get_quotes(self.data_client, [pos['symbol'].split("/")[0]])
                     ticker = tickers_map.get(pos['symbol'].split("/")[0])
                 price = ticker['last'] if ticker and ticker.get('last') else 0.0
                 pos_value = pos['amount'] * price
