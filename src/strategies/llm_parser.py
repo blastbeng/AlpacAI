@@ -58,8 +58,26 @@ def parse_llm_response(response_text: str) -> Signal:
             backtest_summary = None
 
         # --- dynamic trading parameters ---
-        # The LLM puts these inside strategy.parameters
-        params = strategy_params if isinstance(strategy_params, dict) else {}
+        # The LLM puts these inside strategy.parameters, but may also put them at the root level.
+        # We merge root-level parameters with strategy.parameters, preferring strategy.parameters.
+        params = {}
+        known_params = [
+            "stop_loss_pct", "take_profit_pct", "position_size_fraction", "trailing_stop",
+            "max_hold_time_seconds", "stop_loss_method", "stop_loss_atr_multiple",
+            "trailing_stop_distance_pct", "trailing_stop_activation_pct", "cooldown_after_loss_seconds",
+            "portfolio_risk_adjustment_factor", "trailing_take_profit", "trailing_take_profit_distance_pct",
+            "breakeven_activation_pct", "lock_profit_activation_pct", "lock_profit_level_pct",
+            "partial_take_profit_pct", "partial_take_profit_fraction", "partial_take_profit_levels",
+            "max_risk_per_trade_pct", "min_profit_per_trade", "min_risk_reward_ratio",
+            "max_spread_pct", "min_depth_at_take_profit", "max_slippage_pct",
+            "max_unrealized_loss_pct", "min_confidence", "news_sentiment_exit_threshold",
+            "strategy_interval_seconds", "limit_price", "time_in_force"
+        ]
+        for k in known_params:
+            if k in data:
+                params[k] = data[k]
+        if isinstance(strategy_params, dict):
+            params.update(strategy_params)
         
         stop_loss = params.get("stop_loss_pct")
         take_profit = params.get("take_profit_pct")
