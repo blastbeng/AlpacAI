@@ -417,6 +417,8 @@ Return a JSON object with the following fields:
 - "regime_volatility_low_pct": a float (e.g., 20.0) indicating the ATR percentile below which volatility is considered low.
 - "regime_bb_squeeze_width": a float (e.g., 0.02) indicating the Bollinger Band width below which the market is considered in a squeeze.
 - "regime_bb_expansion_width": a float (e.g., 0.08) indicating the Bollinger Band width above which the market is considered in expansion.
+- "min_stop_loss_atr_mult": a float (e.g., 1.5) indicating the minimum stop-loss as a multiple of ATR%. Trades with a fixed stop below this multiple of ATR will be rejected. Lower values allow tighter stops; higher values require wider stops.
+- "min_max_hold_time_mult": a float (e.g., 2.0) indicating the minimum max_hold_time_seconds as a multiple of the candle timeframe (in seconds). Trades with max hold time below this multiple will be rejected.
 - "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
 You may optionally include "stock_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.

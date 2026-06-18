@@ -2059,6 +2059,18 @@ class TradingEngine:
                 else:
                     await asyncio.to_thread(self.redis.delete, "trading:regime_bb_expansion_width")
 
+                min_stop_atr_mult = parsed.get("min_stop_loss_atr_mult")
+                if min_stop_atr_mult is not None and isinstance(min_stop_atr_mult, (int, float)) and min_stop_atr_mult > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:min_stop_loss_atr_mult", 7 * 24 * 3600, str(float(min_stop_atr_mult)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:min_stop_loss_atr_mult")
+
+                min_hold_time_mult = parsed.get("min_max_hold_time_mult")
+                if min_hold_time_mult is not None and isinstance(min_hold_time_mult, (int, float)) and min_hold_time_mult > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:min_max_hold_time_mult", 7 * 24 * 3600, str(float(min_hold_time_mult)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:min_max_hold_time_mult")
+
                 # Optional: LLM can set the global symbol re-evaluation interval
                 new_interval = parsed.get("stock_revaluation_interval_seconds")
                 if new_interval is not None:
@@ -3754,6 +3766,19 @@ class TradingEngine:
             signal.llm_provider = llm_provider
             signal.llm_model = llm_model
             current_price = ticker['last']
+            # Read LLM-configured validator multipliers from Redis
+            min_stop_atr_mult = 1.5
+            min_hold_time_mult = 2.0
+            try:
+                raw = await asyncio.to_thread(self.redis.get, "trading:min_stop_loss_atr_mult")
+                if raw:
+                    min_stop_atr_mult = float(raw)
+                raw = await asyncio.to_thread(self.redis.get, "trading:min_max_hold_time_mult")
+                if raw:
+                    min_hold_time_mult = float(raw)
+            except Exception:
+                pass
+
             validated = validate_signal(
                 signal,
                 fee_rate=fee_rate,
@@ -3761,6 +3786,8 @@ class TradingEngine:
                 price=current_price,
                 spread_pct=spread_pct,
                 timeframe_seconds=tf_seconds,
+                min_stop_atr_mult=min_stop_atr_mult,
+                min_hold_time_mult=min_hold_time_mult,
             )
             validated.model_type = getattr(signal, 'model_type', None)
 
@@ -3806,6 +3833,8 @@ class TradingEngine:
                             price=current_price,
                             spread_pct=spread_pct,
                             timeframe_seconds=tf_seconds,
+                            min_stop_atr_mult=min_stop_atr_mult,
+                            min_hold_time_mult=min_hold_time_mult,
                         )
                         if validated.action != "HOLD":
                             logger.info(f"LLM corrected its signal for {symbol}: {validated.action}")

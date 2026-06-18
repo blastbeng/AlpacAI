@@ -12,6 +12,8 @@ def validate_signal(
     price: Optional[float] = None,
     spread_pct: Optional[float] = None,
     timeframe_seconds: Optional[int] = None,
+    min_stop_atr_mult: float = 1.5,
+    min_hold_time_mult: float = 2.0,
 ) -> Signal:
     """
     Validate a trading signal.
@@ -55,7 +57,7 @@ def validate_signal(
         # Enforce minimum fixed stop-loss relative to ATR (if ATR and price are available)
         if stop_method == "fixed" and atr is not None and price is not None and price > 0 and atr > 0:
             atr_pct = atr / price
-            min_sl = 1.5 * atr_pct
+            min_sl = min_stop_atr_mult * atr_pct
             if sl < min_sl:
                 return Signal(
                     action="HOLD",
@@ -88,14 +90,14 @@ def validate_signal(
         if not isinstance(mht, (int, float)) or mht <= 0:
             return Signal(action="HOLD", confidence=0.0, reasoning="Invalid max_hold_time_seconds")
         # Enforce a minimum max hold time relative to the candle timeframe
-        if timeframe_seconds is not None and mht < 2 * timeframe_seconds:
+        if timeframe_seconds is not None and mht < min_hold_time_mult * timeframe_seconds:
             return Signal(
                 action="HOLD",
                 confidence=0.0,
                 reasoning=(
                     f"max_hold_time_seconds ({mht}s) is too short for the "
                     f"timeframe ({timeframe_seconds}s candles); "
-                    f"minimum is {2 * timeframe_seconds}s"
+                    f"minimum is {min_hold_time_mult * timeframe_seconds}s"
                 )
             )
 
