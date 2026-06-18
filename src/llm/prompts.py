@@ -484,6 +484,7 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
             "Do NOT resume just because market conditions have improved slightly; only resume if you identify specific "
             "stocks with strong setups (high scalping scores, positive sentiment, solid technicals) that are likely to be profitable.\n"
             "If you keep trading paused, include a `\"pause_reason\"` field explaining why.\n"
+            "\nAlso consider the news sentiment data below when deciding whether to resume.\n"
         )
     else:
         prompt += (
@@ -493,6 +494,7 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
             "First, check the **Top Profit Opportunities** section below. If there are stocks with high scalping scores (>0.7), "
             "strong positive sentiment, and clear technical signals, you may still trade them profitably even in a down market.\n"
             "Only pause if NO such opportunities exist, or if the account is in significant drawdown with no high‑confidence setups.\n"
+            "\nAlso consider the news sentiment data below when deciding whether to pause.\n"
         )
     prompt += (
         "\n**When deciding to pause or resume, also consider the news sentiment data provided below.** "
@@ -1552,32 +1554,9 @@ Maximum symbols to trade: {max_symbols}
     prompt += f"""
 **Your primary objective is profit across short, medium, and long timeframes. Prioritize positions where you find the most profit potential, regardless of timeframe.** Use the ATR to set stop-loss and take-profit distances that respect the stock's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on your own risk:reward assessment. You have full freedom to choose the stop distance and reward:risk ratio that you believe will maximise profitability while managing risk.
 
-Interpret the order book metrics:
-- A high spread (>0.5%) suggests low liquidity – be cautious with large orders.
-- A bid/ask volume ratio > 1.5 indicates strong buying pressure (favor BUY); < 0.67 indicates selling pressure (favor SELL).
-- Large bid wall volume relative to ask wall volume suggests support; large ask wall suggests resistance.
-- Order book pressure near 1.0 signals overwhelming buying interest; near 0.0 signals overwhelming selling interest.
-- Depth imbalances: if the imbalance is high (>0.7) at 0.5% but drops at 1%, the support/resistance is thin – expect quick breakouts. If it stays high at 2%, the wall is thick.
-- Order book slope: a high slope means volume builds quickly near the current price (strong wall); a low slope means thin liquidity.
-- Mid-price bias: a positive bias (near ask) suggests sellers are aggressive; a negative bias (near bid) suggests buyers are aggressive.
+Interpret the order book metrics provided (spread, imbalance, pressure, depth, walls) to gauge liquidity and directional pressure.
 
 If the position is already in profit, consider trailing the stop.
-
-**Technical indicators:**
-- RSI > 70 suggests overbought (consider SELL or HOLD); RSI < 30 suggests oversold (consider BUY).
-- MACD histogram turning positive from negative is a bullish signal; turning negative from positive is bearish.
-- Price near the lower Bollinger Band may indicate a buying opportunity; near the upper band a selling opportunity.
-- EMA(9) crossing above EMA(21) is a bullish signal (golden cross); crossing below is bearish (death cross).
-- Use these in combination with order book data to time entries.
-
-**Additional technical indicators:**
-- Stochastic Oscillator (%K, %D): values above 80 indicate overbought, below 20 oversold. Look for bullish cross (%K crossing above %D) near oversold for BUY signals, bearish cross near overbought for SELL.
-- ADX: measures trend strength. ADX > 25 indicates a strong trend; ADX < 20 suggests a ranging market. Use +DI and -DI crossovers to determine trend direction (+DI > -DI = uptrend, -DI > +DI = downtrend).
-- OBV: confirms price trends. Rising OBV with rising price confirms uptrend; divergence (price up, OBV down) warns of weakness.
-- MFI: volume-weighted RSI. Overbought > 80, oversold < 20. Divergences can signal reversals.
-- CCI: measures deviation from average. Values above +100 suggest overbought, below -100 oversold. Use for timing entries/exits.
-- Williams %R: similar to Stochastic, ranges -100 to 0. Values above -20 overbought, below -80 oversold.
-- Ichimoku Cloud: provides trend direction, support/resistance, and momentum in one system. Price above the cloud = uptrend; below = downtrend; inside = ranging/uncertain. Tenkan-sen crossing above Kijun-sen is bullish (golden cross); crossing below is bearish (death cross). The cloud (between Senkou Span A and B) acts as dynamic support/resistance. A thick cloud means strong S/R; a thin cloud is easily broken. Chikou Span (current close) above past prices confirms bullish momentum; below confirms bearish.
 
 You MUST include the following risk parameters in the "parameters" object:
 - stop_loss_method: "fixed" or "atr_multiple". **Prefer "atr_multiple"** – it adapts to current volatility.
