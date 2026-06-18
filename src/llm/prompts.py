@@ -189,6 +189,7 @@ Key principles:
 - Only scale into positions that are already in profit and showing strong, continued momentum. Avoid scaling into losing positions (averaging down) unless you have very high conviction it is a temporary dip.
 - When you scale in, your average entry price changes. You MUST provide a new `stop_loss_pct` or `stop_loss_atr_multiple` that protects your accumulated profits. The engine will update the stop-loss based on your new parameters.
 - You can scale out of positions gradually by using the `partial_take_profit_levels` array to sell fractions of your position at different profit targets.
+- When reviewing a triggered partial take-profit, you will be informed of which levels have already been executed. Do not re-include executed levels in your updated `partial_take_profit_levels` array unless you explicitly want to re-trigger them (which is not recommended). Focus on adjusting the remaining unexecuted levels.
 
 **Risk Management:**
 - Adjust position size according to your confidence, risk level, account drawdown, and portfolio exposure. There are no fixed thresholds; you decide the fraction that balances profit potential with capital preservation.
@@ -695,6 +696,7 @@ def build_strategy_prompt(
     partial_tp_triggered: bool = False,
     partial_tp_review_count: int = 0,
     partial_tp_triggered_levels: Optional[List[int]] = None,
+    partial_tp_executed_levels: Optional[List[int]] = None,
     dust_sweep_triggered: bool = False,
     dust_sweep_review_count: int = 0,
     max_stop_loss_reviews: int = 10,
@@ -1005,6 +1007,9 @@ Maximum symbols to trade: {max_symbols}
             trailing_dist = position_info.get('trailing_stop_distance_pct')
             trailing_act = position_info.get('trailing_stop_activation_pct')
             prompt += f"Trailing stop: enabled (distance={trailing_dist}, activation={trailing_act})\n"
+        executed_levels = position_info.get("partial_tp_levels_triggered", [])
+        if executed_levels:
+            prompt += f"Partial TP levels already executed: {executed_levels}\n"
         # Show max hold time remaining
         max_hold = position_info.get('max_hold_time_seconds')
         if max_hold is not None and max_hold > 0:

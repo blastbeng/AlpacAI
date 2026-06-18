@@ -3720,6 +3720,7 @@ class TradingEngine:
             except Exception:
                 pass
 
+            partial_tp_executed_levels = self.positions[symbol].get("partial_tp_levels_triggered", []) if symbol in self.positions else []
             prompt = build_strategy_prompt(
                 symbol=symbol,
                 ticker=ticker,
@@ -3810,6 +3811,7 @@ class TradingEngine:
                 partial_tp_triggered=partial_tp_triggered,
                 partial_tp_review_count=partial_tp_review_count,
                 partial_tp_triggered_levels=partial_tp_triggered_levels if partial_tp_triggered_levels else None,
+                partial_tp_executed_levels=partial_tp_executed_levels,
                 dust_sweep_triggered=dust_sweep_triggered,
                 dust_sweep_review_count=dust_sweep_review_count,
                 max_stop_loss_reviews=max_sl_reviews_prompt,
