@@ -1085,7 +1085,7 @@ class TradingEngine:
                 try:
                     ticker = self.ws_manager.get_ticker(symbol)
                     if ticker is None:
-                        tickers_map = get_quotes(self.data_client, [symbol.split("/")[0]])
+                        tickers_map = await asyncio.to_thread(get_quotes, self.data_client, [symbol.split("/")[0]])
                         ticker = tickers_map.get(symbol.split("/")[0])
                     current_price = ticker['last'] if ticker else pos.get("price", 0.0)
                 except Exception:
@@ -2559,7 +2559,7 @@ class TradingEngine:
             vix = await self._fetch_vix()
             spy_price = None
             try:
-                tickers_map = get_quotes(self.data_client, ["SPY"])
+                tickers_map = await asyncio.to_thread(get_quotes, self.data_client, ["SPY"])
                 spy_ticker = tickers_map.get("SPY")
                 spy_price = spy_ticker.get("last") if spy_ticker else None
             except Exception:
@@ -4568,7 +4568,7 @@ class TradingEngine:
                         try:
                             t = self.ws_manager.get_ticker(sym)
                             if t is None:
-                                tickers_map = get_quotes(self.data_client, [sym.split("/")[0]])
+                                tickers_map = await asyncio.to_thread(get_quotes, self.data_client, [sym.split("/")[0]])
                                 t = tickers_map.get(sym.split("/")[0])
                             total_value += pos['amount'] * t['last']
                         except Exception:
