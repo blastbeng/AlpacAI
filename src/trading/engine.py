@@ -2648,6 +2648,35 @@ class TradingEngine:
                 except Exception as e:
                     logger.warning(f"OHLCV fetch failed for {symbol}: {e}")
 
+            # --- Fallback: if API returned no data for the assigned timeframe, load from DB ---
+            if assigned_tf not in ohlcv_data or not ohlcv_data[assigned_tf]:
+                logger.info(
+                    f"API OHLCV empty for {symbol} {assigned_tf}, falling back to database."
+                )
+                db_candles = await asyncio.to_thread(
+                    get_ohlcv, symbol, assigned_tf, limit=100
+                )
+                if db_candles:
+                    # Convert list of dicts to list of lists [ts, o, h, l, c, v]
+                    ohlcv_data[assigned_tf] = [
+                        [c["timestamp"], c["open"], c["high"], c["low"], c["close"], c["volume"]]
+                        for c in db_candles
+                    ]
+                    logger.info(
+                        f"Loaded {len(ohlcv_data[assigned_tf])} candles from DB for {symbol} {assigned_tf}"
+                    )
+                # Optionally, also try to fill other timeframes from DB if they are missing
+                for tf in settings.OHLCV_TIMEFRAMES:
+                    if tf == assigned_tf:
+                        continue
+                    if tf not in ohlcv_data or not ohlcv_data[tf]:
+                        tf_db = await asyncio.to_thread(get_ohlcv, symbol, tf, limit=100)
+                        if tf_db:
+                            ohlcv_data[tf] = [
+                                [c["timestamp"], c["open"], c["high"], c["low"], c["close"], c["volume"]]
+                                for c in tf_db
+                            ]
+
             # --- Skip if no meaningful market data is available ---
             # If we have no OHLCV candles at all AND the order book is empty,
             # there is nothing for the LLM to analyse. Skip to save costs and noise.
