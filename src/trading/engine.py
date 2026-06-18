@@ -2120,7 +2120,11 @@ class TradingEngine:
                 logger.info(f"Triggering immediate news fetch for newly selected symbol {sym}")
                 asyncio.create_task(self._fetch_and_store_news_for_symbol(sym))
 
-        symbol_labels = [f"{c['symbol']}({c['timeframe']})" for c in self.current_symbols]
+        # Build formatted symbol labels with stock names
+        symbol_labels = []
+        for c in self.current_symbols:
+            name = await self._get_stock_name(c['symbol'])
+            symbol_labels.append(self._format_symbol_display(c['symbol'], name, c['timeframe']))
         logger.info(f"Selected symbols: {symbol_labels}")
 
         # Build a pause/resume message if the LLM provided a decision
@@ -3530,6 +3534,9 @@ class TradingEngine:
 
             # Log and notify the decision
             logger.info(f"Decision for {symbol}: {validated.action} (confidence: {validated.confidence:.2f})")
+            # --- Format symbol for notification ---
+            stock_name = await self._get_stock_name(symbol)
+            display_symbol = self._format_symbol_display(symbol, stock_name, assigned_tf)
             if self.notifier and not (trading_paused and validated.action == "BUY"):
                 emoji = {"BUY": "🟢", "SELL": "🔴", "HOLD": "⏸️"}.get(validated.action, "❓")
                 # Build a short indicator summary
@@ -3577,7 +3584,7 @@ class TradingEngine:
                     ind_parts.append(f"Pivot={pivot_points['pivot']:.4f} R1={pivot_points['r1']:.4f} S1={pivot_points['s1']:.4f}")
                 indicator_str = " | ".join(ind_parts) if ind_parts else "No indicators (insufficient OHLCV data)"
                 sentiment_str = self._get_sentiment_str(symbol)
-                msg = f"{emoji} {symbol}: {validated.action} (confidence: {validated.confidence:.2f}) – {validated.reasoning}"
+                msg = f"{emoji} {display_symbol}: {validated.action} (confidence: {validated.confidence:.2f}) – {validated.reasoning}"
                 if sentiment_str:
                     msg += f"\n{sentiment_str}"
                 if getattr(validated, 'backtest_summary', None):
