@@ -128,7 +128,7 @@ def parse_llm_response(response_text: str) -> Signal:
             confidence=confidence,
             reasoning=reasoning,
             strategy_type=strategy_type,
-            strategy_params=strategy_params,
+            strategy_params=params,
             risk_level=risk_level,
             indicator_config=indicator_config,
             backtest_summary=backtest_summary,
