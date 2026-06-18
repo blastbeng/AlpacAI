@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     ALPACA_SECRET_KEY: str = ""
     ALPACA_PAPER: bool = True   # True = paper trading, False = live
     ALPACA_DATA_FEED: str = "iex"  # "iex" (free) or "sip" (paid)
+
+    # Yahoo Finance fallback for Level 1 quotes (bid/ask/last)
+    YAHOO_FINANCE_ENABLED: bool = True
+    YAHOO_FINANCE_CACHE_SECONDS: int = 30   # cache quotes in Redis to avoid rate limits
+
     ALPACA_BASE_URL: str = "https://paper-api.alpaca.markets"  # auto-set based on PAPER
     ALPACA_DATA_URL: str = "https://data.alpaca.markets"       # auto-set based on DATA_FEED
 

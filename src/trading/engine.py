@@ -12,6 +12,7 @@ from src.exchanges.fees import get_fee_rate
 from src.exchanges.factory import get_trading_client, get_streaming_client, get_data_client
 from src.exchanges.ws_manager import WebSocketManager
 from src.exchanges.market_data import get_tradable_assets, get_quotes, get_order_book, get_multi_timeframe_bars, get_bars_range
+from src.exchanges.yahoo_finance import get_yahoo_quote
 from src.trading.live_trader import LiveTrader
 from src.llm.cache import get_cached_llm_response, compute_market_hash
 from src.llm.prompts import (
@@ -1294,6 +1295,25 @@ class TradingEngine:
         plain_sample = [s.split("/")[0] for s in sample_pairs]
         raw_quotes = await asyncio.to_thread(get_quotes, self.data_client, plain_sample)
         tickers = {pair: raw_quotes.get(pair.split("/")[0], {}) for pair in sample_pairs}
+
+        # --- Yahoo Finance fallback for missing bid/ask in stock selection ---
+        if settings.YAHOO_FINANCE_ENABLED:
+            missing_bid_ask = [
+                sym for sym in sample_pairs
+                if tickers.get(sym, {}).get('bid') is None or tickers.get(sym, {}).get('ask') is None
+            ]
+            # Limit to 20 symbols per cycle to stay under Yahoo's rate limits
+            for sym in missing_bid_ask[:20]:
+                yahoo = await asyncio.to_thread(get_yahoo_quote, sym)
+                if yahoo:
+                    t = tickers.setdefault(sym, {})
+                    if t.get('bid') is None:
+                        t['bid'] = yahoo.get('bid')
+                    if t.get('ask') is None:
+                        t['ask'] = yahoo.get('ask')
+                    # Keep Alpaca's 'last' if present
+                    if t.get('last') is None:
+                        t['last'] = yahoo.get('last')
 
         # --- Limit candidate pool to top N by 24h volume ---
         def _volume(sym):
@@ -2621,6 +2641,20 @@ class TradingEngine:
                 logger.warning(f"No ticker data for {symbol}, skipping.")
                 return
             current_price = ticker['last']
+
+            # --- Yahoo Finance fallback for missing bid/ask (IEX or any feed) ---
+            if ticker is not None:
+                bid = ticker.get('bid')
+                ask = ticker.get('ask')
+                if bid is None or ask is None:
+                    yahoo = await asyncio.to_thread(get_yahoo_quote, symbol)
+                    if yahoo:
+                        if bid is None:
+                            ticker['bid'] = yahoo.get('bid')
+                        if ask is None:
+                            ticker['ask'] = yahoo.get('ask')
+                        # Do NOT overwrite 'last' from Alpaca; it's more real-time
+                        logger.info(f"Yahoo Finance quote merged for {symbol}: bid={ticker.get('bid')}, ask={ticker.get('ask')}")
 
             if settings.ALPACA_DATA_FEED == "iex":
                 # IEX does not provide a reliable order book; use an empty one.
