@@ -236,8 +236,14 @@ class TradingEngine:
                         pause_duration_raw = await asyncio.to_thread(self.redis.get, "trading:pause_duration")
                         # --- Fallback if no pause_duration was set ---
                         if not pause_duration_raw:
-                            # No LLM-set duration → resume after a safe default
-                            default_max_pause = 7200  # 2 hours
+                            # No LLM-set duration → resume after the LLM-decided minimum pause duration
+                            default_max_pause = MIN_LLM_PAUSE_DURATION
+                            try:
+                                raw = await asyncio.to_thread(self.redis.get, "trading:min_llm_pause_duration")
+                                if raw:
+                                    default_max_pause = int(raw)
+                            except Exception:
+                                pass
                             try:
                                 elapsed = time.time() - float(pause_start_raw)
                                 if elapsed >= default_max_pause:
@@ -2633,10 +2639,17 @@ class TradingEngine:
                 fail_key = "trading:pause:llm_fail_count"
                 current_fails = await asyncio.to_thread(self.redis.incr, fail_key)
                 await asyncio.to_thread(self.redis.expire, fail_key, 3600)
+                _min_pause = MIN_LLM_PAUSE_DURATION
+                try:
+                    raw = await asyncio.to_thread(self.redis.get, "trading:min_llm_pause_duration")
+                    if raw:
+                        _min_pause = int(raw)
+                except Exception:
+                    pass
                 if self.notifier:
                     await self.notifier.send_notification(
                         f"⚠️ Could not reach LLM to decide pause/resume (failure #{current_fails}). "
-                        f"Auto‑resume will be attempted after {MIN_LLM_PAUSE_DURATION}s if LLM stays silent.",
+                        f"Auto‑resume will be attempted after {_min_pause}s if LLM stays silent.",
                         summary={"action": "INFO", "reason": "LLM pause-resume call failed"}
                     )
                 # If we failed 3 times in a row, force‑resume (optional but safe)
