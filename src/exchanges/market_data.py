@@ -106,7 +106,9 @@ def get_quotes(
                 result[sym]["volume"] = b.volume
                 if b.open and b.open > 0:
                     result[sym]["change_24h"] = ((b.close - b.open) / b.open) * 100
-                result[sym]["last"] = b.close  # use close as "last"
+                # Only use bar close as 'last' if quote didn't provide it
+                if result[sym].get("last") is None:
+                    result[sym]["last"] = b.close
                 result[sym]["percentage"] = result[sym]["change_24h"]
                 result[sym]["quoteVolume"] = result[sym]["volume"]
     return result
