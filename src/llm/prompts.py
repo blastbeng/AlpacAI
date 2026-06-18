@@ -1371,12 +1371,6 @@ Maximum symbols to trade: {max_symbols}
         prompt += "If sentiment is very negative, reduce max hold time to limit exposure.\n"
 
     prompt += f"""
-**Your primary objective is profit across short, medium, and long timeframes. Prioritize positions where you find the most profit potential, regardless of timeframe.** Use the ATR to set stop-loss and take-profit distances that respect the stock's volatility. Place the stop-loss below a recent swing low or support, and the take-profit near a resistance level or based on your own risk:reward assessment. You have full freedom to choose the stop distance and reward:risk ratio that you believe will maximise profitability while managing risk.
-
-Interpret the order book metrics provided (spread, imbalance, pressure, depth, walls) to gauge liquidity and directional pressure.
-
-If the position is already in profit, consider trailing the stop.
-
 **For the {assigned_timeframe or 'default'} timeframe, a reasonable minimum max_hold_time_seconds is {min_hold} seconds. Do not set it lower unless you have a very specific, justified reason (e.g., scalping with a very tight stop and high confidence).**
 
 You are trading spot only (no shorting). Only output SELL if you currently hold the stock.
