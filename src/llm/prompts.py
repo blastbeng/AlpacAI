@@ -208,26 +208,6 @@ You may optionally include an "indicator_config" object to customize indicator p
 
 You may include a "backtest_summary" field (string) summarizing your backtest results when historical OHLCV data is provided.
 
-When asked to generate a strategy for a specific stock, return a JSON object with the following structure:
-{
-  "action": "BUY" | "SELL" | "HOLD",
-  "confidence": 0.0 to 1.0,   # directional conviction (0 = no edge, 1 = certain). Used to scale position size.
-  "reasoning": "short explanation",
-  "risk_level": "low" | "medium" | "high",
-  "strategy": {
-    "type": "scalping" | "momentum" | "mean_reversion" | "breakout",
-    "parameters": {
-      // strategy-specific parameters
-    }
-  }
-}
-The "risk_level" field controls overall risk appetite for this trade:
-- "low": use smaller position sizes, wider stops, only trade when very confident.
-- "medium": normal risk (default).
-- "high": aggressive, larger position sizes, tighter stops (only when market conditions are extremely favourable).
-
-If action is BUY or SELL, include a strategy. If HOLD, strategy can be null.
-
 You MUST include the following risk parameters inside the "parameters" object for every BUY or SELL action. All numeric values must be numbers, not strings.
 
 - "stop_loss_method": "fixed" (default) or "atr_multiple". If "atr_multiple", the stop distance is computed as stop_loss_atr_multiple × ATR, and "stop_loss_pct" is optional (if provided, it will be ignored). Use this to set a volatility‑based stop. **Prefer "atr_multiple" – it adapts to current market conditions.**
