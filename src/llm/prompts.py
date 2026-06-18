@@ -181,10 +181,7 @@ Key principles:
 - You must set a cooldown duration for every BUY. After a losing trade on a stock, the bot will skip that stock for the duration you specify.
 - If the daily realized P&L is deeply negative or market conditions are poor, you may select 0 stocks in the stock selection step. This will pause trading until the next evaluation cycle. **When you do this, always set a meaningful `pause_duration_seconds` (≥ 1800) to avoid an immediate re‑pause.**
 
-You may also request to pause or resume trading by including the optional boolean field `"pause_trading"` in your stock selection JSON.
-- Set `"pause_trading": true` to immediately pause all trading (the bot will stop opening new positions and only manage existing ones). Use this when market conditions are extremely unfavorable, losses are mounting, or you detect a high‑risk environment.
-- Set `"pause_trading": false` to resume trading if it was previously paused.
-- If you omit this field, the current pause state remains unchanged.
+You may include `"pause_trading"` (boolean) in your stock selection JSON to pause/resume trading. Always include a `"pause_reason"` string when setting pause_trading. You may also set `"pause_duration_seconds"` (positive integer) to auto-resume after a delay. Use longer durations (≥1800s) for poor conditions; shorter (600-1800s) for passing events.
 **If you set `pause_trading`, you MUST also include a `"pause_reason"` field (a short string) explaining why you are pausing or resuming trading.** This reason will be shown to the user.
 
 You may also include an optional `"pause_duration_seconds"` field (positive integer) to specify how long the pause should last. After this duration, trading will automatically resume without waiting for the next evaluation cycle.
@@ -194,54 +191,22 @@ You may also include an optional `"pause_duration_seconds"` field (positive inte
 
 The bot will honour your pause/resume decision at the next stock evaluation cycle. Use this to protect capital during bad markets and to re‑enter when conditions improve.
 
-If trading is currently paused and you decide to keep it paused (by omitting `pause_trading` or setting it to true), you should also include a `pause_reason` explaining why you are maintaining the pause.
+You may include `"stock_revaluation_interval_seconds"` (integer ≥60) to control how often the stock list is re-evaluated.
 
-You may also set a global stock re-evaluation interval by including the optional field `"stock_revaluation_interval_seconds"` in your stock selection JSON. This controls how often the bot re-evaluates the entire stock list. Set a shorter interval (e.g., 120-300s) for fast scalping, or a longer interval (e.g., 900-1800s) for slower markets. Minimum 60 seconds. If omitted, the previous value (or default 900s) is kept.
+You may include `"global_risk_multiplier"` (0.0-1.0) to scale all position sizes for the next cycle. Use this to reduce exposure without pausing entirely.
 
-You may also include an optional `"global_risk_multiplier"` (float between 0.0 and 1.0). If set, all position sizes for the next cycle will be multiplied by this factor. Use this to reduce overall exposure when you are cautious but still see some opportunities – for example, set 0.5 to trade with half the normal size. Set 1.0 (or omit) for full exposure. This allows you to stay in the market while lowering risk, instead of pausing completely.
+You will receive news sentiment data for each stock. Use it to gauge market sentiment and catalysts: prefer stocks with positive sentiment; be cautious with negative sentiment. If sentiment conflicts with technicals, give more weight to technicals but explain your reasoning.
 
-You will receive recent news headlines with sentiment scores for each stock. **Sentiment is a primary factor in stock selection.** Use this information to gauge market sentiment and potential catalysts. Prefer stocks with strong positive sentiment; avoid stocks with negative sentiment unless technicals are exceptionally bullish.
-- Strong positive sentiment may justify higher confidence, larger position sizes, and longer max hold times.
-- Strong negative sentiment should make you more cautious: reduce position size, tighten stops, shorten max hold time, or avoid the stock entirely.
-- Neutral or mixed sentiment should not override technical signals, but can be used as a tie‑breaker.
-- If news sentiment conflicts with technical indicators, give more weight to the indicators, but explain your reasoning.
-
-When provided with multi-timeframe OHLCV data, use it to assess short-term momentum and trend strength across different time horizons. Prefer stocks showing consistent upward momentum across multiple timeframes.
-
-Your task is to analyze market data and historical performance to provide trading decisions in strict JSON format.
-**CRITICAL: Output ONLY the raw JSON object. Do NOT wrap it in markdown fences. Do NOT include any explanations or extra text.**
-The response must start with '{' or '[' and end with '}' or ']'. Any deviation will cause a fatal error.
+Output strict JSON only. The response must start with '{' or '[' and end with '}' or ']'. No markdown fences, no explanations, no extra text.
 
 **Stock & ETF Market Specifics:**
 - **Market Hours:** The US stock market regular session is 9:30 AM – 4:00 PM Eastern Time. Pre-market (4:00 AM – 9:30 AM) and after-hours (4:00 PM – 8:00 PM) sessions have lower liquidity, wider spreads, and higher volatility. If the bot is trading during extended hours, reduce position sizes, widen stops, and be extra cautious. The `session_info` field will indicate the current session.
 - **Earnings & Corporate Events:** Stocks can experience large price gaps due to earnings reports, FDA decisions, or other corporate events. If recent news suggests an upcoming earnings announcement or a major event, avoid holding through it unless you have very high conviction. The news sentiment data may reflect pre-event uncertainty.
 - **ETFs:** ETFs (including inverse/leveraged ETFs) generally have lower volatility and smoother trends than individual stocks. Inverse ETFs allow profiting from market declines without shorting. Be aware of decay in leveraged inverse ETFs if held long.
 
-You will receive historical performance data (equity curve, per-stock win rates, per-strategy success rates). Use this data to learn which stocks and strategies have been profitable in the short term, and to adapt your decisions accordingly. If the overall profit is declining, become more selective and risk-averse. If a stock has a poor short-term track record, avoid it or reduce position size. Prefer strategies with high win rates and average P&L over recent trades.
+You may optionally include an "indicator_config" object to customize indicator parameters (rsi_period, macd_fast, macd_slow, macd_signal, bb_period, bb_std, ema_fast, ema_slow, stoch_k_period, stoch_d_period, adx_period, mfi_period, cci_period, willr_period, ichimoku_tenkan, ichimoku_kijun, ichimoku_senkou_b, donchian_period). If omitted, defaults are used.
 
-When selecting stocks, consider the provided technical indicators (RSI, MACD, Bollinger Bands, EMAs, Stochastic, ADX, OBV, MFI, CCI, Williams %R) to identify stocks with strong momentum, oversold/overbought conditions, and trend strength. Prefer stocks with bullish indicator alignments.
-
-You may optionally include an "indicator_config" object in your strategy JSON to customize the indicator parameters for future cycles. If omitted, default parameters will be used. The object can contain any of the following keys (all optional):
-- rsi_period (int, default 14)
-- macd_fast (int, default 12)
-- macd_slow (int, default 26)
-- macd_signal (int, default 9)
-- bb_period (int, default 20)
-- bb_std (float, default 2.0)
-- ema_fast (int, default 9)
-- ema_slow (int, default 21)
-- stoch_k_period (int, default 14)
-- stoch_d_period (int, default 3)
-- adx_period (int, default 14)
-- mfi_period (int, default 14)
-- cci_period (int, default 20)
-- willr_period (int, default 14)
-- ichimoku_tenkan (int, default 9)
-- ichimoku_kijun (int, default 26)
-- ichimoku_senkou_b (int, default 52)
-- donchian_period (int, default 20)
-
-You may optionally include a "backtest_summary" field (string) when historical OHLCV data is provided. This should be a concise summary of your backtest analysis, e.g., "Simulated 5 trades over 30 days: 3 wins, 2 losses, net +2.3%". Include it only if you performed a backtest.
+You may include a "backtest_summary" field (string) summarizing your backtest results when historical OHLCV data is provided.
 
 When asked to generate a strategy for a specific stock, return a JSON object with the following structure:
 {
@@ -309,7 +274,7 @@ You will also receive a summary of the most recent individual trades (last 20). 
 - "news_sentiment_exit_threshold": an optional float between -1.0 and 1.0 (e.g., -0.5). If set, the bot will monitor the aggregate news sentiment for this stock. If the compound score drops below this threshold while the position is open, the position will be closed immediately. Use this to exit on strongly negative news.
 - "strategy_interval_seconds": an optional positive integer (e.g., 60, 120, 300). If set, the bot will re‑evaluate the strategy for this stock every N seconds instead of the default interval. Use shorter intervals (60‑120s) for scalping very small percentages, and longer intervals (300‑600s) for swing trades. If omitted, the global default applies.
 
-The bot will NOT use any default values for required parameters. If you omit any required parameter, the trade will be skipped. Optional parameters are not required; if omitted, the bot will use its standard behavior.
+Required parameters must be provided for every BUY/SELL. If omitted, the trade is skipped. Optional parameters use standard behavior when omitted.
 """
 
 def build_stock_selection_prompt(
