@@ -2678,27 +2678,23 @@ class TradingEngine:
                             ]
 
             # --- Skip if no meaningful market data is available ---
-            # If we have no OHLCV candles at all AND the order book is empty,
-            # there is nothing for the LLM to analyse. Skip to save costs and noise.
+            # If we have no OHLCV candles at all, there is nothing for the LLM to analyse.
+            # Skip to save costs and noise.
             no_ohlcv = (
                 not ohlcv_data
                 or all(len(candles) == 0 for candles in ohlcv_data.values())
             )
-            no_order_book = (
-                not order_book.get('bids') and not order_book.get('asks')
-            )
-            if no_ohlcv and no_order_book:
+            if no_ohlcv:
                 logger.info(
-                    f"Skipping {symbol}: no OHLCV data and empty order book – "
-                    f"market data unavailable."
+                    f"Skipping {symbol}: no OHLCV data – market data unavailable."
                 )
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"⚠️ Skipping {display_symbol}: no market data available.",
+                        f"⚠️ Skipping {display_symbol}: no OHLCV data available.",
                         summary={
                             "symbol": symbol,
                             "action": "SKIP",
-                            "reason": "No market data (empty order book & no OHLCV)",
+                            "reason": "No OHLCV data",
                         }
                     )
                 return
@@ -3274,6 +3270,7 @@ class TradingEngine:
                 dust_sweep_review_count=dust_sweep_review_count,
                 max_partial_tp_reviews=settings.MAX_PARTIAL_TP_REVIEWS,
                 max_dust_sweep_reviews=settings.MAX_DUST_SWEEP_REVIEWS,
+                data_feed=settings.ALPACA_DATA_FEED,
             )
             logger.info(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-symbol)

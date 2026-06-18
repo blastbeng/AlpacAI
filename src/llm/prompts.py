@@ -863,6 +863,7 @@ def build_strategy_prompt(
     dust_sweep_review_count: int = 0,
     max_partial_tp_reviews: int = 10,
     max_dust_sweep_reviews: int = 10,
+    data_feed: str = "sip",
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific stock/ETF."""
     current_price = ticker.get("last") if ticker else None
@@ -1077,6 +1078,20 @@ Maximum symbols to trade: {max_symbols}
             "If the ask volume at a certain distance is thin, a small take‑profit may be filled quickly. "
             "If it's thick, you may need a larger move or a smaller position.\n"
         )
+    # --- Warn if order book is empty (common with IEX feed) ---
+    if not order_book.get('bids') and not order_book.get('asks'):
+        if data_feed == "iex":
+            prompt += (
+                "\n**Note:** The order book is empty. You are using the IEX data feed, "
+                "which does not provide real‑time order book data. "
+                "Do NOT rely on order book metrics for this decision. "
+                "Base your analysis on OHLCV, indicators, and other available data.\n"
+            )
+        else:
+            prompt += (
+                "\n**Note:** The order book is empty. This may indicate very low liquidity "
+                "or a data issue. Proceed with caution and rely more on OHLCV and indicators.\n"
+            )
     if recent_trades_data:
         # Summarise last 20 trades: count buys vs sells, average size, price range
         buys = [t for t in recent_trades_data if t.get('side') == 'buy']
