@@ -2156,6 +2156,19 @@ class TradingEngine:
                     # Fallback if not provided: remove the limit
                     await asyncio.to_thread(self.redis.delete, "trading:max_positions_per_sector")
 
+                # Parse LLM-decided portfolio risk thresholds
+                max_port_exp = parsed.get("max_portfolio_exposure_pct")
+                if max_port_exp is not None and isinstance(max_port_exp, (int, float)) and 0.0 <= float(max_port_exp) <= 1.0:
+                    await asyncio.to_thread(self.redis.setex, "trading:max_portfolio_exposure_pct", 7 * 24 * 3600, str(float(max_port_exp)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:max_portfolio_exposure_pct")
+
+                max_port_risk = parsed.get("max_portfolio_stop_risk_pct")
+                if max_port_risk is not None and isinstance(max_port_risk, (int, float)) and 0.0 <= float(max_port_risk) <= 1.0:
+                    await asyncio.to_thread(self.redis.setex, "trading:max_portfolio_stop_risk_pct", 7 * 24 * 3600, str(float(max_port_risk)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:max_portfolio_stop_risk_pct")
+
                 # Parse LLM evaluation skip thresholds
                 skip_price_mult = parsed.get("skip_eval_price_change_atr_mult")
                 if skip_price_mult is not None and isinstance(skip_price_mult, (int, float)) and skip_price_mult > 0:
@@ -3694,6 +3707,19 @@ class TradingEngine:
                 except (ValueError, TypeError):
                     pass
 
+            # Read LLM-decided portfolio risk thresholds
+            max_port_exp = None
+            max_port_risk = None
+            try:
+                raw = await asyncio.to_thread(self.redis.get, "trading:max_portfolio_exposure_pct")
+                if raw:
+                    max_port_exp = float(raw)
+                raw = await asyncio.to_thread(self.redis.get, "trading:max_portfolio_stop_risk_pct")
+                if raw:
+                    max_port_risk = float(raw)
+            except Exception:
+                pass
+
             prompt = build_strategy_prompt(
                 symbol=symbol,
                 ticker=ticker,
@@ -3799,6 +3825,8 @@ class TradingEngine:
                 last_decision=self._last_decisions.get(symbol),
                 minutes_to_market_close=minutes_to_market_close,
                 current_strategy_interval_seconds=self._strategy_intervals.get(symbol, tf_seconds),
+                max_portfolio_exposure_pct=max_port_exp,
+                max_portfolio_stop_risk_pct=max_port_risk,
             )
             logger.info(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-symbol)

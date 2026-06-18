@@ -194,6 +194,7 @@ Key principles:
 - Adjust position size according to your confidence, risk level, account drawdown, and portfolio exposure. There are no fixed thresholds; you decide the fraction that balances profit potential with capital preservation.
 - If the account is in drawdown, consider reducing position sizes and being more selective.
 - You must set a cooldown duration (`cooldown_after_loss_seconds`) for every BUY. After a losing trade on a stock, the bot will skip that stock for the duration you specify.
+- You may include `"max_portfolio_exposure_pct"` (0.0-1.0) and `"max_portfolio_stop_risk_pct"` (0.0-1.0) in your stock selection JSON to define the maximum portfolio exposure and total stop-loss risk you are willing to accept. The engine will use these thresholds to guide position sizing in the strategy step.
 - If the daily realized P&L is deeply negative or market conditions are poor, you may select 0 stocks in the stock selection step. This will pause trading until the next evaluation cycle. When you do this, always set a meaningful `pause_duration_seconds` (≥ 1800) to avoid an immediate re‑pause.
 - **Required parameter for every BUY/SELL:**
   - `"cooldown_after_loss_seconds"`: a non-negative integer (0 or more). If the trade results in a loss, the bot will avoid this stock for this many seconds before considering it again. Set 0 to allow immediate re-entry.
@@ -420,12 +421,14 @@ Return a JSON object with the following fields:
 - "max_partial_tp_reviews": an integer between 1 and 20 (e.g., 3). The maximum number of times the LLM can review a triggered partial take-profit before the engine force-executes the partial sell. Lower values = quicker partial profit-taking; higher values = more LLM discretion.
 - "max_dust_sweep_reviews": an integer between 1 and 20 (e.g., 3). The maximum number of times the LLM can review a triggered dust sweep before the engine force-sells the remaining dust. Lower values = quicker dust cleanup; higher values = more LLM discretion.
 - "scalping_score_weights": an object with five float fields (each between 0.0 and 1.0, they should sum to 1.0): "volume" (weight for 24h volume score), "volatility" (weight for 24h price change volatility score), "spread" (weight for bid-ask spread tightness score), "depth" (weight for order book depth score), "momentum" (weight for 24h momentum direction score). These weights control how the scalping suitability score is computed for stock selection. Higher spread/depth weights favor liquid, tight-spread stocks; higher volume/volatility weights favor active movers.
+- "max_portfolio_exposure_pct": a float between 0.0 and 1.0 (e.g., 0.7 for 70%). The maximum percentage of total portfolio value that can be deployed in open positions.
+- "max_portfolio_stop_risk_pct": a float between 0.0 and 1.0 (e.g., 0.05 for 5%). The maximum total stop-loss risk as a percentage of portfolio value.
 - "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
 You may optionally include "stock_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.
 
 Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "sector": "Technology", "max_tenure_hours": 48}}, {{"symbol": "MSFT", "timeframe": "15m", "sector": "Technology"}}], "max_stocks": 2, "max_positions_per_sector": 2, "skip_eval_price_change_atr_mult": 0.5, "skip_eval_rsi_change": 5.0, "skip_eval_rsi_oversold": 30.0, "skip_eval_rsi_overbought": 70.0, "skip_eval_macd_hist_change": 0.0005, "regime_adx_strong": 40.0, "regime_adx_moderate": 25.0, "regime_volatility_high_pct": 80.0, "regime_volatility_low_pct": 20.0, "regime_bb_squeeze_width": 0.02, "regime_bb_expansion_width": 0.08, "min_stop_loss_atr_mult": 1.5, "min_max_hold_time_mult": 2.0, "max_stop_loss_reviews": 3, "max_take_profit_reviews": 3, "min_llm_pause_duration_seconds": 3600, "pause_max_consecutive_keep": 3, "pause_force_resume_risk_multiplier": 0.3, "max_partial_tp_reviews": 3, "max_dust_sweep_reviews": 3, "scalping_score_weights": {"volume": 0.25, "volatility": 0.25, "spread": 0.25, "depth": 0.15, "momentum": 0.10}, 
-"reasoning": "AAPL shows strong uptrend on 1h with high volume; MSFT has bullish MACD crossover on 15m.", "stock_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
+"reasoning": "AAPL shows strong uptrend on 1h with high volume; MSFT has bullish MACD crossover on 15m.", "stock_revaluation_interval_seconds": 300, "max_portfolio_exposure_pct": 0.7, "max_portfolio_stop_risk_pct": 0.05, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
     # --- Enhanced pause/resume guidance ---
     if trading_paused:
         prompt += (
@@ -707,6 +710,8 @@ def build_strategy_prompt(
     last_decision: Optional[Dict[str, Any]] = None,
     minutes_to_market_close: Optional[int] = None,
     current_strategy_interval_seconds: Optional[int] = None,
+    max_portfolio_exposure_pct: Optional[float] = None,
+    max_portfolio_stop_risk_pct: Optional[float] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific stock/ETF."""
     current_price = ticker.get("last") if ticker else None
@@ -743,11 +748,19 @@ Maximum symbols to trade: {max_symbols}
             prompt += f"  Total stop-loss risk: {portfolio_stop_risk_pct:.2f}% of portfolio (loss if ALL stops hit)\n"
         if portfolio_available_capital is not None:
             prompt += f"  Available capital for new positions: {portfolio_available_capital:.2f} {base_currency}\n"
-        prompt += (
-            "Use this summary to decide position_size_fraction. If capital deployment is already high "
-            "(>70%) or total stop-loss risk is elevated (>5%), reduce your position_size_fraction or output HOLD. "
-            "If you have low exposure and low risk, you may allocate more capital to high-conviction trades.\n"
-        )
+        if max_portfolio_exposure_pct is not None and max_portfolio_stop_risk_pct is not None:
+            prompt += (
+                f"Use this summary to decide position_size_fraction. If capital deployment is already high "
+                f"(>{max_portfolio_exposure_pct*100:.0f}%) or total stop-loss risk is elevated "
+                f"(>{max_portfolio_stop_risk_pct*100:.0f}%), reduce your position_size_fraction or output HOLD. "
+                "If you have low exposure and low risk, you may allocate more capital to high-conviction trades.\n"
+            )
+        else:
+            prompt += (
+                "Use this summary to decide position_size_fraction. If capital deployment is already high "
+                "or total stop-loss risk is elevated, reduce your position_size_fraction or output HOLD. "
+                "If you have low exposure and low risk, you may allocate more capital to high-conviction trades.\n"
+            )
     if cycle_spent is not None and remaining_balance is not None:
         prompt += (
             f"Amount already allocated to other symbols in this cycle: {cycle_spent:.2f} {base_currency}\n"
