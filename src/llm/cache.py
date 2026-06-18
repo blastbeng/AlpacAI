@@ -146,9 +146,47 @@ def _stringify_keys(obj):
     return obj
 
 
+def _normalize_for_hash(obj, depth=0):
+    """Recursively normalize data for stable hashing.
+    
+    - Rounds floats to 6 decimal places to reduce noise from tiny price changes.
+    - Excludes keys containing 'timestamp', 'time', 'fetched_at', 'created_at',
+      'published_at', 'last_eval', 'last_auto_resume' (volatile fields that
+      change every cycle but don't affect trading decisions).
+    - Converts None values to a string "null" for consistent serialization.
+    """
+    _VOLATILE_KEY_FRAGMENTS = ("timestamp", "time", "fetched_at", "created_at",
+                                "published_at", "last_eval", "last_auto_resume",
+                                "_last_state_save")
+    if depth > 10:
+        return None
+    if isinstance(obj, dict):
+        result = {}
+        for k, v in obj.items():
+            key_str = str(k).lower()
+            if any(frag in key_str for frag in _VOLATILE_KEY_FRAGMENTS):
+                continue
+            result[k] = _normalize_for_hash(v, depth + 1)
+        return result
+    if isinstance(obj, list):
+        return [_normalize_for_hash(item, depth + 1) for item in obj]
+    if isinstance(obj, float):
+        # Round to 6 decimal places — enough precision for prices/indicators,
+        # but filters out floating-point noise that changes every cycle.
+        return round(obj, 6)
+    if obj is None:
+        return "null"
+    return obj
+
+
 def compute_market_hash(data: dict) -> str:
-    """Return a SHA-256 hex digest of the JSON-serialised market data."""
-    # sort_keys ensures deterministic output
-    safe_data = _stringify_keys(data)
+    """Return a SHA-256 hex digest of the JSON-serialised market data.
+    
+    Volatile fields (timestamps, etc.) are excluded and floats are rounded
+    so that essentially-identical market states produce the same hash,
+    enabling LLM response caching.
+    """
+    normalized = _normalize_for_hash(data)
+    safe_data = _stringify_keys(normalized)
     serialized = json.dumps(safe_data, sort_keys=True, default=str)
     return hashlib.sha256(serialized.encode()).hexdigest()
