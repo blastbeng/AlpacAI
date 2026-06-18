@@ -14,6 +14,7 @@ def validate_signal(
     timeframe_seconds: Optional[int] = None,
     min_stop_atr_mult: float = 1.5,
     min_hold_time_mult: float = 2.0,
+    global_min_risk_reward_ratio: Optional[float] = None,
 ) -> Signal:
     """
     Validate a trading signal.
@@ -185,8 +186,10 @@ def validate_signal(
             mpp = params["min_profit_per_trade"]
             if not isinstance(mpp, (int, float)) or mpp < 0:
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid min_profit_per_trade")
-        if "min_risk_reward_ratio" in params:
-            mrr = params["min_risk_reward_ratio"]
+        mrr = params.get("min_risk_reward_ratio")
+        if mrr is None and global_min_risk_reward_ratio is not None:
+            mrr = global_min_risk_reward_ratio
+        if mrr is not None:
             if not isinstance(mrr, (int, float)) or mrr <= 0:
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid min_risk_reward_ratio")
             # Enforce the ratio if both sl and tp are available

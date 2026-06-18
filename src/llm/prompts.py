@@ -196,6 +196,7 @@ Key principles:
 - If the account is in drawdown, consider reducing position sizes and being more selective.
 - You must set a cooldown duration (`cooldown_after_loss_seconds`) for every BUY. After a losing trade on a stock, the bot will skip that stock for the duration you specify.
 - You may include `"max_portfolio_exposure_pct"` (0.0-1.0) and `"max_portfolio_stop_risk_pct"` (0.0-1.0) in your stock selection JSON to define the maximum portfolio exposure and total stop-loss risk you are willing to accept. The engine will use these thresholds to guide position sizing in the strategy step.
+- You may include `"min_risk_reward_ratio"` (a positive number, e.g., 1.5) in your stock selection JSON to define a global minimum reward:risk ratio for all trades in this cycle. The validator will reject any trade where `take_profit_pct / stop_loss_pct` is below this value, unless you explicitly override it with a different value in the strategy step.
 - If the daily realized P&L is deeply negative or market conditions are poor, you may select 0 stocks in the stock selection step. This will pause trading until the next evaluation cycle. When you do this, always set a meaningful `pause_duration_seconds` (≥ 1800) to avoid an immediate re‑pause.
 - **Required parameter for every BUY/SELL:**
   - `"cooldown_after_loss_seconds"`: a non-negative integer (0 or more). If the trade results in a loss, the bot will avoid this stock for this many seconds before considering it again. Set 0 to allow immediate re-entry.
@@ -424,6 +425,7 @@ Return a JSON object with the following fields:
 - "scalping_score_weights": an object with five float fields (each between 0.0 and 1.0, they should sum to 1.0): "volume" (weight for 24h volume score), "volatility" (weight for 24h price change volatility score), "spread" (weight for bid-ask spread tightness score), "depth" (weight for order book depth score), "momentum" (weight for 24h momentum direction score). These weights control how the scalping suitability score is computed for stock selection. Higher spread/depth weights favor liquid, tight-spread stocks; higher volume/volatility weights favor active movers.
 - "max_portfolio_exposure_pct": a float between 0.0 and 1.0 (e.g., 0.7 for 70%). The maximum percentage of total portfolio value that can be deployed in open positions.
 - "max_portfolio_stop_risk_pct": a float between 0.0 and 1.0 (e.g., 0.05 for 5%). The maximum total stop-loss risk as a percentage of portfolio value.
+- "min_risk_reward_ratio": a positive number (e.g., 1.5). The minimum reward:risk ratio required for all trades. Trades with a lower ratio will be rejected.
 - "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
 You may optionally include "stock_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.

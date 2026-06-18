@@ -2169,6 +2169,12 @@ class TradingEngine:
                 else:
                     await asyncio.to_thread(self.redis.delete, "trading:max_portfolio_stop_risk_pct")
 
+                min_rr = parsed.get("min_risk_reward_ratio")
+                if min_rr is not None and isinstance(min_rr, (int, float)) and min_rr > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:min_risk_reward_ratio", 7 * 24 * 3600, str(float(min_rr)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:min_risk_reward_ratio")
+
                 # Parse LLM evaluation skip thresholds
                 skip_price_mult = parsed.get("skip_eval_price_change_atr_mult")
                 if skip_price_mult is not None and isinstance(skip_price_mult, (int, float)) and skip_price_mult > 0:
@@ -4092,6 +4098,7 @@ class TradingEngine:
             # Read LLM-configured validator multipliers from Redis
             min_stop_atr_mult = 1.5
             min_hold_time_mult = 2.0
+            global_min_rr = None
             try:
                 raw = await asyncio.to_thread(self.redis.get, "trading:min_stop_loss_atr_mult")
                 if raw:
@@ -4099,6 +4106,9 @@ class TradingEngine:
                 raw = await asyncio.to_thread(self.redis.get, "trading:min_max_hold_time_mult")
                 if raw:
                     min_hold_time_mult = float(raw)
+                raw = await asyncio.to_thread(self.redis.get, "trading:min_risk_reward_ratio")
+                if raw:
+                    global_min_rr = float(raw)
             except Exception:
                 pass
 
@@ -4111,6 +4121,7 @@ class TradingEngine:
                 timeframe_seconds=tf_seconds,
                 min_stop_atr_mult=min_stop_atr_mult,
                 min_hold_time_mult=min_hold_time_mult,
+                global_min_risk_reward_ratio=global_min_rr,
             )
             validated.model_type = getattr(signal, 'model_type', None)
 
