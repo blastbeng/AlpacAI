@@ -746,7 +746,7 @@ class TradingEngine:
 
     async def _backfill_ohlcv(self, symbol: str, timeframe: str, start_ms: int, end_ms: int, max_candles: int = None, ignore_existing: bool = False):
         """Fetch and store all missing OHLCV candles between start_ms and end_ms."""
-        logger.info(f"Backfill started for {symbol} {timeframe}: {start_ms} → {end_ms}")
+        logger.debug(f"Backfill started for {symbol} {timeframe}: {start_ms} → {end_ms}")
         if ignore_existing:
             since = start_ms
         else:
@@ -775,10 +775,10 @@ class TradingEngine:
             await asyncio.to_thread(insert_ohlcv_batch, symbol, timeframe, candles)
             batch_count = len(candles)
             total_inserted += batch_count
-            logger.info(f"Backfill batch: {symbol} {timeframe} fetched {batch_count} candles from {since}")
+            logger.debug(f"Backfill batch: {symbol} {timeframe} fetched {batch_count} candles from {since}")
 
             if total_inserted >= max_candles:
-                logger.info(
+                logger.debug(
                     f"Backfill limit reached for {symbol} {timeframe}: {total_inserted} candles inserted "
                     f"(max {max_candles}). Remaining range will be filled in next cycle."
                 )
@@ -793,7 +793,7 @@ class TradingEngine:
             await asyncio.sleep(0.2)
 
         if total_inserted >= max_candles:
-            logger.info(f"Backfill partial for {symbol} {timeframe}: {total_inserted} candles inserted (limit reached)")
+            logger.debug(f"Backfill partial for {symbol} {timeframe}: {total_inserted} candles inserted (limit reached)")
         else:
             logger.info(f"Backfill complete for {symbol} {timeframe}: {total_inserted} candles inserted")
 
@@ -806,7 +806,7 @@ class TradingEngine:
         # Get all stored timestamps
         candles = await asyncio.to_thread(get_ohlcv, symbol, timeframe, limit=50000)
         if len(candles) < 2:
-            logger.info(f"Not enough data to check gaps for {symbol} {timeframe}")
+            logger.debug(f"Not enough data to check gaps for {symbol} {timeframe}")
             return
 
         timestamps = sorted(c["timestamp"] for c in candles)
@@ -824,26 +824,26 @@ class TradingEngine:
                 gap_start = timestamps[i] + interval_ms
                 gap_end = timestamps[i + 1] - interval_ms
                 if gap_end > gap_start:
-                    logger.info(f"Gap detected for {symbol} {timeframe}: {gap_start} → {gap_end} (size {gap}ms)")
+                    logger.debug(f"Gap detected for {symbol} {timeframe}: {gap_start} → {gap_end} (size {gap}ms)")
                     await self._backfill_ohlcv(symbol, timeframe, gap_start, gap_end, ignore_existing=True)
                     gaps_filled += 1
 
         if gaps_found == 0:
-            logger.info(f"No gaps found for {symbol} {timeframe}")
+            logger.debug(f"No gaps found for {symbol} {timeframe}")
         else:
-            logger.info(f"Gap check for {symbol} {timeframe}: {gaps_found} gaps found, {gaps_filled} filled")
+            logger.debug(f"Gap check for {symbol} {timeframe}: {gaps_found} gaps found, {gaps_filled} filled")
 
     async def _backfill_new_symbol(self, symbol: str, timeframe: str):
         """Immediately backfill 30 days of OHLCV data for a newly selected symbol (assigned timeframe only)."""
         now_ms = int(time.time() * 1000)
         start_ms = now_ms - 30 * 24 * 60 * 60 * 1000
-        logger.info(f"Starting immediate backfill for newly selected symbol {symbol} ({timeframe})")
+        logger.debug(f"Starting immediate backfill for newly selected symbol {symbol} ({timeframe})")
         try:
             await self._backfill_ohlcv(symbol, timeframe, start_ms, now_ms)
             await self._fill_gaps(symbol, timeframe)
         except Exception as e:
             logger.error(f"Initial backfill failed for {symbol} {timeframe}: {e}")
-        logger.info(f"Immediate backfill complete for {symbol} ({timeframe})")
+        logger.debug(f"Immediate backfill complete for {symbol} ({timeframe})")
 
     async def _download_market_data_loop(self):
         """Periodically download and store OHLCV data for tracked stocks, with gap detection."""
@@ -865,7 +865,7 @@ class TradingEngine:
                     for symbol_entry in self.current_symbols:
                         symbol = symbol_entry["symbol"]
                         tf = symbol_entry["timeframe"]
-                        logger.info(f"Downloading market data for {symbol} ({tf})")
+                        logger.debug(f"Downloading market data for {symbol} ({tf})")
                         try:
                             await self._backfill_ohlcv(symbol, tf, start_ms, now_ms)
                             await self._fill_gaps(symbol, tf)
