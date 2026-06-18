@@ -5088,23 +5088,34 @@ class TradingEngine:
         except Exception:
             pass
 
+        # Batch-fetch missing tickers once before the per-position loop
+        risk_tickers: Dict[str, Dict[str, Any]] = {}
+        missing_risk: List[str] = []
+        for sym in self.positions:
+            t = self.ws_manager.get_ticker(sym)
+            if t is not None:
+                risk_tickers[sym] = t
+            else:
+                missing_risk.append(sym.split("/")[0])
+        if missing_risk:
+            try:
+                raw = await asyncio.to_thread(get_quotes, self.data_client, missing_risk)
+                for sym in self.positions:
+                    base = sym.split("/")[0]
+                    if base in raw:
+                        risk_tickers[sym] = raw[base]
+            except Exception as e:
+                logger.warning(f"Batch quote fetch failed in risk management: {e}")
+
         for symbol, pos in list(self.positions.items()):
             try:
                 # Skip positions that don't have LLM-defined risk parameters yet
                 if pos.get("stop_loss") is None or pos.get("take_profit") is None:
                     continue
 
-                ticker = self.ws_manager.get_ticker(symbol)
+                ticker = risk_tickers.get(symbol)
                 if ticker is None:
-                    if not self.ws_manager.healthy:
-                        # Fallback to REST when WebSocket is down
-                        try:
-                            tickers_map = await asyncio.to_thread(get_quotes, self.data_client, [symbol.split("/")[0]])
-                            ticker = tickers_map.get(symbol.split("/")[0])
-                        except Exception:
-                            continue
-                    else:
-                        continue  # no real-time data yet, skip this check
+                    continue  # no real-time data yet, skip this check
                 current_price = ticker['last']
 
                 # Trailing stop update (only if enabled)
