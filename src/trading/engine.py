@@ -2848,16 +2848,6 @@ class TradingEngine:
                         logger.info(
                             f"Skipping {symbol}: cooldown active ({remaining:.0f}s remaining after loss)"
                         )
-                        if self.notifier:
-                            await self.notifier.send_notification(
-                                f"⏳ Skipping {display_symbol}: cooldown {remaining:.0f}s",
-                                summary={
-                                    "symbol": symbol,
-                                    "action": "SKIP",
-                                    "reason": "Cooldown active",
-                                    "cooldown_remaining_seconds": remaining,
-                                }
-                            )
                         return
 
         # If trading is paused and we have no open position, skip entirely
