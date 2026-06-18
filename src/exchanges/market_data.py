@@ -59,11 +59,17 @@ def get_quotes(
         bars_request = StockLatestBarRequest(symbol_or_symbols=symbols)
         return data_client.get_stock_latest_bar(bars_request)
 
+    def fetch_trades():
+        trade_request = StockLatestTradeRequest(symbol_or_symbols=symbols)
+        return data_client.get_stock_latest_trade(trade_request)
+
     quotes = {}
     bars = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    trades = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         quotes_future = executor.submit(fetch_quotes)
         bars_future = executor.submit(fetch_bars)
+        trades_future = executor.submit(fetch_trades)
         
         try:
             quotes = quotes_future.result()
@@ -75,12 +81,28 @@ def get_quotes(
         except Exception as e:
             logger.warning(f"Could not fetch daily bars for volume/change: {e}")
 
+        try:
+            trades = trades_future.result()
+        except Exception as e:
+            logger.warning(f"Could not fetch latest trades: {e}")
+
     result = {}
     for sym in symbols:
         q = quotes.get(sym)
         if q:
+            # Determine the best available "last" price:
+            # 1. Latest trade price (most accurate)
+            # 2. Mid-price from quote ((bid + ask) / 2)
+            # 3. Ask price (fallback)
+            t = trades.get(sym)
+            if t and t.price is not None and t.price > 0:
+                last_price = t.price
+            elif q.bid_price is not None and q.ask_price is not None and q.bid_price > 0 and q.ask_price > 0:
+                last_price = (q.bid_price + q.ask_price) / 2
+            else:
+                last_price = q.ask_price
             result[sym] = {
-                "last": q.ask_price,
+                "last": last_price,
                 "bid": q.bid_price,
                 "ask": q.ask_price,
                 "volume": None,
