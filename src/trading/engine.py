@@ -144,6 +144,7 @@ class TradingEngine:
         # Balance cache – avoids redundant Alpaca API calls within an evaluation cycle
         self._balance_cache: Optional[Dict[str, float]] = None
         self._balance_cache_time: float = 0.0
+        self._sentiment_cache: Dict[str, tuple] = {}  # symbol -> (timestamp, sentiment_dict)
 
     async def _initialize_clients(self):
         """Create Alpaca clients and load persisted state (non‑blocking)."""
@@ -257,6 +258,23 @@ class TradingEngine:
         self._balance_cache = balance
         self._balance_cache_time = now
         return balance
+
+    async def _get_cached_sentiment(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Return aggregate news sentiment, cached for 60 seconds to reduce DB load."""
+        base = symbol.split("/")[0] if "/" in symbol else symbol
+        now = time.time()
+        cached = self._sentiment_cache.get(base)
+        if cached and (now - cached[0]) < 60:
+            return cached[1]
+        try:
+            agg = await asyncio.to_thread(
+                get_aggregate_sentiment_from_db, base, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS
+            )
+            self._sentiment_cache[base] = (now, agg)
+            return agg
+        except Exception as e:
+            logger.warning(f"Failed to fetch sentiment for {base}: {e}")
+            return None
 
     async def stop(self):
         """Gracefully stop the engine and all background tasks."""
@@ -1593,10 +1611,9 @@ class TradingEngine:
         if settings.NEWS_ENABLED:
             for sym in sample_pairs:
                 try:
-                    base_symbol = sym.split("/")[0] if "/" in sym else sym
-                    agg = await asyncio.to_thread(get_aggregate_sentiment_from_db, base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+                    agg = await self._get_cached_sentiment(sym)
                     if agg:
-                        news_sentiment[base_symbol] = agg
+                        news_sentiment[sym.split("/")[0] if "/" in sym else sym] = agg
                 except Exception as e:
                     logger.info(f"Could not fetch news sentiment for {sym}: {e}")
 
@@ -3608,10 +3625,7 @@ class TradingEngine:
             aggregate_sentiment = None
             if settings.NEWS_ENABLED:
                 try:
-                    base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
-                    aggregate_sentiment = await asyncio.to_thread(
-                        get_aggregate_sentiment_from_db, base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS
-                    )
+                    aggregate_sentiment = await self._get_cached_sentiment(symbol)
                 except Exception as e:
                     logger.info(f"Could not fetch aggregate sentiment for {symbol}: {e}")
 
@@ -5401,10 +5415,7 @@ class TradingEngine:
                 news_threshold = pos.get("news_sentiment_exit_threshold")
                 if news_threshold is not None and settings.NEWS_ENABLED:
                     try:
-                        base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
-                        agg = await asyncio.to_thread(
-                            get_aggregate_sentiment_from_db, base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS
-                        )
+                        agg = await self._get_cached_sentiment(symbol)
                         if agg and agg["avg_compound"] < news_threshold:
                             logger.info(
                                 f"News sentiment exit for {symbol}: compound {agg['avg_compound']:.2f} < threshold {news_threshold}"
