@@ -249,8 +249,6 @@ You may also include the following optional parameters to fine-tune risk managem
 - "min_confidence": an optional decimal between 0.0 and 1.0 (e.g., 0.6). If set, the bot will skip the trade if your confidence is below this threshold. Use this to enforce a minimum conviction level.
 - `limit_price`: (optional) a specific limit price for the order. **Required for extended‑hours trading** (pre‑market, after‑hours, weekends in paper mode). If the `session_info` shows a session other than "Regular", you MUST provide this field for BUY and SELL orders, otherwise the engine will use a default aggressive price.
 - `time_in_force`: (optional) "day" or "gtc". Default "day". Required together with `limit_price` for extended‑hours orders.
-
-You will also receive a summary of the most recent individual trades (last 20). Use this to gauge very short‑term momentum and whether the market is active enough for scalping. A high number of small trades with balanced buy/sell pressure and a tight price range suggests a liquid market suitable for capturing tiny percentages.
 - "news_sentiment_exit_threshold": an optional float between -1.0 and 1.0 (e.g., -0.5). If set, the bot will monitor the aggregate news sentiment for this stock. If the compound score drops below this threshold while the position is open, the position will be closed immediately. Use this to exit on strongly negative news.
 - "strategy_interval_seconds": an optional positive integer (e.g., 60, 120, 300). If set, the bot will re‑evaluate the strategy for this stock every N seconds instead of the default interval. Use shorter intervals (60‑120s) for scalping very small percentages, and longer intervals (300‑600s) for swing trades. If omitted, the global default applies.
 
