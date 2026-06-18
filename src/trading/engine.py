@@ -1407,6 +1407,7 @@ class TradingEngine:
         last_eval = await asyncio.to_thread(self.redis.get, last_key)
         now = time.time()
         if last_eval and (now - float(last_eval)) < self._symbol_reevaluation_interval and self.current_symbols:
+            logger.info("Skipping symbol re-evaluation: last eval was recent and symbols are already loaded.")
             return
 
         old_symbols = list(self.current_symbols)
