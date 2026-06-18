@@ -1,3 +1,4 @@
+import concurrent.futures
 import logging
 import time
 from typing import List, Dict, Any, Optional
@@ -48,8 +49,31 @@ def get_quotes(
     """
     if not symbols:
         return {}
-    request = StockLatestQuoteRequest(symbol_or_symbols=symbols)
-    quotes = data_client.get_stock_latest_quote(request)
+
+    def fetch_quotes():
+        request = StockLatestQuoteRequest(symbol_or_symbols=symbols)
+        return data_client.get_stock_latest_quote(request)
+
+    def fetch_bars():
+        bars_request = StockLatestBarRequest(symbol_or_symbols=symbols)
+        return data_client.get_stock_latest_bar(bars_request)
+
+    quotes = {}
+    bars = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        quotes_future = executor.submit(fetch_quotes)
+        bars_future = executor.submit(fetch_bars)
+        
+        try:
+            quotes = quotes_future.result()
+        except Exception as e:
+            logger.warning(f"Could not fetch quotes: {e}")
+            
+        try:
+            bars = bars_future.result()
+        except Exception as e:
+            logger.warning(f"Could not fetch daily bars for volume/change: {e}")
+
     result = {}
     for sym in symbols:
         q = quotes.get(sym)
@@ -62,21 +86,16 @@ def get_quotes(
                 "change_24h": None,
             }
     # Enrich with daily bar for volume and change
-    try:
-        bars_request = StockLatestBarRequest(symbol_or_symbols=symbols)
-        bars = data_client.get_stock_latest_bar(bars_request)
-        for sym in symbols:
-            b = bars.get(sym)
-            if b:
-                if sym in result:
-                    result[sym]["volume"] = b.volume
-                    if b.open and b.open > 0:
-                        result[sym]["change_24h"] = ((b.close - b.open) / b.open) * 100
-                    result[sym]["last"] = b.close  # use close as "last"
-                    result[sym]["percentage"] = result[sym]["change_24h"]
-                    result[sym]["quoteVolume"] = result[sym]["volume"]
-    except Exception as e:
-        logger.warning(f"Could not fetch daily bars for volume/change: {e}")
+    for sym in symbols:
+        b = bars.get(sym)
+        if b:
+            if sym in result:
+                result[sym]["volume"] = b.volume
+                if b.open and b.open > 0:
+                    result[sym]["change_24h"] = ((b.close - b.open) / b.open) * 100
+                result[sym]["last"] = b.close  # use close as "last"
+                result[sym]["percentage"] = result[sym]["change_24h"]
+                result[sym]["quoteVolume"] = result[sym]["volume"]
     return result
 
 
@@ -108,12 +127,12 @@ def get_multi_timeframe_bars(
     Returns a dict mapping timeframe -> list of candles [timestamp_ms, open, high, low, close, volume].
     """
     result = {}
-    for tf in timeframes:
+
+    def fetch_tf(tf: str) -> tuple:
         alpaca_tf = TIMEFRAME_MAP.get(tf)
         if not alpaca_tf:
             logger.warning(f"Unsupported timeframe: {tf}")
-            result[tf] = []
-            continue
+            return tf, []
         try:
             request = StockBarsRequest(
                 symbol_or_symbols=[symbol],
@@ -129,10 +148,17 @@ def get_multi_timeframe_bars(
                 [int(bar.timestamp.timestamp() * 1000), bar.open, bar.high, bar.low, bar.close, bar.volume]
                 for bar in symbol_bars
             ]
-            result[tf] = candles
+            return tf, candles
         except Exception as e:
             logger.warning(f"Failed to fetch bars for {symbol} {tf}: {e}")
-            result[tf] = []
+            return tf, []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(timeframes)) as executor:
+        futures = [executor.submit(fetch_tf, tf) for tf in timeframes]
+        for future in concurrent.futures.as_completed(futures):
+            tf, candles = future.result()
+            result[tf] = candles
+
     return result
 
 
