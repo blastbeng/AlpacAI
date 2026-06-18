@@ -894,6 +894,11 @@ def build_strategy_prompt(
     max_partial_tp_reviews: int = 10,
     max_dust_sweep_reviews: int = 10,
     data_feed: str = "sip",
+    portfolio_exposure_pct: Optional[float] = None,
+    portfolio_stop_risk_pct: Optional[float] = None,
+    portfolio_total_value: Optional[float] = None,
+    portfolio_open_count: int = 0,
+    portfolio_available_capital: Optional[float] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific stock/ETF."""
     current_price = ticker.get("last") if ticker else None
@@ -919,6 +924,22 @@ Your total available {base_currency} balance: {base_balance:.2f}
 Suggested equal share per symbol (balance / max_symbols): {per_symbol_budget:.2f} {base_currency}
 Maximum symbols to trade: {max_symbols}
 """
+    # --- Portfolio exposure summary ---
+    if portfolio_total_value is not None:
+        prompt += f"\n**Portfolio Exposure Summary:**\n"
+        prompt += f"  Total portfolio value: {portfolio_total_value:.2f} {base_currency}\n"
+        prompt += f"  Open positions: {portfolio_open_count}\n"
+        if portfolio_exposure_pct is not None:
+            prompt += f"  Capital deployed: {portfolio_exposure_pct:.1f}% of portfolio\n"
+        if portfolio_stop_risk_pct is not None:
+            prompt += f"  Total stop-loss risk: {portfolio_stop_risk_pct:.2f}% of portfolio (loss if ALL stops hit)\n"
+        if portfolio_available_capital is not None:
+            prompt += f"  Available capital for new positions: {portfolio_available_capital:.2f} {base_currency}\n"
+        prompt += (
+            "Use this summary to decide position_size_fraction. If capital deployment is already high "
+            "(>70%) or total stop-loss risk is elevated (>5%), reduce your position_size_fraction or output HOLD. "
+            "If you have low exposure and low risk, you may allocate more capital to high-conviction trades.\n"
+        )
     if cycle_spent is not None and remaining_balance is not None:
         prompt += (
             f"Amount already allocated to other symbols in this cycle: {cycle_spent:.2f} {base_currency}\n"

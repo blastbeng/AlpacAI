@@ -3142,6 +3142,30 @@ class TradingEngine:
                 amount = pos['amount']
                 unrealized_pnl = (current_price - entry_price) * amount
 
+            # --- Compute portfolio exposure summary for the prompt ---
+            portfolio_total_value = base_balance
+            portfolio_exposure = 0.0
+            portfolio_stop_risk = 0.0
+            for sym, pos in self.positions.items():
+                try:
+                    t = self.ws_manager.get_ticker(sym)
+                    if t is None:
+                        tickers_map = get_quotes(self.data_client, [sym.split("/")[0]])
+                        t = tickers_map.get(sym.split("/")[0])
+                    price = t['last'] if t and t.get('last') else 0.0
+                    pos_value = pos['amount'] * price
+                    portfolio_exposure += pos_value
+                    portfolio_total_value += pos_value
+                    stop_loss = pos.get('stop_loss')
+                    if stop_loss is not None and price > 0:
+                        loss_if_stop = pos_value * (price - stop_loss) / price
+                        portfolio_stop_risk += max(0, loss_if_stop)
+                except Exception:
+                    pass
+            portfolio_exposure_pct = (portfolio_exposure / portfolio_total_value * 100) if portfolio_total_value > 0 else 0.0
+            portfolio_stop_risk_pct = (portfolio_stop_risk / portfolio_total_value * 100) if portfolio_total_value > 0 else 0.0
+            portfolio_available_capital = max(0.0, base_balance - self._cycle_spent)
+
             # Recent trade outcomes (last 5 closed trades)
             recent_trades = [
                 t for t in self.trade_history if t.get("side") == "sell"
@@ -3339,6 +3363,11 @@ class TradingEngine:
                 max_partial_tp_reviews=settings.MAX_PARTIAL_TP_REVIEWS,
                 max_dust_sweep_reviews=settings.MAX_DUST_SWEEP_REVIEWS,
                 data_feed=settings.ALPACA_DATA_FEED,
+                portfolio_exposure_pct=portfolio_exposure_pct,
+                portfolio_stop_risk_pct=portfolio_stop_risk_pct,
+                portfolio_total_value=portfolio_total_value,
+                portfolio_open_count=len(self.positions),
+                portfolio_available_capital=portfolio_available_capital,
             )
             logger.info(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-symbol)
