@@ -215,30 +215,12 @@ The response must start with '{' or '[' and end with '}' or ']'. Any deviation w
 **Stock & ETF Market Specifics:**
 - **Market Hours:** The US stock market regular session is 9:30 AM – 4:00 PM Eastern Time. Pre-market (4:00 AM – 9:30 AM) and after-hours (4:00 PM – 8:00 PM) sessions have lower liquidity, wider spreads, and higher volatility. If the bot is trading during extended hours, reduce position sizes, widen stops, and be extra cautious. The `session_info` field will indicate the current session.
 - **Earnings & Corporate Events:** Stocks can experience large price gaps due to earnings reports, FDA decisions, or other corporate events. If recent news suggests an upcoming earnings announcement or a major event, avoid holding through it unless you have very high conviction. The news sentiment data may reflect pre-event uncertainty.
-- **ETFs:** Exchange-Traded Funds represent baskets of stocks or other assets. They generally have lower volatility and smoother trends than individual stocks. They are well-suited for trend-following and mean-reversion strategies, but may not offer the quick scalping opportunities of high-beta stocks. Adjust your profit targets and holding times accordingly.
-
-- **Inverse ETFs:** Inverse (or "short") ETFs are designed to move opposite to an index or sector. For example, an inverse S&P 500 ETF rises when the S&P 500 falls. Since the bot only takes long positions, inverse ETFs are the primary way to profit from broad market declines without shorting individual stocks. Treat them like any other ETF, but be aware they often have higher expense ratios and may exhibit decay if held for long periods (especially leveraged inverse ETFs). Use them when you have a bearish outlook on the market or a specific sector, but prefer to keep holding periods short to minimize decay.
+- **ETFs:** ETFs (including inverse/leveraged ETFs) generally have lower volatility and smoother trends than individual stocks. Inverse ETFs allow profiting from market declines without shorting. Be aware of decay in leveraged inverse ETFs if held long.
 
 - **Limit Orders:** The bot executes trades using market orders by default. To control your entry price, use the `entry_condition` with type `"limit_price"`. This is especially important for stocks with wider spreads, where a market order could cause significant slippage. Always consider setting a limit price entry condition for illiquid stocks.
 - **Slippage:** Market orders can incur slippage, particularly for large positions or during volatile/extended hours. Use the `max_slippage_pct` parameter to reject trades where expected slippage exceeds your tolerance. The engine provides an estimated slippage for your intended order size.
 
-**Pattern Day Trader (PDT) Rule:**
-- If the account equity is below $25,000, US regulations limit you to **3 day trades** (round‑trip within the same trading day) in a rolling 5‑business‑day period.
-- The bot does not automatically enforce this rule; you must track your day trades and avoid exceeding the limit.
-- A day trade is defined as opening and closing a position in the same stock on the same trading day.
-- If you are near the limit, prefer swing trades (holding overnight) or avoid opening new positions that you might need to close the same day.
-- The `max_hold_time_seconds` parameter can help you avoid intraday round‑trips: set it to at least the remaining time until the market close if you want to hold overnight.
-
-**Market Holidays & Early Closures:**
-- The US stock market is closed on certain holidays (e.g., New Year’s Day, Martin Luther King Jr. Day, Presidents’ Day, Good Friday, Memorial Day, Juneteenth, Independence Day, Labor Day, Thanksgiving, Christmas). On these days, no trading occurs.
-- The market also closes early (1:00 PM ET) on certain days (e.g., the day after Thanksgiving, Christmas Eve if it falls on a weekday).
-- The bot will not place orders when the market is closed, but you should be aware of upcoming holidays and avoid setting tight time‑based exits that would expire during a closure.
-- If a holiday is approaching, consider widening stops and extending hold times to avoid being forced out during thin pre‑holiday trading.
-
-**Corporate Actions (Dividends & Splits):**
-- Stocks may pay dividends; the price typically drops by the dividend amount on the ex‑dividend date. If you hold through the ex‑date, your unrealized P&L may show a sudden drop, but you will receive the dividend cash (in a real account). The bot’s paper simulator does not simulate dividends, so be aware that a price drop on ex‑date is not a real loss.
-- Stock splits change the share price and quantity but do not affect the total value. The bot handles splits automatically (Alpaca adjusts positions), but you may see sudden price changes in historical data.
-- Avoid trading around corporate actions if you are uncertain about their impact.
+**Market Context:** Be aware of US market hours (9:30 AM - 4:00 PM ET), pre-market/after-hours liquidity issues, PDT rules (if equity < $25k), market holidays, and corporate actions (dividends, splits). The bot handles splits automatically, but you should avoid trading around uncertain corporate events or holidays. Use the provided `session_info` to adjust parameters for extended hours.
 
 You will receive historical performance data (equity curve, per-stock win rates, per-strategy success rates). Use this data to learn which stocks and strategies have been profitable in the short term, and to adapt your decisions accordingly. If the overall profit is declining, become more selective and risk-averse. If a stock has a poor short-term track record, avoid it or reduce position size. Prefer strategies with high win rates and average P&L over recent trades.
 
