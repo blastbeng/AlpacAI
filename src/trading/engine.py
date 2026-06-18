@@ -5945,7 +5945,15 @@ class TradingEngine:
                 sl_pct = (atr_mult * atr) / current_price
                 logger.info(f"ATR-based stop: ATR={atr}, multiplier={atr_mult}, stop_loss_pct={sl_pct:.4%}")
             else:
-                sl_pct = params["stop_loss_pct"]
+                sl_pct = params.get("stop_loss_pct")
+                if sl_pct is None:
+                    logger.warning(f"Cannot execute BUY for {symbol}: stop_loss_pct missing and ATR method not applicable/available.")
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"⚠️ Skipping BUY {display_symbol}: missing stop_loss_pct and ATR unavailable.",
+                            summary={"symbol": symbol, "action": "SKIP", "reason": "Missing stop_loss_pct and ATR unavailable"}
+                        )
+                    return
 
             # --- Session-aware risk guardrails (extended hours) ---
             if not self._is_regular_hours():
