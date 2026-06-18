@@ -2101,6 +2101,18 @@ class TradingEngine:
                 else:
                     await asyncio.to_thread(self.redis.delete, "trading:pause_force_resume_risk_multiplier")
 
+                max_partial_tp = parsed.get("max_partial_tp_reviews")
+                if max_partial_tp is not None and isinstance(max_partial_tp, int) and 1 <= max_partial_tp <= 20:
+                    await asyncio.to_thread(self.redis.setex, "trading:max_partial_tp_reviews", 7 * 24 * 3600, str(max_partial_tp))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:max_partial_tp_reviews")
+
+                max_dust_sweep = parsed.get("max_dust_sweep_reviews")
+                if max_dust_sweep is not None and isinstance(max_dust_sweep, int) and 1 <= max_dust_sweep <= 20:
+                    await asyncio.to_thread(self.redis.setex, "trading:max_dust_sweep_reviews", 7 * 24 * 3600, str(max_dust_sweep))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:max_dust_sweep_reviews")
+
                 # Optional: LLM can set the global symbol re-evaluation interval
                 new_interval = parsed.get("stock_revaluation_interval_seconds")
                 if new_interval is not None:
@@ -2848,6 +2860,18 @@ class TradingEngine:
         except Exception:
             pass
 
+        max_partial_tp_reviews_prompt = settings.MAX_PARTIAL_TP_REVIEWS
+        max_dust_sweep_reviews_prompt = settings.MAX_DUST_SWEEP_REVIEWS
+        try:
+            raw = await asyncio.to_thread(self.redis.get, "trading:max_partial_tp_reviews")
+            if raw:
+                max_partial_tp_reviews_prompt = int(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:max_dust_sweep_reviews")
+            if raw:
+                max_dust_sweep_reviews_prompt = int(raw)
+        except Exception:
+            pass
+
         try:
             ticker = self.ws_manager.get_ticker(symbol)
             if ticker is None:
@@ -3572,8 +3596,8 @@ class TradingEngine:
                 dust_sweep_review_count=dust_sweep_review_count,
                 max_stop_loss_reviews=max_sl_reviews_prompt,
                 max_take_profit_reviews=max_tp_reviews_prompt,
-                max_partial_tp_reviews=settings.MAX_PARTIAL_TP_REVIEWS,
-                max_dust_sweep_reviews=settings.MAX_DUST_SWEEP_REVIEWS,
+                max_partial_tp_reviews=max_partial_tp_reviews_prompt,
+                max_dust_sweep_reviews=max_dust_sweep_reviews_prompt,
                 data_feed=settings.ALPACA_DATA_FEED,
                 portfolio_exposure_pct=portfolio_exposure_pct,
                 portfolio_stop_risk_pct=portfolio_stop_risk_pct,
@@ -4920,6 +4944,18 @@ class TradingEngine:
                 except Exception:
                     pass
 
+                max_partial_tp_reviews = settings.MAX_PARTIAL_TP_REVIEWS
+                max_dust_sweep_reviews = settings.MAX_DUST_SWEEP_REVIEWS
+                try:
+                    raw = await asyncio.to_thread(self.redis.get, "trading:max_partial_tp_reviews")
+                    if raw:
+                        max_partial_tp_reviews = int(raw)
+                    raw = await asyncio.to_thread(self.redis.get, "trading:max_dust_sweep_reviews")
+                    if raw:
+                        max_dust_sweep_reviews = int(raw)
+                except Exception:
+                    pass
+
                 # Trailing stop update (only if enabled)
                 if pos.get("trailing_stop") and pos.get("trailing_stop_distance_pct"):
                     # Check activation threshold
@@ -5076,7 +5112,7 @@ class TradingEngine:
                                 continue  # already pending
 
                             review_count = pos.get("_partial_tp_review_count", 0) + 1
-                            if review_count > settings.MAX_PARTIAL_TP_REVIEWS:
+                            if review_count > max_partial_tp_reviews:
                                 # Force execute
                                 logger.info(f"Partial TP level {i} for {symbol}: max reviews reached, executing.")
                                 await self._execute_partial_tp_level(symbol, i, current_price, None, ticker)
@@ -5115,7 +5151,7 @@ class TradingEngine:
                         entry_price = pos["price"]
                         if current_price >= entry_price * (1 + partial_tp_pct):
                             review_count = pos.get("_partial_tp_single_review_count", 0) + 1
-                            if review_count > settings.MAX_PARTIAL_TP_REVIEWS:
+                            if review_count > max_partial_tp_reviews:
                                 logger.info(f"Single partial TP for {symbol}: max reviews reached, executing.")
                                 await self._execute_partial_tp_single(symbol, current_price, None, ticker)
                                 pos.pop("_partial_tp_triggered_single", None)
@@ -5148,7 +5184,7 @@ class TradingEngine:
 
                     if is_dust:
                         review_count = pos.get("_dust_sweep_review_count", 0) + 1
-                        if review_count > settings.MAX_DUST_SWEEP_REVIEWS:
+                        if review_count > max_dust_sweep_reviews:
                             logger.info(f"Dust sweep max reviews reached for {symbol}, force sweeping.")
                             await self._sweep_dust(symbol)
                         else:
