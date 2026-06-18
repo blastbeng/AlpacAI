@@ -4923,6 +4923,11 @@ class TradingEngine:
 
     async def _execute_signal(self, symbol: str, signal, timeframe: str = None, exit_reason: str = None, atr: Optional[float] = None, spread_pct: Optional[float] = None, order_book: Optional[Dict[str, Any]] = None):
         """Execute a BUY or SELL signal."""
+        # --- Format symbol for notifications ---
+        stock_name = await self._get_stock_name(symbol)
+        tf = timeframe or (self.positions.get(symbol, {}).get("timeframe") if symbol in self.positions else None)
+        display_symbol = self._format_symbol_display(symbol, stock_name, tf)
+
         # In live mode, only execute during regular market hours (manual overrides are allowed anytime)
         if not self._is_market_open() and not (exit_reason and exit_reason.startswith("manual")):
             logger.info(f"Skipping {signal.action} for {symbol}: market closed (live mode).")
@@ -4932,11 +4937,6 @@ class TradingEngine:
                     summary={"symbol": symbol, "action": "SKIP", "reason": "Market closed"}
                 )
             return
-
-        # --- Format symbol for notifications ---
-        stock_name = await self._get_stock_name(symbol)
-        tf = timeframe or (self.positions.get(symbol, {}).get("timeframe") if symbol in self.positions else None)
-        display_symbol = self._format_symbol_display(symbol, stock_name, tf)
 
         async with self._risk_lock:
             base, quote = symbol.split("/")
