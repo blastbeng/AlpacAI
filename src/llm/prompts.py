@@ -992,44 +992,6 @@ Maximum symbols to trade: {max_symbols}
             "Use the higher-timeframe ATR to gauge overall volatility and the lower-timeframe ATR for precise stop-loss placement. "
             "If the higher‑timeframe ATR is large, widen your stop accordingly to avoid being stopped out by normal swings.\n"
         )
-    if rsi is not None:
-        prompt += f"RSI (14): {rsi}\n"
-    if macd is not None and macd_signal is not None:
-        prompt += f"MACD: {macd}, Signal: {macd_signal}, Histogram: {macd_hist}\n"
-    if bb_upper is not None:
-        prompt += f"Bollinger Bands (20,2): Upper={bb_upper}, Middle={bb_middle}, Lower={bb_lower}\n"
-    if ema_9 is not None:
-        prompt += f"EMA (9): {ema_9}\n"
-    if ema_21 is not None:
-        prompt += f"EMA (21): {ema_21}\n"
-    if stochastic_k is not None:
-        d_str = f"{stochastic_d:.2f}" if stochastic_d is not None else "N/A"
-        prompt += f"Stochastic Oscillator: %K={stochastic_k:.2f}, %D={d_str}\n"
-    if adx is not None:
-        prompt += f"ADX(14): {adx:.2f}, +DI={plus_di:.2f}, -DI={minus_di:.2f}\n"
-    if obv is not None:
-        prompt += f"On-Balance Volume (OBV): {obv:.2f}\n"
-    if mfi is not None:
-        prompt += f"Money Flow Index (MFI 14): {mfi:.2f}\n"
-    if cci is not None:
-        prompt += f"Commodity Channel Index (CCI 20): {cci:.2f}\n"
-    if williams_r is not None:
-        prompt += f"Williams %R (14): {williams_r:.2f}\n"
-    if ichimoku is not None:
-        prompt += (
-            f"Ichimoku Cloud: Tenkan-sen={ichimoku['tenkan_sen']:.4f}, "
-            f"Kijun-sen={ichimoku['kijun_sen']:.4f}, "
-            f"Senkou Span A={ichimoku['senkou_span_a']:.4f}, "
-            f"Senkou Span B={ichimoku['senkou_span_b']:.4f}, "
-            f"Cloud: {ichimoku['cloud_bottom']:.4f} - {ichimoku['cloud_top']:.4f}\n"
-        )
-        prompt += (
-            "Interpretation: Price above the cloud confirms an uptrend; below confirms a downtrend. "
-            "Tenkan-sen crossing above Kijun-sen is a bullish signal; crossing below is bearish. "
-            "The cloud (between Span A and Span B) acts as dynamic support/resistance – "
-            "a thick cloud means strong support/resistance; a thin cloud means it can be easily broken. "
-            "Chikou Span (current close) above past prices confirms bullish momentum.\n"
-        )
     if order_book_imbalance is not None:
         prompt += f"Order book imbalance (bid_vol / ask_vol): {order_book_imbalance:.2f} ( >1 = buying pressure)\n"
     if spread_pct is not None:
