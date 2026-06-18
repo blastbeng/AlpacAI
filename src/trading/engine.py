@@ -1742,66 +1742,6 @@ class TradingEngine:
             except Exception:
                 symbol_scores[sym] = 0.0
 
-        # --- Compute trend quality scores for candidate stocks ---
-        symbol_trend_scores: Dict[str, float] = {}
-        primary_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
-        for sym in sample_pairs:
-            try:
-                tf_indicators = symbol_indicators.get(sym, {})
-                ind = tf_indicators.get(primary_tf, {})
-
-                score = 0.0
-                components = 0
-
-                # ADX (trend strength): 0-100, higher = stronger trend
-                adx_val = ind.get('adx')
-                if adx_val is not None:
-                    adx_score = min(1.0, adx_val / 50.0)
-                    score += adx_score
-                    components += 1
-
-                # EMA alignment: EMA9 vs EMA21
-                ema_9_val = ind.get('ema_9')
-                ema_21_val = ind.get('ema_21')
-                if ema_9_val is not None and ema_21_val is not None:
-                    ema_score = 1.0 if ema_9_val > ema_21_val else 0.0
-                    score += ema_score
-                    components += 1
-
-                # RSI direction consistency (not at extremes = healthier trend)
-                rsi_val = ind.get('rsi')
-                if rsi_val is not None:
-                    if 40 <= rsi_val <= 70:
-                        rsi_score = 1.0
-                    elif 30 <= rsi_val <= 80:
-                        rsi_score = 0.5
-                    else:
-                        rsi_score = 0.0
-                    score += rsi_score
-                    components += 1
-
-                # MACD histogram direction (momentum confirmation)
-                macd_hist_val = ind.get('macd_hist')
-                if macd_hist_val is not None:
-                    macd_score = 1.0 if macd_hist_val > 0 else 0.0
-                    score += macd_score
-                    components += 1
-
-                # +DI vs -DI (directional confirmation)
-                plus_di_val = ind.get('plus_di')
-                minus_di_val = ind.get('minus_di')
-                if plus_di_val is not None and minus_di_val is not None:
-                    di_score = 1.0 if plus_di_val > minus_di_val else 0.0
-                    score += di_score
-                    components += 1
-
-                if components > 0:
-                    symbol_trend_scores[sym] = round(score / components, 3)
-                else:
-                    symbol_trend_scores[sym] = 0.0
-            except Exception:
-                symbol_trend_scores[sym] = 0.0
-
         # Fetch news sentiment for all candidate stocks
         news_sentiment = {}
         if settings.NEWS_ENABLED:
@@ -1900,6 +1840,66 @@ class TradingEngine:
                     ind = compute_all_indicators(candles)
                     if ind:
                         symbol_indicators[sym][tf] = ind
+
+        # --- Compute trend quality scores for candidate stocks ---
+        symbol_trend_scores: Dict[str, float] = {}
+        primary_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
+        for sym in sample_pairs:
+            try:
+                tf_indicators = symbol_indicators.get(sym, {})
+                ind = tf_indicators.get(primary_tf, {})
+
+                score = 0.0
+                components = 0
+
+                # ADX (trend strength): 0-100, higher = stronger trend
+                adx_val = ind.get('adx')
+                if adx_val is not None:
+                    adx_score = min(1.0, adx_val / 50.0)
+                    score += adx_score
+                    components += 1
+
+                # EMA alignment: EMA9 vs EMA21
+                ema_9_val = ind.get('ema_9')
+                ema_21_val = ind.get('ema_21')
+                if ema_9_val is not None and ema_21_val is not None:
+                    ema_score = 1.0 if ema_9_val > ema_21_val else 0.0
+                    score += ema_score
+                    components += 1
+
+                # RSI direction consistency (not at extremes = healthier trend)
+                rsi_val = ind.get('rsi')
+                if rsi_val is not None:
+                    if 40 <= rsi_val <= 70:
+                        rsi_score = 1.0
+                    elif 30 <= rsi_val <= 80:
+                        rsi_score = 0.5
+                    else:
+                        rsi_score = 0.0
+                    score += rsi_score
+                    components += 1
+
+                # MACD histogram direction (momentum confirmation)
+                macd_hist_val = ind.get('macd_hist')
+                if macd_hist_val is not None:
+                    macd_score = 1.0 if macd_hist_val > 0 else 0.0
+                    score += macd_score
+                    components += 1
+
+                # +DI vs -DI (directional confirmation)
+                plus_di_val = ind.get('plus_di')
+                minus_di_val = ind.get('minus_di')
+                if plus_di_val is not None and minus_di_val is not None:
+                    di_score = 1.0 if plus_di_val > minus_di_val else 0.0
+                    score += di_score
+                    components += 1
+
+                if components > 0:
+                    symbol_trend_scores[sym] = round(score / components, 3)
+                else:
+                    symbol_trend_scores[sym] = 0.0
+            except Exception:
+                symbol_trend_scores[sym] = 0.0
 
         # Fetch historical OHLCV from database for longer-term trend analysis (up to 30 days)
         historical_ohlcv_summary = {}
