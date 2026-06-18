@@ -75,21 +75,21 @@ async def status():
         "current_symbols": current_symbols,
         "positions": positions,
         "balances": balances,
-        "paused": paused,
+        "paused": await asyncio.to_thread(redis.get, "trading:paused") == "1",
     }
 
 @app.get("/api/trades")
 async def trades(limit: int = 0):
     engine = get_engine()
-    open_trades = engine.get_open_trades()
+    open_trades = await run_in_threadpool(engine.get_open_trades)
     for t in open_trades:
         t["display_symbol"] = await _get_display_symbol(engine, t["symbol"], t.get("timeframe"))
     return {"trades": open_trades}
 
 @app.get("/api/profit")
-def profit():
+async def profit():
     engine = get_engine()
-    return engine.get_profit_summary()
+    return await run_in_threadpool(engine.get_profit_summary)
 
 @app.get("/api/performance")
 async def performance():
@@ -103,9 +103,9 @@ async def performance():
     return perf
 
 @app.get("/api/risk")
-def risk():
+async def risk():
     engine = get_engine()
-    return engine.get_risk_metrics()
+    return await run_in_threadpool(engine.get_risk_metrics)
 
 @app.get("/api/news")
 async def news():
@@ -132,19 +132,19 @@ async def history(limit: int = 50):
     return trades
 
 @app.post("/api/pause")
-def pause():
+async def pause():
     engine = get_engine()
     redis = engine.redis
-    redis.set("trading:paused", "1")
-    redis.set("trading:pause_source", "manual")
-    redis.delete("trading:pause_start")
-    redis.delete("trading:pause_duration")
-    redis.delete("trading:pause_reason")
-    redis.delete("trading:llm_pause_time")
+    await asyncio.to_thread(redis.set, "trading:paused", "1")
+    await asyncio.to_thread(redis.set, "trading:pause_source", "manual")
+    await asyncio.to_thread(redis.delete, "trading:pause_start")
+    await asyncio.to_thread(redis.delete, "trading:pause_duration")
+    await asyncio.to_thread(redis.delete, "trading:pause_reason")
+    await asyncio.to_thread(redis.delete, "trading:llm_pause_time")
     return {"status": "paused"}
 
 @app.post("/api/resume")
-def resume():
+async def resume():
     engine = get_engine()
     redis = engine.redis
     keys = [
@@ -156,11 +156,11 @@ def resume():
         "trading:llm_pause_time",
     ]
     for key in keys:
-        redis.delete(key)
+        await asyncio.to_thread(redis.delete, key)
     return {"status": "resumed"}
 
 @app.post("/api/sell")
-def sell(symbol: str = None):
+async def sell(symbol: str = None):
     engine = get_engine()
     if symbol:
         asyncio.create_task(engine.sell_position(symbol))
@@ -170,8 +170,8 @@ def sell(symbol: str = None):
         return {"status": "selling all"}
 
 @app.post("/api/reload")
-def reload():
-    settings.reload()
+async def reload():
+    await run_in_threadpool(settings.reload)
     return {"status": "reloaded"}
 
 @app.post("/api/restart")
@@ -370,7 +370,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "trades": trades,
                     "profit": profit_summary,
                     "performance": perf,
-                    "paused": redis.get("trading:paused") == "1",
+                    "paused": await asyncio.to_thread(redis.get, "trading:paused") == "1",
                 }
                 await websocket.send_text(json.dumps(data))
             except HTTPException:
