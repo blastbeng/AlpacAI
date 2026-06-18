@@ -1005,11 +1005,7 @@ Maximum symbols to trade: {max_symbols}
     if order_book_pressure_trend is not None:
         direction = "increasing" if order_book_pressure_trend > 0 else "decreasing" if order_book_pressure_trend < 0 else "unchanged"
         prompt += f"Order book pressure trend: {order_book_pressure_trend:+.4f} ({direction} since last cycle)\n"
-        prompt += (
-            "A rising pressure trend indicates building buy-side conviction; "
-            "a falling trend indicates growing sell-side pressure or potential spoofing (walls being pulled). "
-            "Use this to distinguish genuine order flow from transient walls.\n"
-        )
+        prompt += "Rising trend = building buy-side conviction; falling = growing sell-side pressure or potential spoofing. Use to distinguish genuine order flow from transient walls.\n"
     if depth_imbalances:
         prompt += f"Order book depth imbalances (bid_vol/total_vol at distance from mid): {json.dumps(depth_imbalances)}\n"
     if order_book_slope is not None:
@@ -1065,42 +1061,21 @@ Maximum symbols to trade: {max_symbols}
             f"  Sells: {len(sells)}, avg size: {avg_sell_size:.4f}\n"
             f"  Price range: {price_range[0]:.4f} - {price_range[1]:.4f}\n"
         )
-        prompt += (
-            "Use this to assess micro‑momentum and liquidity. "
-            "A high frequency of small trades with tight spreads is ideal for scalping.\n"
-        )
+        prompt += "Use this to assess micro-momentum and liquidity. High frequency of small trades with tight spreads is ideal for scalping.\n"
     if cvd is not None:
         prompt += f"\nCumulative Volume Delta (CVD) from recent trades: {cvd:.6f}"
         if cvd_normalized is not None:
             prompt += f" (normalized: {cvd_normalized:+.4f})"
         prompt += "\n"
-        prompt += (
-            "CVD is the net buying volume (buy volume minus sell volume) from recent trades. "
-            "A positive CVD indicates aggressive buying pressure; a negative CVD indicates selling pressure. "
-            "The normalized value (range -1 to +1) shows the imbalance strength. "
-            "Use CVD alongside order book pressure to confirm directional conviction: "
-            "positive CVD + high order book pressure = strong buy signal; "
-            "negative CVD + low order book pressure = strong sell signal. "
-            "Divergences (e.g., price rising but CVD falling) warn of weakening momentum.\n"
-        )
+        prompt += "CVD is net buying volume (buy - sell). Positive = buying pressure, negative = selling pressure. Use alongside order book pressure to confirm directional conviction. Divergences warn of weakening momentum.\n"
     if scalping_feasibility_score is not None:
         prompt += f"\nScalping feasibility score: {scalping_feasibility_score:.3f} (0-1, higher = better for very small take‑profits)\n"
         if market_impact_score is not None:
             prompt += f"  Market impact component: {market_impact_score:.3f} (0-1, higher = lower price impact per unit of volume)\n"
-        prompt += (
-            "This score combines spread, order book depth at 0.1%, trade frequency, volatility, and market impact. "
-            "A score above 0.7 suggests the stock is highly suitable for scalping tiny percentages (e.g., 0.1-0.5% take‑profit). "
-            "The market impact component measures how much the price moves per unit of volume – a low impact means "
-            "your orders are less likely to move the market against you. "
-            "Use this to decide whether to employ a scalping strategy and how tight to set your take‑profit and stop‑loss.\n"
-        )
+        prompt += "Score combines spread, depth, trade frequency, volatility, and market impact. Score > 0.7 = highly suitable for scalping tiny percentages. Market impact component measures price movement per unit of volume.\n"
     elif market_impact_score is not None:
         prompt += f"\nMarket impact score: {market_impact_score:.3f} (0-1, higher = lower price impact per unit of volume)\n"
-        prompt += (
-            "This measures how much the price moves per unit of volume traded. "
-            "A high score means your orders will have minimal price impact; a low score means even small orders can move the price. "
-            "Use this to gauge execution quality and adjust position size accordingly.\n"
-        )
+        prompt += "Measures price movement per unit of volume. High score = minimal price impact, low score = small orders can move price.\n"
     if fee_rate is not None:
         prompt += f"Taker fee rate for this symbol: {fee_rate*100:.2f}%\n"
         # Calculate exact break-even take-profit percentage
@@ -1389,58 +1364,32 @@ Maximum symbols to trade: {max_symbols}
             f"  Neutral articles: {aggregate_sentiment['neutral']}\n"
             f"  Total articles: {aggregate_sentiment['total_articles']}\n"
         )
-        prompt += (
-            "Use this aggregate sentiment to adjust your confidence, position size, and risk parameters. "
-            "Strong positive sentiment may justify higher confidence and larger positions; "
-            "strong negative sentiment should make you more cautious or even skip the trade.\n"
-        )
+        prompt += "Use aggregate sentiment to adjust confidence, position size, and risk. Strong positive = higher confidence/larger positions; strong negative = more cautious or skip.\n"
     if sentiment_trend is not None:
         prompt += f"\nSentiment trend (change in compound score since last cycle): {sentiment_trend:+.4f}\n"
-        prompt += (
-            "A positive delta means sentiment is improving; a negative delta means it is deteriorating. "
-            "Use this to adjust your confidence and risk parameters: improving sentiment may justify a larger position, "
-            "while deteriorating sentiment may warrant a smaller position or tighter stops.\n"
-        )
+        prompt += "Positive delta = sentiment improving, negative = deteriorating. Adjust confidence and risk parameters accordingly.\n"
     if volume_trend is not None:
         prompt += f"\nVolume trend: {volume_trend:.2f}x (current daily volume relative to recent average)\n"
-        prompt += (
-            "A ratio > 1.0 means volume is above average; > 2.0 suggests a significant spike. "
-            "Elevated volume confirms the strength of a price move and increases the reliability of technical signals. "
-            "Low volume during a breakout may signal a fakeout – reduce position size or wait for confirmation. "
-            "Use this to adjust your confidence and position size accordingly.\n"
-        )
+        prompt += "Ratio > 1.0 = volume above average, > 2.0 = significant spike. Elevated volume confirms price move strength. Low volume during breakout may signal fakeout.\n"
     if market_breadth:
         prompt += (
             f"\nMarket breadth: {market_breadth['positive_pct']}% of {market_breadth['total_count']} "
             f"candidate stocks have a positive daily change ({market_breadth['positive_count']} positive).\n"
-            "High breadth (>70%) indicates broad market strength (risk-on); low breadth (<30%) indicates weakness (risk-off). "
-            "Use this to gauge overall market participation and adjust your stock selection and risk parameters accordingly.\n"
+            "High breadth (>70%) = broad market strength (risk-on); low breadth (<30%) = weakness (risk-off). Adjust selection and risk accordingly.\n"
         )
     if full_market_breadth:
         prompt += (
             f"\nFull market breadth (all available symbols): {full_market_breadth['positive_pct']}% of "
             f"{full_market_breadth['total_count']} symbols have a positive daily change "
             f"({full_market_breadth['positive_count']} positive).\n"
-            "This is a broader measure than the candidate‑only breadth. "
-            "Use it to confirm the overall market health. "
-            "If the full breadth is very low (<25%) while the candidate breadth is moderate, "
-            "the market may be more fragile than it appears – consider reducing risk or skipping the trade.\n"
+            "Broader measure of market health. If full breadth is very low (<25%) while candidate breadth is moderate, market may be more fragile than it appears.\n"
         )
     if depth_trend is not None:
         prompt += f"\nOrder book depth trend (change in total depth within 1% of mid since last cycle): {depth_trend:+.4f}\n"
-        prompt += (
-            "A positive delta means depth is increasing (growing liquidity and conviction); "
-            "a negative delta means depth is decreasing (thinning liquidity). "
-            "Increasing depth supports larger positions and tighter stops; decreasing depth warrants caution.\n"
-        )
+        prompt += "Positive = growing liquidity/conviction, negative = thinning liquidity. Increasing depth supports larger positions; decreasing depth warrants caution.\n"
     if parabolic_sar is not None:
         prompt += f"\nParabolic SAR: {parabolic_sar:.6f}\n"
-        prompt += (
-            "Parabolic SAR is a trailing stop/reversal indicator. "
-            "When the price is above the SAR, the trend is up; when below, the trend is down. "
-            "The SAR can be used as a dynamic stop‑loss level: place your stop just below the SAR in an uptrend, "
-            "or just above in a downtrend. A flip of the SAR relative to price signals a potential trend reversal.\n"
-        )
+        prompt += "Parabolic SAR: trailing stop/reversal indicator. Price above SAR = uptrend, below = downtrend. Use as dynamic stop-loss.\n"
     if keltner_channels:
         prompt += (
             f"\nKeltner Channels (20 EMA, 2× ATR): "
@@ -1448,14 +1397,7 @@ Maximum symbols to trade: {max_symbols}
             f"Middle={keltner_channels['middle']:.6f}, "
             f"Lower={keltner_channels['lower']:.6f}\n"
         )
-        prompt += (
-            "Keltner Channels are volatility‑based envelopes. "
-            "Price near the upper band suggests overbought conditions; near the lower band suggests oversold. "
-            "A breakout above the upper band with expanding ATR signals strong momentum; "
-            "a squeeze (bands narrowing) indicates low volatility and often precedes a large move. "
-            "Use the middle line as dynamic support/resistance. "
-            "Combine with other indicators to confirm entries and exits.\n"
-        )
+        prompt += "Keltner Channels: volatility-based envelopes. Price near upper = overbought, near lower = oversold. Squeeze precedes large moves.\n"
     if pivot_points:
         prompt += (
             f"\nPivot Points (from previous {assigned_timeframe or 'period'} candle): "
@@ -1463,13 +1405,7 @@ Maximum symbols to trade: {max_symbols}
             f"R1={pivot_points['r1']:.6f}, R2={pivot_points['r2']:.6f}, "
             f"S1={pivot_points['s1']:.6f}, S2={pivot_points['s2']:.6f}\n"
         )
-        prompt += (
-            "Pivot Points are classic support/resistance levels. "
-            "Price above the pivot suggests bullish bias; below suggests bearish. "
-            "R1 and R2 act as resistance; S1 and S2 act as support. "
-            "Use these levels to set take‑profit targets (near R1/R2) and stop‑loss levels (below S1/S2). "
-            "A break above R1 with volume can signal continuation; a rejection at R1 may be a selling opportunity.\n"
-        )
+        prompt += "Pivot Points: support/resistance levels. Price above pivot = bullish, below = bearish. Use R1/R2 as take-profit targets, S1/S2 as stop-loss references.\n"
     if donchian_channels:
         prompt += (
             f"\nDonchian Channels ({assigned_timeframe or 'default'}): "
@@ -1477,16 +1413,7 @@ Maximum symbols to trade: {max_symbols}
             f"Middle={donchian_channels['middle']:.6f}, "
             f"Lower={donchian_channels['lower']:.6f}\n"
         )
-        prompt += (
-            "Donchian Channels show the highest high and lowest low over the lookback period. "
-            "A breakout above the upper channel signals a new high (bullish breakout); "
-            "a break below the lower channel signals a new low (bearish breakout). "
-            "The channel width indicates volatility: wide = high volatility, narrow = low volatility (squeeze). "
-            "Use the middle line as a trend reference. "
-            "In a trending market, price tends to ride the channel boundary; "
-            "in a range, price oscillates between upper and lower. "
-            "Combine with ADX to confirm breakout strength: a narrow channel + rising ADX often precedes a strong move.\n"
-        )
+        prompt += "Donchian Channels: highest high/lowest low over lookback period. Breakout above upper = new high (bullish), below lower = new low (bearish). Narrow channel = low volatility (squeeze).\n"
 
     # --- News section (detailed articles) ---
     news_section = ""
