@@ -52,6 +52,29 @@ class LiveTrader:
         limit_price: Optional[float] = None, time_in_force: str = "day"
     ) -> Dict[str, Any]:
         base = symbol.split("/")[0]
+
+        # Alpaca Paper Trading limit order queuing logic
+        if settings.ALPACA_PAPER and limit_price is not None:
+            try:
+                quote = self.trading_client.get_latest_quote(base)
+                ask_price = float(quote.ask_price)
+                if ask_price > limit_price:
+                    logger.info(f"Paper buy limit order for {symbol} at {limit_price} queued (ask: {ask_price}).")
+                    return {
+                        'id': f'queued_{base}_{int(time.time()*1000)}',
+                        'symbol': symbol,
+                        'side': 'buy',
+                        'amount': 0.0,
+                        'price': 0.0,
+                        'cost': 0.0,
+                        'fee': {'cost': 0.0, 'currency': 'USD'},
+                        'status': 'queued',
+                        'limit_price': limit_price,
+                        'timestamp': int(time.time() * 1000),
+                    }
+            except Exception as e:
+                logger.warning(f"Could not fetch quote for paper buy limit queuing check: {e}")
+
         asset = self.trading_client.get_asset(base)
         if not asset.fractionable:
             # Non-fractionable asset: must use integer qty
@@ -116,6 +139,29 @@ class LiveTrader:
         limit_price: Optional[float] = None, time_in_force: str = "day"
     ) -> Dict[str, Any]:
         base = symbol.split("/")[0]
+
+        # Alpaca Paper Trading limit order queuing logic
+        if settings.ALPACA_PAPER and limit_price is not None:
+            try:
+                quote = self.trading_client.get_latest_quote(base)
+                bid_price = float(quote.bid_price)
+                if bid_price < limit_price:
+                    logger.info(f"Paper sell limit order for {symbol} at {limit_price} queued (bid: {bid_price}).")
+                    return {
+                        'id': f'queued_{base}_{int(time.time()*1000)}',
+                        'symbol': symbol,
+                        'side': 'sell',
+                        'amount': 0.0,
+                        'price': 0.0,
+                        'cost': 0.0,
+                        'fee': {'cost': 0.0, 'currency': 'USD'},
+                        'status': 'queued',
+                        'limit_price': limit_price,
+                        'timestamp': int(time.time() * 1000),
+                    }
+            except Exception as e:
+                logger.warning(f"Could not fetch quote for paper sell limit queuing check: {e}")
+
         if limit_price is not None:
             if limit_price <= 0:
                 raise ValueError(f"Invalid limit_price {limit_price} for {symbol}")

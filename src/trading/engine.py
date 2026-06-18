@@ -151,6 +151,7 @@ class TradingEngine:
         self._balance_cache: Optional[Dict[str, float]] = None
         self._balance_cache_time: float = 0.0
         self._sentiment_cache: Dict[str, tuple] = {}  # symbol -> (timestamp, sentiment_dict)
+        self.queued_orders: List[Dict[str, Any]] = []
 
     async def _initialize_clients(self):
         """Create Alpaca clients and load persisted state (non‑blocking)."""
@@ -1482,6 +1483,7 @@ class TradingEngine:
         self._background_tasks.append(asyncio.create_task(self._periodic_full_market_breadth()))
         self._background_tasks.append(asyncio.create_task(self._check_pending_entries()))
         self._background_tasks.append(asyncio.create_task(self._cleanup_orphaned_orders()))
+        self._background_tasks.append(asyncio.create_task(self._process_queued_orders()))
 
         while self._running:
             try:
@@ -6434,6 +6436,26 @@ class TradingEngine:
                 order = await asyncio.to_thread(
                     self.trader.create_market_buy_order, symbol, amount, fill_timeout, limit_price, time_in_force
                 )
+                if order.get('status') == 'queued':
+                    logger.info(f"BUY limit order for {symbol} queued at {limit_price}")
+                    self.queued_orders.append({
+                        'symbol': symbol,
+                        'side': 'buy',
+                        'amount': amount,
+                        'limit_price': limit_price,
+                        'time_in_force': time_in_force,
+                        'signal': signal,
+                        'timeframe': timeframe,
+                        'atr': atr,
+                        'spread_pct': spread_pct,
+                        'order_book': order_book,
+                    })
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"⏳ BUY limit order for {display_symbol} queued at {limit_price}",
+                            summary={"symbol": symbol, "action": "QUEUE", "reason": "Limit price not marketable"}
+                        )
+                    return
                 logger.info(f"BUY {symbol}: {order}")
                 self._cycle_spent += order['cost']
                 # Update or create position
@@ -6695,6 +6717,27 @@ class TradingEngine:
                 order = await asyncio.to_thread(
                     self.trader.create_market_sell_order, symbol, gross_amount, fill_timeout, limit_price, time_in_force
                 )
+                if order.get('status') == 'queued':
+                    logger.info(f"SELL limit order for {symbol} queued at {limit_price}")
+                    self.queued_orders.append({
+                        'symbol': symbol,
+                        'side': 'sell',
+                        'amount': gross_amount,
+                        'limit_price': limit_price,
+                        'time_in_force': time_in_force,
+                        'signal': signal,
+                        'timeframe': timeframe,
+                        'atr': atr,
+                        'spread_pct': spread_pct,
+                        'order_book': order_book,
+                        'exit_reason': exit_reason,
+                    })
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"⏳ SELL limit order for {display_symbol} queued at {limit_price}",
+                            summary={"symbol": symbol, "action": "QUEUE", "reason": "Limit price not marketable"}
+                        )
+                    return
                 logger.info(f"SELL {symbol}: {order}")
                 # Compute realized P&L
                 fee = order.get('fee', {})
@@ -7764,6 +7807,53 @@ class TradingEngine:
                 )
         except Exception as e:
             logger.error(f"Dust sweep failed for {symbol}: {e}")
+
+    async def _process_queued_orders(self):
+        """Periodically check queued limit orders and execute if marketable."""
+        await asyncio.sleep(10)
+        while self._running:
+            try:
+                for queued in list(self.queued_orders):
+                    symbol = queued['symbol']
+                    base = symbol.split("/")[0]
+                    limit_price = queued['limit_price']
+                    side = queued['side']
+
+                    ticker = self.ws_manager.get_ticker(symbol)
+                    if ticker is None:
+                        try:
+                            quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
+                            ticker = quotes.get(base)
+                        except Exception:
+                            continue
+
+                    if ticker is None:
+                        continue
+
+                    bid = ticker.get('bid')
+                    ask = ticker.get('ask')
+
+                    is_marketable = False
+                    if side == 'buy' and ask is not None and ask <= limit_price:
+                        is_marketable = True
+                    elif side == 'sell' and bid is not None and bid >= limit_price:
+                        is_marketable = True
+
+                    if is_marketable:
+                        logger.info(f"Queued {side} order for {symbol} is now marketable. Executing...")
+                        self.queued_orders.remove(queued)
+                        await self._execute_signal(
+                            symbol,
+                            queued['signal'],
+                            timeframe=queued.get('timeframe'),
+                            exit_reason=queued.get('exit_reason'),
+                            atr=queued.get('atr'),
+                            spread_pct=queued.get('spread_pct'),
+                            order_book=queued.get('order_book')
+                        )
+            except Exception as e:
+                logger.error(f"Error processing queued orders: {e}", exc_info=True)
+            await asyncio.sleep(5)
 
     async def _cleanup_orphaned_orders(self):
         """Periodically cancel any open orders that are older than 10 minutes."""
