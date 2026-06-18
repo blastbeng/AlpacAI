@@ -1458,7 +1458,7 @@ class TradingEngine:
         self.trade_history = self.trade_history[-1000:]
         await asyncio.to_thread(save_trading_state, "trade_history", self.trade_history)
         await asyncio.to_thread(save_trading_state, "queued_orders", self.queued_orders)
-        logger.info("Saved trading state: %d symbols, %d positions, %d trades",
+        logger.debug("Saved trading state: %d symbols, %d positions, %d trades",
                      len(self.current_symbols), len(self.positions), len(self.trade_history))
 
     async def run(self):
