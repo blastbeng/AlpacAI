@@ -570,6 +570,39 @@ class TradingEngine:
         """Convert a timeframe string (e.g., '5m', '1h') to seconds."""
         return self._timeframe_to_ms(timeframe) // 1000
 
+    async def _get_stock_name(self, symbol: str) -> str:
+        """Return the human‑readable company name for a symbol, cached in Redis."""
+        base = symbol.split("/")[0] if "/" in symbol else symbol
+        cache_key = f"stock_name:{base}"
+        try:
+            cached = await asyncio.to_thread(self.redis.get, cache_key)
+            if cached:
+                return cached.decode() if isinstance(cached, bytes) else cached
+        except Exception:
+            pass
+
+        try:
+            asset = await asyncio.to_thread(self.exchange.get_asset, base)
+            name = asset.name if asset and asset.name else base
+        except Exception:
+            name = base
+
+        # Cache for 7 days (names rarely change)
+        try:
+            await asyncio.to_thread(self.redis.setex, cache_key, 7 * 24 * 3600, name)
+        except Exception:
+            pass
+        return name
+
+    @staticmethod
+    def _format_symbol_display(symbol: str, stock_name: str, timeframe: Optional[str] = None) -> str:
+        """Return a display string like 'AAPL[Apple Inc.]' or 'AAPL[Apple Inc.] (15m)'."""
+        base = symbol.split("/")[0] if "/" in symbol else symbol
+        display = f"{base}[{stock_name}]"
+        if timeframe:
+            display += f" ({timeframe})"
+        return display
+
     async def _backfill_ohlcv(self, symbol: str, timeframe: str, start_ms: int, end_ms: int, max_candles: int = None, ignore_existing: bool = False):
         """Fetch and store all missing OHLCV candles between start_ms and end_ms."""
         logger.info(f"Backfill started for {symbol} {timeframe}: {start_ms} → {end_ms}")
