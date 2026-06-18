@@ -1892,6 +1892,7 @@ class TradingEngine:
         pause_trading = None
         pause_reason = ""
         pause_duration = None
+        new_symbols: List[Dict[str, str]] = []
 
         # Retry JSON parsing if the first attempt fails
         if response is not None:
@@ -2378,7 +2379,7 @@ class TradingEngine:
         # Trigger immediate backfill for newly selected symbols
         old_symbol_set = {entry["symbol"] for entry in old_symbols}
         for entry in self.current_symbols:
-            if entry["symbol"] not in old_symbols:
+            if entry["symbol"] not in old_symbol_set:
                 sym = entry["symbol"]
                 tf = entry["timeframe"]
                 logger.info(f"Triggering immediate backfill for newly selected symbol {sym} ({tf})")
