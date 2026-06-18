@@ -466,7 +466,7 @@ Select between 0 and {max_symbols} stocks to trade. If market conditions are ext
 
 Each symbol can only appear once in your selection. Choose the single best timeframe for each stock based on the multi-timeframe OHLCV data.
 
-**Output ONLY the raw JSON object. Do NOT wrap it in ```json fences. Do NOT include any text before or after the JSON.**
+**Output ONLY the raw JSON object as specified.**
 
 Return a JSON object with the following fields:
 - "stocks": a JSON array of objects, each with "symbol" and "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h"). Each object may optionally include "max_tenure_hours" (a positive float, hours) to force-sell the stock after that many hours in the portfolio. Omit or set to null for no limit.
@@ -698,13 +698,6 @@ Use this historical data to select stocks that have been profitable in the past,
         consecutive_losses = performance.get("equity_curve", {}).get("consecutive_losses", 0)
         if consecutive_losses > 0:
             prompt += f"⚠️ You have {consecutive_losses} consecutive losing trades. Consider pausing or reducing risk.\n"
-    prompt += (
-        "\n**Important:** The engine will use your parameters exactly as you provide them. "
-        "No additional scaling, clamping, or overrides will be applied. You are fully responsible "
-        "for setting stop_loss_pct, take_profit_pct, position_size_fraction, trailing_stop, "
-        "max_hold_time_seconds, cooldown_after_loss_seconds, and all optional parameters. Make sure they are appropriate for "
-        "the current market conditions, your confidence, and the account's risk profile.\n"
-    )
     # --- Account P&L context ---
     if performance:
         daily_pnl = performance.get("equity_curve", {}).get("daily_pnl", 0.0)
@@ -723,34 +716,6 @@ Use this historical data to select stocks that have been profitable in the past,
                 "Your account is in profit. You may take calculated risks, but do not be reckless. "
                 "Only trade if you see clear setups.\n"
             )
-    prompt += (
-        "\n**Entry Condition (REQUIRED for every BUY):**\n"
-        "You MUST include an `entry_condition` object in your JSON output for every BUY action. "
-        "This tells the bot the **exact moment** to enter the trade. "
-        "If you omit this field, the trade will be executed immediately at the current market price, "
-        "which is rarely optimal. Only omit it if you are absolutely certain that the current price "
-        "is the perfect entry point (e.g., a confirmed breakout with strong volume).\n"
-        "The object must have a `\"type\"` field and, except for `\"delay\"`, a `\"timeout_seconds\"` field.\n"
-        "Supported types:\n"
-        "- `\"limit_price\"`: wait for the price to drop to or below `\"price\"`.\n"
-        "  Example: {\"type\": \"limit_price\", \"price\": 1.23, \"timeout_seconds\": 300}\n"
-        "- `\"rsi_threshold\"`: wait for RSI(14) to fall below `\"rsi_below\"`.\n"
-        "  Example: {\"type\": \"rsi_threshold\", \"rsi_below\": 30, \"timeout_seconds\": 600}\n"
-        "- `\"order_book_depth\"`: wait until the cumulative ask volume within 1% of the mid price is at least `\"min_ask_volume\"` (in base currency).\n"
-        "  Example: {\"type\": \"order_book_depth\", \"min_ask_volume\": 500, \"timeout_seconds\": 300}\n"
-        "- `\"delay\"`: simply wait `\"delay_seconds\"` before executing.\n"
-        "  Example: {\"type\": \"delay\", \"delay_seconds\": 60}\n"
-        "- `\"indicator_combo\"`: wait until ALL listed indicator conditions are met.\n"
-        "  Example: {\"type\": \"indicator_combo\", \"conditions\": [ {\"indicator\": \"rsi\", \"threshold\": 30, \"direction\": \"below\"}, {\"indicator\": \"macd_hist\", \"threshold\": 0, \"direction\": \"above\"} ], \"timeout_seconds\": 600}\n"
-        "If a timeout expires without the condition being met, the trade is skipped entirely. "
-        "Use this to ensure you only enter at a favorable price or when a specific signal fires.\n"
-        "\n**Final reminders:**\n"
-        "- If you are unsure about the right stop distance, use a wider stop and a smaller position size. "
-        "It is far better to miss a trade than to take an unnecessary loss. "
-        "Tight stops are the #1 cause of losing trades – avoid them.\n"
-        "- **Always include an `entry_condition` for BUY orders.** This is how you control the exact entry timing. "
-        "Without it, the bot buys immediately at the current price, which is rarely the best entry.\n"
-    )
     return prompt
 
 def build_strategy_prompt(
@@ -1634,10 +1599,27 @@ You are trading spot only (no shorting). Only output SELL if you currently hold 
 - **IMPORTANT: Do NOT output HOLD with the reason "LLM execute flag false".** That concept no longer exists. If you are not confident enough to trade, output HOLD with a meaningful reason (e.g., "Insufficient conviction", "Unfavorable risk/reward", "No clear edge"). Use `min_confidence` to filter trades, not a separate flag.
 - You may set `"min_confidence"` to 0.0 to effectively disable the filter.
 
-**Output ONLY the raw JSON object. Do NOT wrap it in ```json fences. Do NOT include any text before or after the JSON.**
-
-Return a JSON object as specified.
 """
+    prompt += (
+        "\n**Entry Condition (REQUIRED for every BUY):**\n"
+        "You MUST include an `entry_condition` object in your JSON output for every BUY action. "
+        "This tells the bot the **exact moment** to enter the trade. "
+        "If you omit this field, the trade will be executed immediately at the current market price. "
+        "The object must have a `\"type\"` field and, except for `\"delay\"`, a `\"timeout_seconds\"` field.\n"
+        "Supported types:\n"
+        "- `\"limit_price\"`: wait for the price to drop to or below `\"price\"`.\n"
+        "  Example: {\"type\": \"limit_price\", \"price\": 1.23, \"timeout_seconds\": 300}\n"
+        "- `\"rsi_threshold\"`: wait for RSI(14) to fall below `\"rsi_below\"`.\n"
+        "  Example: {\"type\": \"rsi_threshold\", \"rsi_below\": 30, \"timeout_seconds\": 600}\n"
+        "- `\"order_book_depth\"`: wait until the cumulative ask volume within 1% of the mid price is at least `\"min_ask_volume\"`.\n"
+        "  Example: {\"type\": \"order_book_depth\", \"min_ask_volume\": 500, \"timeout_seconds\": 300}\n"
+        "- `\"delay\"`: simply wait `\"delay_seconds\"` before executing.\n"
+        "  Example: {\"type\": \"delay\", \"delay_seconds\": 60}\n"
+        "- `\"indicator_combo\"`: wait until ALL listed indicator conditions are met.\n"
+        "  Example: {\"type\": \"indicator_combo\", \"conditions\": [ {\"indicator\": \"rsi\", \"threshold\": 30, \"direction\": \"below\"}, {\"indicator\": \"macd_hist\", \"threshold\": 0, \"direction\": \"above\"} ], \"timeout_seconds\": 600}\n"
+        "If a timeout expires without the condition being met, the trade is skipped entirely.\n"
+    )
+    prompt += "\n**Output ONLY the raw JSON object as specified.**\n\nReturn a JSON object as specified.\n"
     if trading_paused:
         prompt += (
             "\n**Trading is currently PAUSED.** You may ONLY output SELL or HOLD actions. "
