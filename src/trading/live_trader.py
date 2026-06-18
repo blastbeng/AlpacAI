@@ -41,7 +41,7 @@ class LiveTrader:
                 balances[pos.symbol] = float(pos.qty)
         except Exception as e:
             logger.warning(f"Could not fetch positions: {e}")
-        logger.info("Fetched live balances: %s", balances)
+        logger.debug("Fetched live balances: %s", balances)
         return balances
 
     # ------------------------------------------------------------------
