@@ -886,38 +886,18 @@ Maximum symbols to trade: {max_symbols}
         prompt += f"\nAssigned trading timeframe for this stock: {assigned_timeframe}. Base your decision primarily on the OHLCV data for this timeframe.\n"
     if market_regime:
         prompt += f"\nMarket regime: {market_regime}\n"
-        prompt += (
-            "Use this regime to adjust your strategy:\n"
-            "- 'strong uptrend/downtrend': trend is clear and powerful. Use wider stops to avoid shakeouts, "
-            "larger position sizes, and trail stops generously.\n"
-            "- 'moderate uptrend/downtrend': trend exists but may weaken. Use normal stops and position sizes.\n"
-            "- 'ranging': no clear direction. Prefer mean‑reversion strategies, tighter stops, smaller positions.\n"
-            "- 'high volatility': expect large swings. Reduce position size, widen stops, and consider ATR‑based stops.\n"
-            "- 'low volatility': quiet market. Tight stops are acceptable but beware of sudden breakout (squeeze).\n"
-            "- 'squeeze': Bollinger Bands are very narrow – a large move is likely imminent. Wait for breakout confirmation.\n"
-            "- 'expansion': bands are wide – trend may be strong but also prone to reversals.\n"
-            "- MA bias (bullish/bearish) indicates short‑term momentum when ADX is weak.\n"
-        )
 
     if vwap is not None:
         prompt += f"\nVWAP ({assigned_timeframe or 'current'}): {vwap:.6f}\n"
     if vwap_multi_tf:
         prompt += f"VWAP across timeframes: {json.dumps(vwap_multi_tf)}\n"
     if session_info:
-        prompt += (
-            f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
-            "Use this to gauge market activity: pre‑market and after‑hours sessions have lower liquidity and wider spreads; "
-            "the regular session (9:30 AM – 4:00 PM ET) has the highest volume and tightest spreads. "
-            "Adjust your stock selection and risk parameters accordingly.\n"
-        )
+        prompt += f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
     if minutes_to_market_close is not None:
         if minutes_to_market_close > 0:
             prompt += f"  Minutes until market close (4:00 PM ET): {minutes_to_market_close}\n"
         else:
-            prompt += (
-                "  Market is currently closed. If you are in an extended-hours session (pre-market or after-hours), "
-                "keep hold times short and use limit orders.\n"
-            )
+            prompt += "  Market is currently closed.\n"
     if current_strategy_interval_seconds is not None:
         prompt += f"  Current strategy evaluation interval for this symbol: {current_strategy_interval_seconds}s\n"
 
@@ -956,11 +936,6 @@ Maximum symbols to trade: {max_symbols}
         prompt += "\nOrder book depth profile (cumulative volume at distance from mid):\n"
         for dist, vols in depth_profile.items():
             prompt += f"  {dist}: bid={vols['bid_volume']:.4f}, ask={vols['ask_volume']:.4f}\n"
-        prompt += (
-            "Use this depth profile to set take‑profit levels that are likely to be filled. "
-            "If the ask volume at a certain distance is thin, a small take‑profit may be filled quickly. "
-            "If it's thick, you may need a larger move or a smaller position.\n"
-        )
     # --- Warn if order book is empty (common with IEX feed) ---
     if not order_book.get('bids') and not order_book.get('asks'):
         if data_feed == "iex":
@@ -1001,7 +976,6 @@ Maximum symbols to trade: {max_symbols}
             f"  Sells: {len(sells)}, avg size: {avg_sell_size:.4f}\n"
             f"  Price range: {price_range[0]:.4f} - {price_range[1]:.4f}\n"
         )
-        prompt += "Use this to assess micro-momentum and liquidity. High frequency of small trades with tight spreads is ideal for scalping.\n"
     if cvd is not None:
         prompt += f"\nCumulative Volume Delta (CVD) from recent trades: {cvd:.6f}"
         if cvd_normalized is not None:
@@ -1035,14 +1009,7 @@ Maximum symbols to trade: {max_symbols}
         
         min_profitable_tp_pct = break_even_tp_pct + spread_decimal
         
-        prompt += (
-            f"You must set take_profit_pct high enough to cover round‑trip fees and the spread. "
-            f"The engine will not enforce any minimum – it trusts your calculation.\n"
-            f"**Break-even calculation:** To cover entry and exit fees ({fee_rate*100:.2f}% each) and the current spread ({spread_pct:.4f}%), "
-            f"your `take_profit_pct` MUST be strictly greater than {min_profitable_tp_pct:.4%}. "
-            f"If you set it lower, the trade will lose money even if the take-profit is hit. "
-            f"Please set your take_profit_pct comfortably above this break-even point.\n"
-        )
+        prompt += f"**Break-even take_profit_pct (fees + spread): {min_profitable_tp_pct:.4%}. Set your take_profit_pct strictly above this.**\n"
     # Help the LLM set min_profit_per_trade by showing the expected profit for a 1% take-profit
     example_tp = 0.01
     example_profit = per_symbol_budget * example_tp
@@ -1052,16 +1019,7 @@ Maximum symbols to trade: {max_symbols}
         "Set min_profit_per_trade accordingly, and ensure it is not larger than your expected profit.\n"
     )
     if estimated_slippage_pct is not None:
-        prompt += f"\nEstimated slippage for a per-symbol budget market buy: {estimated_slippage_pct:.4f}%\n"
-        prompt += (
-            "This is the expected slippage (average fill price vs best ask) for a market buy order "
-            "sized to the per-symbol budget. Use this to decide whether to reduce position_size_fraction "
-            "or skip the trade entirely if slippage is too high. "
-            "For scalping very small percentages, slippage above 0.05% may erode profitability. "
-            "If slippage is high, consider a smaller position or a different stock. "
-            f"Note: the engine will automatically cap your buy size to keep slippage below "
-            f"{settings.MAX_SLIPPAGE_CAP_PCT}% (configurable).\n"
-        )
+        prompt += f"\nEstimated slippage for a per-symbol budget market buy: {estimated_slippage_pct:.4f}%. Engine caps slippage at {settings.MAX_SLIPPAGE_CAP_PCT}%.\n"
     # --- Show the LLM its previous decision for this symbol ---
     if last_decision:
         age_seconds = time.time() - last_decision.get("timestamp", 0)
@@ -1083,12 +1041,6 @@ Maximum symbols to trade: {max_symbols}
             prompt += f"  Take-profit pct: {tp_pct}\n"
         if psf is not None:
             prompt += f"  Position size fraction: {psf}\n"
-        prompt += (
-            "Consider whether your previous decision is still valid. "
-            "If market conditions have not changed significantly, maintaining consistency is preferred. "
-            "Only change your action if there is a clear reason to do so. "
-            "Avoid flip-flopping between BUY and HOLD without justification.\n"
-        )
     if unrealized_pnl is not None and position_info:
         prompt += f"Current position unrealized P&L: {unrealized_pnl:.2f} {base_currency}\n"
         entry_price = position_info.get('price', 0)
@@ -1110,12 +1062,6 @@ Maximum symbols to trade: {max_symbols}
                     net_pnl_pct_after_fees = (net_pnl_after_fees / cost_basis) * 100 if cost_basis > 0 else 0.0
                     prompt += f"Exit fee if sold now: {exit_fee_cost:.4f} {base_currency}\n"
                     prompt += f"Net P&L after exit fees: {net_pnl_after_fees:+.4f} {base_currency} ({net_pnl_pct_after_fees:+.2f}%)\n"
-                    if net_pnl_after_fees > 0:
-                        prompt += "✅ Selling now would be PROFITABLE after fees.\n"
-                    elif net_pnl_after_fees == 0:
-                        prompt += "➖ Selling now would break even after fees.\n"
-                    else:
-                        prompt += "❌ Selling now would LOSE money after fees — consider holding if you expect the price to rise.\n"
         # Explicitly show current risk levels (these are otherwise buried in the open_positions JSON)
         current_sl = position_info.get('stop_loss')
         current_tp = position_info.get('take_profit')
