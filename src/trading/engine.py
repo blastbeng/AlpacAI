@@ -5145,6 +5145,15 @@ class TradingEngine:
                     logger.error(f"Cannot place limit order for {symbol}: no limit price available.")
                     return
 
+            if limit_price is not None and limit_price <= 0:
+                logger.error(f"Invalid limit_price {limit_price} for {symbol}, skipping.")
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"❌ Invalid limit price for {symbol}, skipping.",
+                        summary={"symbol": symbol, "action": "SKIP", "reason": "Invalid limit price"}
+                    )
+                return
+
             try:
                 order = await asyncio.to_thread(
                     self.trader.create_market_buy_order, symbol, amount, fill_timeout, limit_price, time_in_force
@@ -5380,6 +5389,15 @@ class TradingEngine:
                 if limit_price is None:
                     logger.error(f"Cannot place limit order for {symbol}: no limit price available.")
                     return
+
+            if limit_price is not None and limit_price <= 0:
+                logger.error(f"Invalid limit_price {limit_price} for {symbol}, skipping.")
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"❌ Invalid limit price for {symbol}, skipping.",
+                        summary={"symbol": symbol, "action": "SKIP", "reason": "Invalid limit price"}
+                    )
+                return
 
             try:
                 order = await asyncio.to_thread(
@@ -6020,6 +6038,10 @@ class TradingEngine:
                 logger.error(f"Cannot place limit order for partial TP on {symbol}: no limit price.")
                 return
 
+        if limit_price is not None and limit_price <= 0:
+            logger.error(f"Invalid limit_price for partial TP on {symbol}, skipping.")
+            return
+
         try:
             order = await asyncio.to_thread(
                 self.trader.create_market_sell_order, symbol, sell_amount,
@@ -6171,6 +6193,10 @@ class TradingEngine:
             if limit_price is None:
                 logger.error(f"Cannot place limit order for partial TP level on {symbol}: no limit price.")
                 return
+
+        if limit_price is not None and limit_price <= 0:
+            logger.error(f"Invalid limit_price for partial TP level on {symbol}, skipping.")
+            return
 
         try:
             order = await asyncio.to_thread(
@@ -6330,6 +6356,10 @@ class TradingEngine:
                 logger.error(f"Cannot place limit order for dust sweep on {symbol}: no limit price.")
                 return
 
+        if limit_price is not None and limit_price <= 0:
+            logger.error(f"Invalid limit_price for dust sweep on {symbol}, skipping.")
+            return
+
         try:
             order = await asyncio.to_thread(
                 self.trader.create_market_sell_order, symbol, balance,
@@ -6447,16 +6477,18 @@ class TradingEngine:
         if action == "BUY":
             if order_book and order_book.get('asks'):
                 best_ask = order_book['asks'][0][0]
-                return best_ask * 1.001   # 0.1% above ask
+                if best_ask > 0:
+                    return best_ask * 1.001   # 0.1% above ask
             last = ticker.get('last')
-            if last:
+            if last and last > 0:
                 return last * 1.002
         elif action == "SELL":
             if order_book and order_book.get('bids'):
                 best_bid = order_book['bids'][0][0]
-                return best_bid * 0.999   # 0.1% below bid
+                if best_bid > 0:
+                    return best_bid * 0.999   # 0.1% below bid
             last = ticker.get('last')
-            if last:
+            if last and last > 0:
                 return last * 0.998
         return None
 

@@ -53,6 +53,8 @@ class LiveTrader:
     ) -> Dict[str, Any]:
         base = symbol.split("/")[0]
         if limit_price is not None:
+            if limit_price <= 0:
+                raise ValueError(f"Invalid limit_price {limit_price} for {symbol}")
             qty = quote_amount / limit_price
             tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
             order_data = LimitOrderRequest(
@@ -80,6 +82,8 @@ class LiveTrader:
     ) -> Dict[str, Any]:
         base = symbol.split("/")[0]
         if limit_price is not None:
+            if limit_price <= 0:
+                raise ValueError(f"Invalid limit_price {limit_price} for {symbol}")
             tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
             order_data = LimitOrderRequest(
                 symbol=base,
