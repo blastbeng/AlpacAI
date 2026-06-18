@@ -7,6 +7,7 @@ from src.config.settings import settings
 from src.database import get_news_for_symbol, get_aggregate_sentiment_from_db
 from src.utils.redis_client import get_redis_client
 from src.llm.cache import get_cached_llm_response
+from src.exchanges.market_data import TIMEFRAME_MAP
 from src.indicators import (
     compute_atr,
     compute_rsi,
@@ -427,11 +428,12 @@ def build_stock_selection_prompt(
         if news_lines:
             news_section = "Recent news for top stocks:\n\n" + "\n\n".join(news_lines)
 
+    available_timeframes = [tf for tf in settings.OHLCV_TIMEFRAMES if tf in TIMEFRAME_MAP]
     prompt = f"""Current base currency: {base_currency}
 Your available {base_currency} balance: {base_balance:.2f}
 Maximum number of stocks to trade: {max_symbols}
 Budget per stock: {per_symbol_budget:.2f} {base_currency}
-Available timeframes: {json.dumps(settings.OHLCV_TIMEFRAMES)}
+Available timeframes: {json.dumps(available_timeframes)}
 Currently tracked stocks (with assigned timeframes): {json.dumps(current_symbols) if current_symbols else "None"}"""
 
     # --- Open positions summary ---
@@ -474,7 +476,7 @@ Each symbol can only appear once in your selection. Choose the single best timef
 **Output ONLY the raw JSON object as specified.**
 
 Return a JSON object with the following fields:
-- "stocks": a JSON array of objects, each with "symbol", "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h"), and "sector" (a string representing the stock's sector, e.g., "Technology", "Healthcare", "Financials", "Energy", "Consumer Discretionary", "Consumer Staples", "Industrials", "Materials", "Real Estate", "Utilities", "Communication Services"). Each object may optionally include "max_tenure_hours" (a positive float, hours) to force-sell the stock after that many hours in the portfolio. Omit or set to null for no limit.
+- "stocks": a JSON array of objects, each with "symbol", "timeframe" (the timeframe must be one of the available timeframes, e.g., {', '.join([repr(tf) for tf in available_timeframes])}), and "sector" (a string representing the stock's sector, e.g., "Technology", "Healthcare", "Financials", "Energy", "Consumer Discretionary", "Consumer Staples", "Industrials", "Materials", "Real Estate", "Utilities", "Communication Services"). Each object may optionally include "max_tenure_hours" (a positive float, hours) to force-sell the stock after that many hours in the portfolio. Omit or set to null for no limit.
 - "max_stocks": an integer between 0 and {max_symbols} indicating how many stocks you actually want to trade. Set to 0 to pause trading. This must equal the length of the "stocks" array.
 - "max_positions_per_sector": an integer between 1 and {max_symbols} indicating the maximum number of open positions allowed in the same sector at the same time. This helps diversify risk across different sectors. You decide this value based on current market volatility and your confidence in specific sectors.
 - "skip_eval_price_change_atr_mult": a float (e.g., 0.5) indicating the minimum price change (as a multiple of ATR%) required to trigger a new LLM strategy evaluation for a stock. If the price moves less than this, the LLM is skipped to save costs.
@@ -819,6 +821,9 @@ def build_strategy_prompt(
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific stock/ETF."""
     current_price = ticker.get("last") if ticker else None
+    if assigned_timeframe and assigned_timeframe not in TIMEFRAME_MAP:
+        logger.warning(f"Assigned timeframe {assigned_timeframe} is not supported by Alpaca. Falling back to default.")
+        assigned_timeframe = "1h" if "1h" in TIMEFRAME_MAP else list(TIMEFRAME_MAP.keys())[0]
     tf_seconds = _timeframe_to_seconds(assigned_timeframe) if assigned_timeframe else 3600
     min_hold = 2 * tf_seconds
     prompt = f"""Symbol: {symbol}
