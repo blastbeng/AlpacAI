@@ -475,7 +475,7 @@ def insert_ohlcv_batch(symbol: str, timeframe: str, candles: List[List]):
             ],
         )
         conn.commit()
-        logger.info(f"Inserted {len(candles)} OHLCV candles for {symbol} {timeframe}")
+        logger.debug(f"Inserted {len(candles)} OHLCV candles for {symbol} {timeframe}")
     finally:
         conn.close()
 
