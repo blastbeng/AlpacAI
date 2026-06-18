@@ -1316,6 +1316,22 @@ Maximum symbols to trade: {max_symbols}
             if cost_basis > 0:
                 pnl_pct = (unrealized_pnl / cost_basis) * 100
                 prompt += f"Unrealized P&L percentage: {pnl_pct:+.2f}%\n"
+                # Show net P&L after exit fees so the LLM knows the real profit/loss if it sells now
+                if fee_rate is not None and current_price and current_price > 0:
+                    current_position_value = amount * current_price
+                    exit_fee_cost = current_position_value * fee_rate
+                    # Also account for the entry fee already paid (stored in cost_basis)
+                    # cost_basis already includes entry fee, so net = sell_value - exit_fee - cost_basis
+                    net_pnl_after_fees = unrealized_pnl - exit_fee_cost
+                    net_pnl_pct_after_fees = (net_pnl_after_fees / cost_basis) * 100 if cost_basis > 0 else 0.0
+                    prompt += f"Exit fee if sold now: {exit_fee_cost:.4f} {base_currency}\n"
+                    prompt += f"Net P&L after exit fees: {net_pnl_after_fees:+.4f} {base_currency} ({net_pnl_pct_after_fees:+.2f}%)\n"
+                    if net_pnl_after_fees > 0:
+                        prompt += "✅ Selling now would be PROFITABLE after fees.\n"
+                    elif net_pnl_after_fees == 0:
+                        prompt += "➖ Selling now would break even after fees.\n"
+                    else:
+                        prompt += "❌ Selling now would LOSE money after fees — consider holding if you expect the price to rise.\n"
         # Explicitly show current risk levels (these are otherwise buried in the open_positions JSON)
         current_sl = position_info.get('stop_loss')
         current_tp = position_info.get('take_profit')
