@@ -1095,11 +1095,23 @@ Maximum symbols to trade: {max_symbols}
     # --- Warn if order book is empty (common with IEX feed) ---
     if not order_book.get('bids') and not order_book.get('asks'):
         if data_feed == "iex":
+            bid = ticker.get('bid') if ticker else None
+            ask = ticker.get('ask') if ticker else None
+            last = ticker.get('last') if ticker else None
             prompt += (
-                "\n**Note:** The order book is empty. You are using the IEX data feed, "
-                "which does not provide real‑time order book data. "
-                "Do NOT rely on order book metrics for this decision. "
-                "Base your analysis on OHLCV, indicators, and other available data.\n"
+                "\n**Data feed: IEX (free).** The IEX feed does not provide a real‑time order book. "
+                "The order book is empty. "
+                "Instead, use the **Latest Quote** below for bid/ask information:\n"
+            )
+            if bid is not None and ask is not None:
+                prompt += f"  Latest Quote: bid={bid}, ask={ask}, last={last}\n"
+                if bid > 0 and ask > 0:
+                    mid = (bid + ask) / 2
+                    spread_pct = ((ask - bid) / mid) * 100
+                    prompt += f"  Spread (from quote): {spread_pct:.4f}%\n"
+            prompt += (
+                "Do NOT rely on order book depth, walls, or imbalance metrics – they are unavailable. "
+                "Base your analysis on OHLCV, indicators, the latest quote, and other available data.\n"
             )
         else:
             prompt += (

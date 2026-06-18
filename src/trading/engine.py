@@ -1302,29 +1302,41 @@ class TradingEngine:
         sample_pairs = sorted(sample_pairs, key=_volume, reverse=True)[:settings.SYMBOL_SELECTION_TOP_VOLUME_LIMIT]
 
         # --- Fetch order books for these top stocks to compute real spread/depth for scalping score ---
-        top_n_for_ob = min(50, len(sample_pairs))
-        top_by_vol = sample_pairs[:top_n_for_ob]  # already sorted by volume
         symbol_spreads: Dict[str, float] = {}
         symbol_depths: Dict[str, float] = {}
-        for sym in top_by_vol:
-            try:
-                ob = await asyncio.to_thread(get_order_book, self.data_client, sym.split("/")[0], 5)
-                bids = ob.get('bids', [])
-                asks = ob.get('asks', [])
-                if bids and asks:
-                    best_bid = bids[0][0]
-                    best_ask = asks[0][0]
-                    mid = (best_bid + best_ask) / 2
-                    if mid > 0:
-                        spread_pct = ((best_ask - best_bid) / mid) * 100
-                        symbol_spreads[sym] = round(spread_pct, 4)
-                    # Depth: total volume within 1% of mid price
-                    bid_vol = sum(b[1] for b in bids if b[0] >= mid * 0.99)
-                    ask_vol = sum(a[1] for a in asks if a[0] <= mid * 1.01)
-                    total_depth = bid_vol + ask_vol
-                    symbol_depths[sym] = round(total_depth, 2)
-            except Exception as e:
-                logger.info(f"Order book fetch failed for {sym} during stock selection: {e}")
+        if settings.ALPACA_DATA_FEED != "iex":
+            top_n_for_ob = min(50, len(sample_pairs))
+            top_by_vol = sample_pairs[:top_n_for_ob]  # already sorted by volume
+            for sym in top_by_vol:
+                try:
+                    ob = await asyncio.to_thread(get_order_book, self.data_client, sym.split("/")[0], 5)
+                    bids = ob.get('bids', [])
+                    asks = ob.get('asks', [])
+                    if bids and asks:
+                        best_bid = bids[0][0]
+                        best_ask = asks[0][0]
+                        mid = (best_bid + best_ask) / 2
+                        if mid > 0:
+                            spread_pct = ((best_ask - best_bid) / mid) * 100
+                            symbol_spreads[sym] = round(spread_pct, 4)
+                        # Depth: total volume within 1% of mid price
+                        bid_vol = sum(b[1] for b in bids if b[0] >= mid * 0.99)
+                        ask_vol = sum(a[1] for a in asks if a[0] <= mid * 1.01)
+                        total_depth = bid_vol + ask_vol
+                        symbol_depths[sym] = round(total_depth, 2)
+                except Exception as e:
+                    logger.info(f"Order book fetch failed for {sym} during stock selection: {e}")
+        else:
+            # IEX: compute spread from the latest quote (ticker bid/ask)
+            for sym in sample_pairs:
+                t = tickers.get(sym, {})
+                bid = t.get('bid')
+                ask = t.get('ask')
+                if bid is not None and ask is not None and bid > 0 and ask > 0:
+                    mid = (bid + ask) / 2
+                    spread_pct = ((ask - bid) / mid) * 100
+                    symbol_spreads[sym] = round(spread_pct, 4)
+                # depth cannot be computed from quote; leave symbol_depths empty
 
         # --- Compute scalping suitability scores for candidate stocks ---
         symbol_scores: Dict[str, float] = {}
@@ -2610,12 +2622,16 @@ class TradingEngine:
                 return
             current_price = ticker['last']
 
-            order_book = self.ws_manager.get_order_book(symbol)
-            if order_book is None:
-                async with self._exchange_semaphore:
-                    order_book = await asyncio.to_thread(get_order_book, self.data_client, symbol.split("/")[0], 20)
-            if order_book is None:
+            if settings.ALPACA_DATA_FEED == "iex":
+                # IEX does not provide a reliable order book; use an empty one.
                 order_book = {"bids": [], "asks": []}
+            else:
+                order_book = self.ws_manager.get_order_book(symbol)
+                if order_book is None:
+                    async with self._exchange_semaphore:
+                        order_book = await asyncio.to_thread(get_order_book, self.data_client, symbol.split("/")[0], 20)
+                if order_book is None:
+                    order_book = {"bids": [], "asks": []}
             # Fetch recent trades for micro-momentum and liquidity assessment
             recent_trades_raw = self.ws_manager.get_trades(symbol)
 
