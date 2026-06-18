@@ -406,6 +406,8 @@ Return a JSON object with the following fields:
 - "regime_bb_expansion_width": a float (e.g., 0.08) indicating the Bollinger Band width above which the market is considered in expansion.
 - "min_stop_loss_atr_mult": a float (e.g., 1.5) indicating the minimum stop-loss as a multiple of ATR%. Trades with a fixed stop below this multiple of ATR will be rejected. Lower values allow tighter stops; higher values require wider stops.
 - "min_max_hold_time_mult": a float (e.g., 2.0) indicating the minimum max_hold_time_seconds as a multiple of the candle timeframe (in seconds). Trades with max hold time below this multiple will be rejected.
+- "max_stop_loss_reviews": an integer between 1 and 20 (e.g., 3). The maximum number of times the LLM can review a triggered stop-loss before the engine force-sells the position. Lower values = quicker exit on stop-loss; higher values = more LLM discretion.
+- "max_take_profit_reviews": an integer between 1 and 20 (e.g., 3). The maximum number of times the LLM can review a triggered take-profit before the engine force-sells the position. Lower values = quicker profit-taking; higher values = more LLM discretion.
 - "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
 You may optionally include "stock_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.
@@ -680,6 +682,8 @@ def build_strategy_prompt(
     partial_tp_triggered_levels: Optional[List[int]] = None,
     dust_sweep_triggered: bool = False,
     dust_sweep_review_count: int = 0,
+    max_stop_loss_reviews: int = 10,
+    max_take_profit_reviews: int = 10,
     max_partial_tp_reviews: int = 10,
     max_dust_sweep_reviews: int = 10,
     data_feed: str = "sip",
@@ -1257,7 +1261,7 @@ Use this data to decide whether to BUY, SELL, or HOLD. If the stock has a poor w
         )
     if stop_loss_triggered:
         prompt += (
-            f"\n**⚠️ STOP-LOSS TRIGGERED (review {stop_loss_review_count}/3):** "
+            f"\n**⚠️ STOP-LOSS TRIGGERED (review {stop_loss_review_count}/{max_stop_loss_reviews}):** "
             f"Your stop-loss level was triggered for {symbol}.\n"
             "You must decide immediately:\n"
             "- **SELL**: output a SELL action to close the position.\n"
@@ -1270,7 +1274,7 @@ Use this data to decide whether to BUY, SELL, or HOLD. If the stock has a poor w
         )
     if take_profit_triggered:
         prompt += (
-            f"\n**🎯 TAKE-PROFIT TRIGGERED (review {take_profit_review_count}/3):** "
+            f"\n**🎯 TAKE-PROFIT TRIGGERED (review {take_profit_review_count}/{max_take_profit_reviews}):** "
             f"Your take-profit level was reached for {symbol}.\n"
             "You must decide immediately:\n"
             "- **SELL**: output a SELL action to take the profit.\n"

@@ -2071,6 +2071,18 @@ class TradingEngine:
                 else:
                     await asyncio.to_thread(self.redis.delete, "trading:min_max_hold_time_mult")
 
+                max_sl_reviews = parsed.get("max_stop_loss_reviews")
+                if max_sl_reviews is not None and isinstance(max_sl_reviews, int) and 1 <= max_sl_reviews <= 20:
+                    await asyncio.to_thread(self.redis.setex, "trading:max_stop_loss_reviews", 7 * 24 * 3600, str(max_sl_reviews))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:max_stop_loss_reviews")
+
+                max_tp_reviews = parsed.get("max_take_profit_reviews")
+                if max_tp_reviews is not None and isinstance(max_tp_reviews, int) and 1 <= max_tp_reviews <= 20:
+                    await asyncio.to_thread(self.redis.setex, "trading:max_take_profit_reviews", 7 * 24 * 3600, str(max_tp_reviews))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:max_take_profit_reviews")
+
                 # Optional: LLM can set the global symbol re-evaluation interval
                 new_interval = parsed.get("stock_revaluation_interval_seconds")
                 if new_interval is not None:
@@ -2772,6 +2784,19 @@ class TradingEngine:
             partial_tp_triggered_levels = pos.get("_partial_tp_triggered_levels", [])
             dust_sweep_triggered = pos.get("_dust_sweep_triggered", False)
             dust_sweep_review_count = pos.get("_dust_sweep_review_count", 0)
+
+        # Read LLM-decided review limits for the prompt
+        max_sl_reviews_prompt = MAX_STOP_LOSS_REVIEWS
+        max_tp_reviews_prompt = MAX_TAKE_PROFIT_REVIEWS
+        try:
+            raw = await asyncio.to_thread(self.redis.get, "trading:max_stop_loss_reviews")
+            if raw:
+                max_sl_reviews_prompt = int(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:max_take_profit_reviews")
+            if raw:
+                max_tp_reviews_prompt = int(raw)
+        except Exception:
+            pass
 
         try:
             ticker = self.ws_manager.get_ticker(symbol)
@@ -3495,6 +3520,8 @@ class TradingEngine:
                 partial_tp_triggered_levels=partial_tp_triggered_levels if partial_tp_triggered_levels else None,
                 dust_sweep_triggered=dust_sweep_triggered,
                 dust_sweep_review_count=dust_sweep_review_count,
+                max_stop_loss_reviews=max_sl_reviews_prompt,
+                max_take_profit_reviews=max_tp_reviews_prompt,
                 max_partial_tp_reviews=settings.MAX_PARTIAL_TP_REVIEWS,
                 max_dust_sweep_reviews=settings.MAX_DUST_SWEEP_REVIEWS,
                 data_feed=settings.ALPACA_DATA_FEED,
@@ -4830,6 +4857,18 @@ class TradingEngine:
                         continue  # no real-time data yet, skip this check
                 current_price = ticker['last']
 
+                # Read LLM-decided review limits from Redis
+                max_sl_reviews = MAX_STOP_LOSS_REVIEWS
+                max_tp_reviews = MAX_TAKE_PROFIT_REVIEWS
+                try:
+                    raw = await asyncio.to_thread(self.redis.get, "trading:max_stop_loss_reviews")
+                    if raw:
+                        max_sl_reviews = int(raw)
+                    raw = await asyncio.to_thread(self.redis.get, "trading:max_take_profit_reviews")
+                    if raw:
+                        max_tp_reviews = int(raw)
+                except Exception:
+                    pass
 
                 # Trailing stop update (only if enabled)
                 if pos.get("trailing_stop") and pos.get("trailing_stop_distance_pct"):
@@ -5180,11 +5219,11 @@ class TradingEngine:
                 if current_price <= pos["stop_loss"]:
                     # Instead of immediately selling, ask the LLM whether to sell or adjust the stop.
                     review_count = pos.get("_stop_loss_review_count", 0)
-                    if review_count >= MAX_STOP_LOSS_REVIEWS:
+                    if review_count >= max_sl_reviews:
                         # Fallback: force-sell after too many reviews
                         logger.warning(
                             f"Stop-loss triggered for {symbol} at {current_price} – "
-                            f"review count {review_count} >= {MAX_STOP_LOSS_REVIEWS}, forcing SELL."
+                            f"review count {review_count} >= {max_sl_reviews}, forcing SELL."
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
@@ -5212,7 +5251,7 @@ class TradingEngine:
                             self._last_strategy_eval.pop(symbol, None)
                             logger.info(
                                 f"Stop-loss triggered for {symbol} at {current_price} – "
-                                f"asking LLM (review {pos['_stop_loss_review_count']}/{MAX_STOP_LOSS_REVIEWS})."
+                                f"asking LLM (review {pos['_stop_loss_review_count']}/{max_sl_reviews})."
                             )
                             if self.notifier:
                                 await self.notifier.send_notification(
@@ -5228,15 +5267,15 @@ class TradingEngine:
                             # Already waiting for LLM; do nothing (avoid re-triggering)
                             logger.info(
                                 f"Stop-loss still triggered for {symbol}, waiting for LLM response "
-                                f"(review {review_count}/{MAX_STOP_LOSS_REVIEWS})."
+                                f"(review {review_count}/{max_sl_reviews})."
                             )
                 elif current_price >= pos["take_profit"]:
                     # Always ask the LLM whether to sell or adjust the take-profit, but cap reviews.
                     review_count = pos.get("_take_profit_review_count", 0)
-                    if review_count >= MAX_TAKE_PROFIT_REVIEWS:
+                    if review_count >= max_tp_reviews:
                         logger.warning(
                             f"Take-profit triggered for {symbol} at {current_price} – "
-                            f"review count {review_count} >= {MAX_TAKE_PROFIT_REVIEWS}, forcing SELL."
+                            f"review count {review_count} >= {max_tp_reviews}, forcing SELL."
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
@@ -5264,7 +5303,7 @@ class TradingEngine:
                         self._last_strategy_eval.pop(symbol, None)
                         logger.info(
                             f"Take-profit triggered for {symbol} at {current_price} – "
-                            f"asking LLM (review {pos['_take_profit_review_count']}/{MAX_TAKE_PROFIT_REVIEWS})."
+                            f"asking LLM (review {pos['_take_profit_review_count']}/{max_tp_reviews})."
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
@@ -5280,7 +5319,7 @@ class TradingEngine:
                         # Already waiting for LLM; do nothing
                         logger.info(
                             f"Take-profit still triggered for {symbol}, waiting for LLM response "
-                            f"(review {review_count}/{MAX_TAKE_PROFIT_REVIEWS})."
+                            f"(review {review_count}/{max_tp_reviews})."
                         )
             except Exception as e:
                 logger.error(f"Risk check failed for {symbol}: {e}")
