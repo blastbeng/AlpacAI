@@ -627,7 +627,7 @@ class TradingEngine:
             pass
 
         try:
-            asset = await asyncio.to_thread(self.exchange.get_asset, base)
+            asset = await self._get_asset_info(symbol)
             name = asset.name if asset and asset.name else base
         except Exception:
             name = base
@@ -1664,7 +1664,7 @@ class TradingEngine:
         for symbol in sample_pairs:
             base = symbol.split('/')[0]
             try:
-                asset = await asyncio.to_thread(self.exchange.get_asset, base)
+                asset = await self._get_asset_info(symbol)
                 min_amount = float(asset.min_order_size) if asset.min_order_size else None
             except Exception:
                 min_amount = None
