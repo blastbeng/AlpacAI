@@ -17,6 +17,45 @@ logger = logging.getLogger(__name__)
 
 _sentiment_analyzer = SentimentIntensityAnalyzer()
 
+# Event keyword categories for detecting upcoming corporate events from news
+_EVENT_KEYWORDS = {
+    "earnings": [
+        "earnings", "quarterly results", "q1 results", "q2 results",
+        "q3 results", "q4 results", "revenue report", "eps",
+        "earnings report", "earnings call", "earnings release",
+        "fiscal quarter", "financial results", "earnings date",
+        "reports earnings", "earnings announcement",
+    ],
+    "fda": [
+        "fda", "clinical trial", "drug approval", "phase 1",
+        "phase 2", "phase 3", "nda", "biologics license",
+        "regulatory approval", "filing accepted", "pdufa",
+    ],
+    "ma": [
+        "merger", "acquisition", "buyout", "takeover",
+        "acquire", "merge", "tender offer",
+    ],
+    "dividend": [
+        "dividend", "ex-dividend", "dividend declaration",
+        "special dividend", "dividend payment", "dividend date",
+    ],
+    "split": [
+        "stock split", "reverse split", "forward split",
+        "split announcement",
+    ],
+    "guidance": [
+        "guidance", "outlook", "forecast revision",
+        "raise guidance", "lower guidance", "preliminary results",
+        "preannounce", "pre-announcement",
+    ],
+    "other": [
+        "ipo", "analyst day", "investor day", "shareholder meeting",
+        "annual meeting", "proxy vote", "restructuring", "layoff",
+        "ceo change", "executive departure", "management change",
+        "product launch", "recall",
+    ],
+}
+
 # Cache for RSS feed content: {url: (timestamp, feed_content)}
 _rss_cache = {}
 _rss_cache_lock = threading.Lock()
@@ -280,6 +319,47 @@ def discover_trending_stocks(
     if discovered:
         logger.info(f"News-driven stock discovery found: {discovered}")
     return discovered
+
+
+def detect_upcoming_events(symbol: str) -> Optional[Dict[str, Any]]:
+    """Scan recent news articles for event-related keywords.
+
+    Uses articles already stored in the database — no additional API calls.
+    Returns a dict with event information, or None if no events detected.
+    """
+    from src.database import get_news_for_symbol
+
+    if not settings.NEWS_ENABLED:
+        return None
+
+    base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
+    articles = get_news_for_symbol(base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+    if not articles:
+        return None
+
+    detected_types = set()
+    detected_keywords = []
+
+    for article in articles:
+        title = (article.get("title", "") or "").lower()
+        summary = (article.get("summary", "") or "").lower()
+        text = f"{title} {summary}"
+
+        for event_type, keywords in _EVENT_KEYWORDS.items():
+            for kw in keywords:
+                if kw in text:
+                    detected_types.add(event_type)
+                    if kw not in detected_keywords:
+                        detected_keywords.append(kw)
+
+    if not detected_types:
+        return None
+
+    return {
+        "has_event": True,
+        "event_types": sorted(detected_types),
+        "keywords": detected_keywords[:10],
+    }
 
 
 def _source_fingerprint() -> str:

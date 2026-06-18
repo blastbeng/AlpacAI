@@ -369,6 +369,7 @@ def build_stock_selection_prompt(
     data_feed: str = "sip",
     sector_etf_data: Optional[Dict[str, Dict[str, Any]]] = None,
     trade_pattern_analysis: Optional[Dict[str, Any]] = None,
+    symbol_events: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which stocks/ETFs to trade."""
     # Summarize tickers and limits for the prompt
@@ -682,6 +683,18 @@ Per-strategy performance: {json.dumps(performance.get('strategy_performance', {}
             f"\n**Account P&L**: Today's realized P&L = {daily_pnl:.4f} {base_currency}, "
             f"Total realized P&L = {total_pnl:.4f} {base_currency}.\n"
         )
+    if symbol_events:
+        prompt += "\n**Upcoming Corporate Events (detected from news):**\n"
+        prompt += "These symbols have upcoming or recent corporate events. Consider the risk of holding through these events.\n"
+        for sym, event in symbol_events.items():
+            types = ", ".join(event.get("event_types", []))
+            kws = ", ".join(event.get("keywords", [])[:5])
+            prompt += f"  {sym}: {types} (keywords: {kws})\n"
+        prompt += (
+            "Stocks with upcoming earnings or major events can gap significantly. "
+            "You may choose to avoid these stocks, reduce position sizes, or set wider stops. "
+            "The decision is yours.\n"
+        )
     return prompt
 
 def build_strategy_prompt(
@@ -793,6 +806,7 @@ def build_strategy_prompt(
     max_portfolio_exposure_pct: Optional[float] = None,
     max_portfolio_stop_risk_pct: Optional[float] = None,
     trade_pattern_analysis: Optional[Dict[str, Any]] = None,
+    symbol_event: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific stock/ETF."""
     current_price = ticker.get("last") if ticker else None
@@ -1437,5 +1451,18 @@ Use this data to decide whether to BUY, SELL, or HOLD. If the stock has a poor w
             "- **Sell Dust**: output SELL to sell the remaining dust (a market sell will be attempted).\n"
             "- **Hold**: output HOLD to keep the dust. It may become tradeable again if the price rises.\n"
             "If you output HOLD, the dust will be kept. If you output SELL, the dust will be sold.\n"
+        )
+    if symbol_event and symbol_event.get("has_event"):
+        prompt += (
+            f"\n**⚠️ Upcoming Corporate Event Detected for {symbol}:**\n"
+            f"  Event types: {', '.join(symbol_event.get('event_types', []))}\n"
+            f"  Detected keywords: {', '.join(symbol_event.get('keywords', [])[:5])}\n"
+            "This stock has upcoming or recent corporate events (e.g., earnings, FDA decision, merger). "
+            "Such events can cause significant price gaps. You should decide whether to:\n"
+            "- Avoid entering a new position before the event.\n"
+            "- Reduce position size to limit gap risk.\n"
+            "- Set wider stop-loss to accommodate event volatility.\n"
+            "- Exit an existing position before the event if the risk is too high.\n"
+            "The decision is entirely yours based on your assessment of the event's impact.\n"
         )
     return prompt

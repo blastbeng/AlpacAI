@@ -46,9 +46,10 @@ from src.indicators import (
     compute_all_indicators,
 )
 try:
-    from src.news.fetcher import discover_trending_stocks
+    from src.news.fetcher import discover_trending_stocks, detect_upcoming_events
 except ImportError:
     discover_trending_stocks = None
+    detect_upcoming_events = None
 from src.strategies.base import Signal
 from src.strategies.llm_parser import create_strategy_from_llm, LLMStrategy
 from src.strategies.validator import validate_signal
@@ -1967,6 +1968,16 @@ class TradingEngine:
 
         perf = self._compute_performance_metrics()
         trade_pattern_analysis = self._compute_trade_pattern_analysis()
+        # --- Detect upcoming corporate events from news ---
+        symbol_events: Dict[str, Dict[str, Any]] = {}
+        if settings.NEWS_ENABLED and detect_upcoming_events is not None:
+            for sym in sample_pairs:
+                try:
+                    event = await asyncio.to_thread(detect_upcoming_events, sym)
+                    if event:
+                        symbol_events[sym] = event
+                except Exception:
+                    pass
         # Current trading session (US stock market)
         now_utc = datetime.now(timezone.utc)
         utc_hour = now_utc.hour
@@ -2083,6 +2094,7 @@ class TradingEngine:
             data_feed=settings.ALPACA_DATA_FEED,
             sector_etf_data=sector_etf_data,
             trade_pattern_analysis=trade_pattern_analysis,
+            symbol_events=symbol_events,
         )
         if auto_resume_note:
             prompt += "\n" + auto_resume_note
@@ -3362,6 +3374,14 @@ class TradingEngine:
             perf = self._compute_performance_metrics()
             trade_pattern_analysis = self._compute_trade_pattern_analysis()
 
+            # --- Detect upcoming corporate events for this symbol ---
+            symbol_event = None
+            if settings.NEWS_ENABLED and detect_upcoming_events is not None:
+                try:
+                    symbol_event = await asyncio.to_thread(detect_upcoming_events, symbol)
+                except Exception:
+                    pass
+
             # --- Compute additional metrics for the LLM ---
             # Build indicator config from position or defaults
             ind_cfg = self.positions.get(symbol, {}).get('indicator_config') if symbol in self.positions else None
@@ -3995,6 +4015,7 @@ class TradingEngine:
                 max_portfolio_exposure_pct=max_port_exp,
                 max_portfolio_stop_risk_pct=max_port_risk,
                 trade_pattern_analysis=trade_pattern_analysis,
+                symbol_event=symbol_event,
             )
             logger.info(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-symbol)
