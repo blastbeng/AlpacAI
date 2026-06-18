@@ -5182,29 +5182,71 @@ class TradingEngine:
                     except Exception:
                         pass
                 
-                # Potential loss of the new trade
+                max_allowed_portfolio_risk = total_value * max_portfolio_risk_pct
+                available_risk_budget = max(0.0, max_allowed_portfolio_risk - total_open_risk)
+                
+                # Potential loss of the new trade at current desired_amount
                 new_trade_risk = desired_amount * sl_pct
                 total_portfolio_risk = total_open_risk + new_trade_risk
-                max_allowed_portfolio_risk = total_value * max_portfolio_risk_pct
                 
                 if total_portfolio_risk > max_allowed_portfolio_risk:
-                    logger.info(
-                        f"Skipping BUY {symbol}: total portfolio risk {total_portfolio_risk:.2f} "
-                        f"exceeds LLM max {max_allowed_portfolio_risk:.2f} ({max_portfolio_risk_pct:.2%})"
-                    )
-                    if self.notifier:
-                        await self.notifier.send_notification(
-                            f"⚠️ Skipping BUY {display_symbol}: total portfolio risk too high "
-                            f"({total_portfolio_risk:.2f} > {max_allowed_portfolio_risk:.2f})",
-                            summary={
-                                "symbol": symbol,
-                                "action": "SKIP",
-                                "reason": "Total portfolio risk too high",
-                                "total_portfolio_risk": total_portfolio_risk,
-                                "max_portfolio_risk": max_allowed_portfolio_risk,
-                            }
+                    # Try to reduce position size to fit within the remaining risk budget
+                    if available_risk_budget > 0 and sl_pct > 0:
+                        max_allowed_amount = available_risk_budget / sl_pct
+                        if max_allowed_amount > 0:
+                            old_amount = desired_amount
+                            desired_amount = min(desired_amount, max_allowed_amount)
+                            logger.info(
+                                f"Reducing BUY {symbol} amount from {old_amount:.2f} to {desired_amount:.2f} "
+                                f"to fit max portfolio risk ({max_portfolio_risk_pct:.2%})"
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⚠️ Reducing BUY {display_symbol} size to fit portfolio risk "
+                                    f"({old_amount:.2f} -> {desired_amount:.2f})",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "INFO",
+                                        "reason": "Position size reduced to fit max portfolio risk",
+                                        "original_amount": old_amount,
+                                        "reduced_amount": desired_amount,
+                                    }
+                                )
+                        else:
+                            logger.info(
+                                f"Skipping BUY {symbol}: no available risk budget "
+                                f"(open risk {total_open_risk:.2f} >= max {max_allowed_portfolio_risk:.2f})"
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⚠️ Skipping BUY {display_symbol}: portfolio risk budget exhausted",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "SKIP",
+                                        "reason": "Portfolio risk budget exhausted",
+                                        "total_open_risk": total_open_risk,
+                                        "max_portfolio_risk": max_allowed_portfolio_risk,
+                                    }
+                                )
+                            return
+                    else:
+                        logger.info(
+                            f"Skipping BUY {symbol}: total portfolio risk {total_portfolio_risk:.2f} "
+                            f"exceeds LLM max {max_allowed_portfolio_risk:.2f} and no risk budget left"
                         )
-                    return
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                f"⚠️ Skipping BUY {display_symbol}: total portfolio risk too high "
+                                f"({total_portfolio_risk:.2f} > {max_allowed_portfolio_risk:.2f})",
+                                summary={
+                                    "symbol": symbol,
+                                    "action": "SKIP",
+                                    "reason": "Total portfolio risk too high",
+                                    "total_portfolio_risk": total_portfolio_risk,
+                                    "max_portfolio_risk": max_allowed_portfolio_risk,
+                                }
+                            )
+                        return
                 else:
                     logger.info(f"Portfolio risk check passed: {total_portfolio_risk:.2f} <= {max_allowed_portfolio_risk:.2f}")
 
