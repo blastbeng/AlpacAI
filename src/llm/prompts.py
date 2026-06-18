@@ -1185,8 +1185,6 @@ Maximum symbols to trade: {max_symbols}
 
 You are trading spot only (no shorting). Only output SELL if you currently hold the stock.
 
-**Execution Decision:** Use `"min_confidence"` (0.0–1.0) to filter trades. The bot will skip the trade if your confidence is below this threshold. If omitted, the trade executes regardless of confidence. If you are not confident enough to trade, output HOLD with a meaningful reason (e.g., "Insufficient conviction", "Unfavorable risk/reward").
-
 """
     prompt += (
         "\n**Entry Condition (REQUIRED for every BUY):**\n"
