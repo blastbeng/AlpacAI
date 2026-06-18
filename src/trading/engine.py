@@ -7845,13 +7845,12 @@ class TradingEngine:
                     limit_price = queued['limit_price']
                     side = queued['side']
 
-                    ticker = self.ws_manager.get_ticker(symbol)
-                    if ticker is None:
-                        try:
-                            quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
-                            ticker = quotes.get(base)
-                        except Exception:
-                            continue
+                    # Always fetch the latest quote from REST API to match live_trader.py's marketability check
+                    try:
+                        quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
+                        ticker = quotes.get(base)
+                    except Exception:
+                        continue
 
                     if ticker is None:
                         continue
