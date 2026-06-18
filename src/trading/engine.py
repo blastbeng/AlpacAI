@@ -141,6 +141,10 @@ class TradingEngine:
         self._asset_cache: Dict[str, Any] = {}
         self._asset_cache_time: Dict[str, float] = {}
 
+        # Balance cache – avoids redundant Alpaca API calls within an evaluation cycle
+        self._balance_cache: Optional[Dict[str, float]] = None
+        self._balance_cache_time: float = 0.0
+
     async def _initialize_clients(self):
         """Create Alpaca clients and load persisted state (non‑blocking)."""
         try:
@@ -243,6 +247,16 @@ class TradingEngine:
             except Exception as e:
                 logger.warning(f"Sync batch quote fetch failed for positions: {e}")
         return tickers
+
+    async def _get_cached_balance(self, ttl: float = 30.0) -> Dict[str, float]:
+        """Return cached balance, refreshing if older than ttl seconds."""
+        now = time.time()
+        if self._balance_cache is not None and (now - self._balance_cache_time) < ttl:
+            return self._balance_cache
+        balance = await asyncio.to_thread(self.trader.fetch_balance)
+        self._balance_cache = balance
+        self._balance_cache_time = now
+        return balance
 
     async def stop(self):
         """Gracefully stop the engine and all background tasks."""
@@ -1131,12 +1145,18 @@ class TradingEngine:
                     await self._remove_symbol_if_paused(symbol)
 
         # --- Externally modified balances ---
+        # Fetch all balances at once instead of per-position API calls
+        try:
+            all_balances = await asyncio.to_thread(self.trader.fetch_balance)
+        except Exception as e:
+            logger.error(f"Failed to fetch balances for reconciliation: {e}")
+            all_balances = {}
         for symbol, pos in list(self.positions.items()):
             base = symbol.split('/')[0]
             try:
-                actual_balance = await asyncio.to_thread(self.trader.get_balance, base)
+                actual_balance = all_balances.get(base, 0.0)
             except Exception as e:
-                logger.error(f"Failed to fetch balance for {base}: {e}")
+                logger.error(f"Failed to get balance for {base}: {e}")
                 continue
 
             recorded_amount = pos.get("amount", 0.0)
@@ -3070,7 +3090,7 @@ class TradingEngine:
                 cvd = round(buy_vol - sell_vol, 6)
                 cvd_normalized = round(cvd / total_vol, 4) if total_vol > 0 else None
 
-            balance = await asyncio.to_thread(self.trader.fetch_balance)
+            balance = await self._get_cached_balance()
             base_balance = balance.get(self.base_currency, 0.0)
             if base_balance <= 0 or self.effective_max_symbols == 0:
                 logger.warning(
@@ -6059,6 +6079,7 @@ class TradingEngine:
                 order["buy_confidence"] = signal.confidence
                 order["buy_reasoning"] = (signal.reasoning or "")[:200]
                 self.trade_history.append(order)
+                self._balance_cache = None  # force refresh on next fetch
                 await asyncio.to_thread(insert_trade, order)
                 await self._save_state()
                 if self.notifier:
@@ -6260,6 +6281,7 @@ class TradingEngine:
                 self._pending_entries.pop(symbol, None)
                 await self._remove_symbol_if_paused(symbol)
                 self.trade_history.append(order)
+                self._balance_cache = None  # force refresh on next fetch
                 await asyncio.to_thread(insert_trade, order)
                 await self._save_state()
                 if self.notifier:
