@@ -70,10 +70,11 @@ async def status():
         pos_copy["display_symbol"] = await _get_display_symbol(engine, sym, pos.get("timeframe"))
         positions[sym] = pos_copy
 
+    balances = await run_in_threadpool(engine.trader.fetch_balance)
     return {
         "current_symbols": current_symbols,
         "positions": positions,
-        "balances": engine.trader.fetch_balance(),
+        "balances": balances,
         "paused": paused,
     }
 
@@ -360,12 +361,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     total = perf["total"]
                     total["display_symbol"] = await _get_display_symbol(engine, total["symbol"], total.get("timeframe"))
 
+                balances = await run_in_threadpool(engine.trader.fetch_balance)
+                profit_summary = await run_in_threadpool(engine.get_profit_summary)
                 data = {
                     "current_symbols": current_symbols,
                     "positions": positions,
-                    "balances": engine.trader.fetch_balance(),
+                    "balances": balances,
                     "trades": trades,
-                    "profit": engine.get_profit_summary(),
+                    "profit": profit_summary,
                     "performance": perf,
                     "paused": redis.get("trading:paused") == "1",
                 }
