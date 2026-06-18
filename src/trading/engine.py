@@ -3260,6 +3260,15 @@ class TradingEngine:
                 session_label = "Closed (overnight)"
             session_info = {"utc_hour": utc_hour, "session": session_label}
 
+            # Compute minutes until market close (4:00 PM ET = 16:00 ET)
+            minutes_to_market_close = None
+            if weekday < 5:  # Monday-Friday
+                et_minutes = et_hour * 60
+                close_minutes = 16 * 60  # 4:00 PM ET
+                minutes_to_market_close = close_minutes - et_minutes
+                if minutes_to_market_close < 0:
+                    minutes_to_market_close = 0  # market already closed
+
             # Fetch current global risk multiplier so the LLM can adjust position sizing
             global_risk_mult = None
             global_mult_raw = await asyncio.to_thread(self.redis.get, "trading:global_risk_multiplier")
@@ -3370,6 +3379,8 @@ class TradingEngine:
                 portfolio_open_count=len(self.positions),
                 portfolio_available_capital=portfolio_available_capital,
                 last_decision=self._last_decisions.get(symbol),
+                minutes_to_market_close=minutes_to_market_close,
+                current_strategy_interval_seconds=self._strategy_intervals.get(symbol, tf_seconds),
             )
             logger.info(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-symbol)

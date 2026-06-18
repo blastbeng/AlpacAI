@@ -900,6 +900,8 @@ def build_strategy_prompt(
     portfolio_open_count: int = 0,
     portfolio_available_capital: Optional[float] = None,
     last_decision: Optional[Dict[str, Any]] = None,
+    minutes_to_market_close: Optional[int] = None,
+    current_strategy_interval_seconds: Optional[int] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific stock/ETF."""
     current_price = ticker.get("last") if ticker else None
@@ -1020,6 +1022,30 @@ Maximum symbols to trade: {max_symbols}
             "Use this to gauge market activity: pre‑market and after‑hours sessions have lower liquidity and wider spreads; "
             "the regular session (9:30 AM – 4:00 PM ET) has the highest volume and tightest spreads. "
             "Adjust your stock selection and risk parameters accordingly.\n"
+        )
+    if minutes_to_market_close is not None:
+        if minutes_to_market_close > 0:
+            prompt += (
+                f"  Minutes until market close (4:00 PM ET): {minutes_to_market_close}\n"
+                "**Use this to set max_hold_time_seconds appropriately.** "
+                "If the market closes soon, do not set a max_hold_time_seconds that extends far past close — "
+                "the position would be forced into after-hours trading with wider spreads and lower liquidity. "
+                "For day trades, set max_hold_time_seconds to at most the remaining session minutes. "
+                "For swing trades (holding overnight), this is less critical, but be aware that overnight "
+                "positions face gap risk at the next open.\n"
+            )
+        else:
+            prompt += (
+                "  Market is currently closed. If you are in an extended-hours session (pre-market or after-hours), "
+                "keep hold times short and use limit orders.\n"
+            )
+    if current_strategy_interval_seconds is not None:
+        prompt += (
+            f"  Current strategy evaluation interval for this symbol: {current_strategy_interval_seconds}s\n"
+            "You may change this by setting `strategy_interval_seconds` in your parameters. "
+            "Use shorter intervals (60-120s) for active scalping with tight stops, or longer intervals (300-600s) "
+            "for swing trades. If the current interval is too long, you may miss exit opportunities; "
+            "if too short, you waste LLM calls on unchanged conditions.\n"
         )
 
     # --- Volatility, order book imbalance, and position P&L context ---
