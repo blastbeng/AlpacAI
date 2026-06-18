@@ -68,11 +68,11 @@ class WebSocketManager:
         removed = self.symbols - new_symbols
         added = new_symbols - self.symbols
         if removed:
-            self.stream.unsubscribe_quotes(*removed)
-            self.stream.unsubscribe_trades(*removed)
+            await asyncio.to_thread(self.stream.unsubscribe_quotes, *removed)
+            await asyncio.to_thread(self.stream.unsubscribe_trades, *removed)
         if added:
-            self.stream.subscribe_quotes(self._on_quote, *added)
-            self.stream.subscribe_trades(self._on_trade, *added)
+            await asyncio.to_thread(self.stream.subscribe_quotes, self._on_quote, *added)
+            await asyncio.to_thread(self.stream.subscribe_trades, self._on_trade, *added)
         self.symbols = new_symbols
         for sym in removed:
             self.tickers.pop(sym, None)
@@ -178,8 +178,8 @@ class WebSocketManager:
                 return
             if self.symbols:
                 try:
-                    self.stream.subscribe_quotes(self._on_quote, *self.symbols)
-                    self.stream.subscribe_trades(self._on_trade, *self.symbols)
+                    await asyncio.to_thread(self.stream.subscribe_quotes, self._on_quote, *self.symbols)
+                    await asyncio.to_thread(self.stream.subscribe_trades, self._on_trade, *self.symbols)
                 except Exception as e:
                     logger.warning(f"Failed to re-subscribe during reconnect: {e}")
             await asyncio.sleep(0.5)  # brief pause to let the new stream settle
