@@ -501,6 +501,8 @@ Return a JSON object with the following fields:
 - "max_portfolio_exposure_pct": a float between 0.0 and 1.0 (e.g., 0.7 for 70%). The maximum percentage of total portfolio value that can be deployed in open positions.
 - "max_portfolio_stop_risk_pct": a float between 0.0 and 1.0 (e.g., 0.05 for 5%). The maximum total stop-loss risk as a percentage of portfolio value.
 - "min_risk_reward_ratio": a positive number (e.g., 1.5). The minimum reward:risk ratio required for all trades. Trades with a lower ratio will be rejected.
+- "extended_hours_position_size_multiplier": a float between 0.0 and 1.0 (e.g., 0.5). If the bot is trading during extended hours (pre-market or after-hours), all position sizes will be multiplied by this factor to account for lower liquidity and wider spreads. Use 1.0 if you don't want to reduce size during extended hours.
+- "extended_hours_stop_loss_multiplier": a float >= 1.0 (e.g., 1.5). If the bot is trading during extended hours, all stop-loss distances will be multiplied by this factor to account for higher volatility. Use 1.0 if you don't want to widen stops during extended hours.
 - "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
 You may optionally include "stock_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.

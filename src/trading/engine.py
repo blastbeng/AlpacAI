@@ -2533,6 +2533,19 @@ class TradingEngine:
                 else:
                     await asyncio.to_thread(self.redis.delete, "trading:scalping_weights")
 
+                # --- Session-aware risk multipliers ---
+                ext_pos_mult = parsed.get("extended_hours_position_size_multiplier")
+                if ext_pos_mult is not None and isinstance(ext_pos_mult, (int, float)) and 0.0 <= float(ext_pos_mult) <= 1.0:
+                    await asyncio.to_thread(self.redis.setex, "trading:ext_hours_pos_mult", 7 * 24 * 3600, str(float(ext_pos_mult)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:ext_hours_pos_mult")
+
+                ext_sl_mult = parsed.get("extended_hours_stop_loss_multiplier")
+                if ext_sl_mult is not None and isinstance(ext_sl_mult, (int, float)) and float(ext_sl_mult) >= 1.0:
+                    await asyncio.to_thread(self.redis.setex, "trading:ext_hours_sl_mult", 7 * 24 * 3600, str(float(ext_sl_mult)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:ext_hours_sl_mult")
+
                 # Optional: LLM can set the global symbol re-evaluation interval
                 new_interval = parsed.get("stock_revaluation_interval_seconds")
                 if new_interval is not None:
@@ -5934,11 +5947,42 @@ class TradingEngine:
             else:
                 sl_pct = params["stop_loss_pct"]
 
+            # --- Session-aware risk guardrails (extended hours) ---
+            if not self._is_regular_hours():
+                ext_pos_mult_raw = await asyncio.to_thread(self.redis.get, "trading:ext_hours_pos_mult")
+                if ext_pos_mult_raw:
+                    try:
+                        ext_pos_mult = float(ext_pos_mult_raw)
+                        if 0.0 < ext_pos_mult < 1.0:
+                            # Will be applied to desired_amount below
+                            pass
+                    except (ValueError, TypeError):
+                        ext_pos_mult = None
+                else:
+                    ext_pos_mult = None
+
+                ext_sl_mult_raw = await asyncio.to_thread(self.redis.get, "trading:ext_hours_sl_mult")
+                if ext_sl_mult_raw:
+                    try:
+                        ext_sl_mult = float(ext_sl_mult_raw)
+                        if ext_sl_mult > 1.0:
+                            sl_pct *= ext_sl_mult
+                            logger.info(f"Applied extended hours stop-loss multiplier {ext_sl_mult}: sl_pct={sl_pct:.4%}")
+                    except (ValueError, TypeError):
+                        pass
+            else:
+                ext_pos_mult = None
+
             quote_balance = balance.get(quote, 0.0)
             position_fraction = params["position_size_fraction"]
 
             # Desired amount based on fraction of total available quote balance
             desired_amount = quote_balance * position_fraction
+
+            # Apply extended hours position size multiplier if set
+            if ext_pos_mult is not None:
+                desired_amount *= ext_pos_mult
+                logger.info(f"Applied extended hours position size multiplier {ext_pos_mult}: desired_amount={desired_amount:.2f}")
 
             # Fetch all position tickers once for risk calculations
             pos_tickers = await self._get_all_position_tickers()
