@@ -129,6 +129,10 @@ class TradingEngine:
         self._full_breadth_running = False
         self._last_unhealthy_log = 0.0
 
+        # Performance metrics cache – avoids recomputing on every symbol evaluation
+        self._perf_cache: Optional[Dict[str, Any]] = None
+        self._perf_cache_trade_count: int = -1
+
     async def _initialize_clients(self):
         """Create Alpaca clients and load persisted state (non‑blocking)."""
         try:
@@ -776,6 +780,11 @@ class TradingEngine:
 
     def _compute_performance_metrics(self) -> Dict[str, Any]:
         """Analyze trade history to produce per-symbol and per-strategy performance summaries."""
+        # Cache check: if no new trades have been added since the last computation,
+        # return the cached result to avoid expensive iteration over trade_history.
+        if len(self.trade_history) == self._perf_cache_trade_count and self._perf_cache is not None:
+            return self._perf_cache
+
         from collections import defaultdict
 
         now = time.time()
@@ -863,7 +872,7 @@ class TradingEngine:
                 else:
                     break
 
-        return {
+        result = {
             "stock_performance": symbol_perf,
             "strategy_performance": strategy_perf,
             "equity_curve": {
@@ -875,6 +884,12 @@ class TradingEngine:
                 "consecutive_losses": consecutive_losses,
             },
         }
+
+        # Update the cache so subsequent calls with the same trade count are fast
+        self._perf_cache = result
+        self._perf_cache_trade_count = len(self.trade_history)
+
+        return result
 
     async def _classify_market_regime(
         self,
