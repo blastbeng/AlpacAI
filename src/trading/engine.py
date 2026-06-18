@@ -137,6 +137,10 @@ class TradingEngine:
         self._tradable_assets_cache: List[str] = []
         self._tradable_assets_cache_time: float = 0.0
 
+        # Cache for Alpaca asset info (min_order_size, name, etc.) – refreshed every 1 hour
+        self._asset_cache: Dict[str, Any] = {}
+        self._asset_cache_time: Dict[str, float] = {}
+
     async def _initialize_clients(self):
         """Create Alpaca clients and load persisted state (non‑blocking)."""
         try:
@@ -182,6 +186,21 @@ class TradingEngine:
         self._tradable_assets_cache = assets
         self._tradable_assets_cache_time = now
         return assets
+
+    async def _get_asset_info(self, symbol: str) -> Any:
+        """Return Alpaca asset info, cached for 1 hour to reduce API calls."""
+        base = symbol.split("/")[0] if "/" in symbol else symbol
+        now = time.time()
+        if base in self._asset_cache and (now - self._asset_cache_time.get(base, 0)) < 3600:
+            return self._asset_cache[base]
+        try:
+            asset = await asyncio.to_thread(self.exchange.get_asset, base)
+            self._asset_cache[base] = asset
+            self._asset_cache_time[base] = now
+            return asset
+        except Exception as e:
+            logger.warning(f"Failed to fetch asset info for {base}: {e}")
+            return self._asset_cache.get(base)  # return stale cache if available
 
     async def stop(self):
         """Gracefully stop the engine and all background tasks."""
@@ -3508,9 +3527,8 @@ class TradingEngine:
             ]
 
             # Fetch minimum order size for this symbol from Alpaca asset info
-            base_asset = symbol.split('/')[0]
             try:
-                asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+                asset = await self._get_asset_info(symbol)
                 min_order_amount = float(asset.min_order_size) if asset.min_order_size else None
             except Exception:
                 min_order_amount = None
@@ -5272,7 +5290,7 @@ class TradingEngine:
                     amount = pos["amount"]
                     is_dust = False
                     try:
-                        asset = await asyncio.to_thread(self.exchange.get_asset, base)
+                        asset = await self._get_asset_info(symbol)
                         min_amount = float(asset.min_order_size) if asset.min_order_size else None
                     except Exception:
                         min_amount = None
@@ -5302,7 +5320,7 @@ class TradingEngine:
                     amount = pos["amount"]
                     is_dust = False
                     try:
-                        asset = await asyncio.to_thread(self.exchange.get_asset, base)
+                        asset = await self._get_asset_info(symbol)
                         min_amount = float(asset.min_order_size) if asset.min_order_size else None
                     except Exception:
                         min_amount = None
@@ -5801,9 +5819,8 @@ class TradingEngine:
                 price = ticker['last']
                 base_amount = amount / price
                 # Fetch minimum order size from Alpaca asset info
-                base_asset = symbol.split('/')[0]
                 try:
-                    asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+                    asset = await self._get_asset_info(symbol)
                     min_amount_limit = float(asset.min_order_size) if asset.min_order_size else None
                 except Exception:
                     min_amount_limit = None
@@ -6085,9 +6102,8 @@ class TradingEngine:
                     ticker = quotes.get(base)
                 price = ticker['last']
                 # Fetch minimum order size from Alpaca asset info
-                base_asset = symbol.split('/')[0]
                 try:
-                    asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+                    asset = await self._get_asset_info(symbol)
                     min_amount_limit = float(asset.min_order_size) if asset.min_order_size else None
                 except Exception:
                     min_amount_limit = None
@@ -6814,9 +6830,8 @@ class TradingEngine:
 
         # Check minimum sell size
         # Fetch minimum order size from Alpaca asset info
-        base_asset = symbol.split('/')[0]
         try:
-            asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+            asset = await self._get_asset_info(symbol)
             min_amount = float(asset.min_order_size) if asset.min_order_size else None
         except Exception:
             min_amount = None
@@ -6974,9 +6989,8 @@ class TradingEngine:
 
         # Check minimum sell size
         # Fetch minimum order size from Alpaca asset info
-        base_asset = symbol.split('/')[0]
         try:
-            asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+            asset = await self._get_asset_info(symbol)
             min_amount = float(asset.min_order_size) if asset.min_order_size else None
         except Exception:
             min_amount = None
@@ -7141,9 +7155,8 @@ class TradingEngine:
             return
 
         # Fetch minimum order size from Alpaca asset info
-        base_asset = symbol.split('/')[0]
         try:
-            asset = await asyncio.to_thread(self.exchange.get_asset, base_asset)
+            asset = await self._get_asset_info(symbol)
             min_amount = float(asset.min_order_size) if asset.min_order_size else None
         except Exception:
             min_amount = None
