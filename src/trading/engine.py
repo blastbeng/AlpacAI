@@ -116,6 +116,7 @@ class TradingEngine:
         self._running = True
         self._last_state_save = 0
         self._last_eval_snapshot: Dict[str, Dict[str, float]] = {}  # symbol -> indicator snapshot
+        self._last_decisions: Dict[str, Dict[str, Any]] = {}  # symbol -> last LLM decision
         self._pending_entries: Dict[str, Dict[str, Any]] = {}  # symbol -> pending entry condition info
 
         # Re-entrancy guards for periodic tasks
@@ -3368,6 +3369,7 @@ class TradingEngine:
                 portfolio_total_value=portfolio_total_value,
                 portfolio_open_count=len(self.positions),
                 portfolio_available_capital=portfolio_available_capital,
+                last_decision=self._last_decisions.get(symbol),
             )
             logger.info(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-symbol)
@@ -3691,6 +3693,18 @@ class TradingEngine:
 
             # Log and notify the decision
             logger.info(f"Decision for {symbol}: {validated.action} (confidence: {validated.confidence:.2f})")
+            # Store the last decision for the next prompt cycle
+            self._last_decisions[symbol] = {
+                "action": validated.action,
+                "confidence": validated.confidence,
+                "reasoning": validated.reasoning[:300],
+                "strategy_type": signal.strategy_type,
+                "timestamp": time.time(),
+                "stop_loss_pct": params.get("stop_loss_pct") if (params := signal.strategy_params) else None,
+                "take_profit_pct": params.get("take_profit_pct") if (params := signal.strategy_params) else None,
+                "position_size_fraction": params.get("position_size_fraction") if (params := signal.strategy_params) else None,
+                "stop_loss_method": params.get("stop_loss_method") if (params := signal.strategy_params) else None,
+            }
             # --- Format symbol for notification ---
             stock_name = await self._get_stock_name(symbol)
             display_symbol = self._format_symbol_display(symbol, stock_name, assigned_tf)
@@ -5710,6 +5724,7 @@ class TradingEngine:
                 self.positions.pop(symbol, None)
                 self._strategy_intervals.pop(symbol, None)
                 self._last_strategy_eval.pop(symbol, None)
+                self._last_decisions.pop(symbol, None)
                 self._pending_entries.pop(symbol, None)
                 await self._remove_symbol_if_paused(symbol)
                 self.trade_history.append(order)

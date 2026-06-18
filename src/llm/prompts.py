@@ -899,6 +899,7 @@ def build_strategy_prompt(
     portfolio_total_value: Optional[float] = None,
     portfolio_open_count: int = 0,
     portfolio_available_capital: Optional[float] = None,
+    last_decision: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific stock/ETF."""
     current_price = ticker.get("last") if ticker else None
@@ -1250,6 +1251,33 @@ Maximum symbols to trade: {max_symbols}
             "If slippage is high, consider a smaller position or a different stock. "
             f"Note: the engine will automatically cap your buy size to keep slippage below "
             f"{settings.MAX_SLIPPAGE_CAP_PCT}% (configurable).\n"
+        )
+    # --- Show the LLM its previous decision for this symbol ---
+    if last_decision:
+        age_seconds = time.time() - last_decision.get("timestamp", 0)
+        prompt += (
+            f"\n**Your previous decision for {symbol} (made {age_seconds:.0f}s ago):**\n"
+            f"  Action: {last_decision.get('action')}\n"
+            f"  Confidence: {last_decision.get('confidence', 0):.2f}\n"
+            f"  Reasoning: {last_decision.get('reasoning', '')}\n"
+        )
+        sl_pct = last_decision.get("stop_loss_pct")
+        tp_pct = last_decision.get("take_profit_pct")
+        psf = last_decision.get("position_size_fraction")
+        sl_method = last_decision.get("stop_loss_method")
+        if sl_method:
+            prompt += f"  Stop-loss method: {sl_method}\n"
+        if sl_pct is not None:
+            prompt += f"  Stop-loss pct: {sl_pct}\n"
+        if tp_pct is not None:
+            prompt += f"  Take-profit pct: {tp_pct}\n"
+        if psf is not None:
+            prompt += f"  Position size fraction: {psf}\n"
+        prompt += (
+            "Consider whether your previous decision is still valid. "
+            "If market conditions have not changed significantly, maintaining consistency is preferred. "
+            "Only change your action if there is a clear reason to do so. "
+            "Avoid flip-flopping between BUY and HOLD without justification.\n"
         )
     if unrealized_pnl is not None and position_info:
         prompt += f"Current position unrealized P&L: {unrealized_pnl:.2f} {base_currency}\n"
