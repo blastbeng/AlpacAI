@@ -18,6 +18,12 @@ class Signal:
     position_size: Optional[float] = None    # fraction of per-symbol budget (0.0 - 1.0)
     trailing_stop: Optional[bool] = False    # whether to use a trailing stop
     max_hold_minutes: Optional[int] = None   # maximum time to hold the position
+    stop_loss_method: Optional[str] = None
+    stop_loss_atr_multiple: Optional[float] = None
+    trailing_stop_distance_pct: Optional[float] = None
+    trailing_stop_activation_pct: Optional[float] = None
+    max_hold_time_seconds: Optional[int] = None
+    cooldown_after_loss_seconds: Optional[int] = 0
     reason: Optional[str] = None             # LLM's explanation (for logging)
     # --- New: entry condition & timeframe for delayed execution ---
     entry_condition: Optional[Dict[str, Any]] = None   # e.g., {"type": "limit_price", "price": 1.23, "timeout_seconds": 300}

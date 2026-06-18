@@ -53,13 +53,26 @@ def parse_llm_response(response_text: str) -> Signal:
             backtest_summary = None
 
         # --- dynamic trading parameters ---
-        stop_loss = data.get("stop_loss")
-        take_profit = data.get("take_profit")
-        position_size = data.get("position_size")
+        # The LLM puts these inside strategy.parameters
+        params = strategy_params if isinstance(strategy_params, dict) else {}
+        
+        stop_loss = params.get("stop_loss_pct")
+        take_profit = params.get("take_profit_pct")
+        position_size = params.get("position_size_fraction")
         if position_size is not None:
             position_size = max(0.0, min(1.0, float(position_size)))
-        trailing_stop = bool(data.get("trailing_stop", False))
-        max_hold_minutes = data.get("max_hold_minutes")
+        trailing_stop = bool(params.get("trailing_stop", False))
+        
+        max_hold_time_seconds = params.get("max_hold_time_seconds")
+        # Keep max_hold_minutes for backwards compatibility with the engine
+        max_hold_minutes = int(max_hold_time_seconds // 60) if max_hold_time_seconds is not None else None
+        
+        stop_loss_method = params.get("stop_loss_method")
+        stop_loss_atr_multiple = params.get("stop_loss_atr_multiple")
+        trailing_stop_distance_pct = params.get("trailing_stop_distance_pct")
+        trailing_stop_activation_pct = params.get("trailing_stop_activation_pct")
+        cooldown_after_loss_seconds = params.get("cooldown_after_loss_seconds", 0)
+        
         reason = data.get("reason", "")
 
         # --- entry condition ---
@@ -96,6 +109,12 @@ def parse_llm_response(response_text: str) -> Signal:
             max_hold_minutes=max_hold_minutes,
             reason=reason,
             entry_condition=entry_condition,
+            stop_loss_method=stop_loss_method,
+            stop_loss_atr_multiple=stop_loss_atr_multiple,
+            trailing_stop_distance_pct=trailing_stop_distance_pct,
+            trailing_stop_activation_pct=trailing_stop_activation_pct,
+            max_hold_time_seconds=max_hold_time_seconds,
+            cooldown_after_loss_seconds=cooldown_after_loss_seconds,
         )
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         raise ValueError(f"Failed to parse LLM response as valid JSON: {e}") from e
