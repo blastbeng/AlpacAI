@@ -184,6 +184,12 @@ Key principles:
 - **Optional parameters:**
   - `"trailing_stop_activation_pct"`: a decimal between 0 and 1.0 (e.g., 0.02 for 2%). The trailing stop will only start updating once the price has moved in your favor by at least this percentage from the entry price. If omitted, the trailing stop is active immediately.
 
+**Position Scaling (Pyramiding & Scaling Out):**
+- If you output BUY for a symbol you already hold, the engine will ADD to your existing position (scale in / pyramid). 
+- Only scale into positions that are already in profit and showing strong, continued momentum. Avoid scaling into losing positions (averaging down) unless you have very high conviction it is a temporary dip.
+- When you scale in, your average entry price changes. You MUST provide a new `stop_loss_pct` or `stop_loss_atr_multiple` that protects your accumulated profits. The engine will update the stop-loss based on your new parameters.
+- You can scale out of positions gradually by using the `partial_take_profit_levels` array to sell fractions of your position at different profit targets.
+
 **Risk Management:**
 - Adjust position size according to your confidence, risk level, account drawdown, and portfolio exposure. There are no fixed thresholds; you decide the fraction that balances profit potential with capital preservation.
 - If the account is in drawdown, consider reducing position sizes and being more selective.
@@ -947,6 +953,8 @@ Maximum symbols to trade: {max_symbols}
         entry_price = position_info.get('price', 0)
         amount = position_info.get('amount', 0)
         prompt += f"Position details: entry price {entry_price}, amount {amount}\n"
+        prompt += f"\n**You currently hold {amount:.6f} {base_symbol} at an average entry of {entry_price:.4f}.**\n"
+        prompt += "If you output BUY, you will ADD to this existing position (scale in). If you output SELL, you will close the ENTIRE position.\n"
         # Compute and show P&L percentage explicitly so the LLM doesn't have to calculate it
         if entry_price > 0 and amount > 0:
             cost_basis = entry_price * amount
