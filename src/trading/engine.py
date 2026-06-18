@@ -3373,33 +3373,20 @@ class TradingEngine:
                     vol_score = 0.5
 
                 # Composite score (with optional market impact component)
-                # Read LLM-decided scalping weights from Redis (fallback to defaults)
-                sw_spread = 0.25
-                sw_depth = 0.25
-                sw_freq = 0.25
-                sw_vol = 0.25
-                sw_impact = 0.20
-                try:
-                    raw = await asyncio.to_thread(self.redis.get, "trading:scalping_weights")
-                    if raw:
-                        w = json.loads(raw)
-                        # Reuse the stock-selection weights as a base, but the per-symbol
-                        # scalping score uses different components (freq, impact) so we
-                        # distribute evenly if market_impact is available, otherwise
-                        # split among the 4 available components.
-                        if market_impact_score is not None:
-                            sw_spread = 0.20
-                            sw_depth = 0.20
-                            sw_freq = 0.20
-                            sw_vol = 0.20
-                            sw_impact = 0.20
-                        else:
-                            sw_spread = 0.25
-                            sw_depth = 0.25
-                            sw_freq = 0.25
-                            sw_vol = 0.25
-                except Exception:
-                    pass
+                # Per-symbol scalping uses different components (freq, impact) than
+                # stock-selection weights (volume, volatility, spread, depth, momentum),
+                # so we distribute evenly: 5-way if market_impact is available, 4-way otherwise.
+                if market_impact_score is not None:
+                    sw_spread = 0.20
+                    sw_depth = 0.20
+                    sw_freq = 0.20
+                    sw_vol = 0.20
+                    sw_impact = 0.20
+                else:
+                    sw_spread = 0.25
+                    sw_depth = 0.25
+                    sw_freq = 0.25
+                    sw_vol = 0.25
 
                 if market_impact_score is not None:
                     scalping_score = round(sw_spread * spread_score + sw_depth * depth_score + sw_freq * freq_score + sw_vol * vol_score + sw_impact * market_impact_score, 3)
