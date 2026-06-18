@@ -1432,8 +1432,24 @@ class TradingEngine:
 
                 momentum_score = 1.0 if (t.get('percentage', 0) or 0) > 0 else 0.5
 
-                # Composite score (weights adjusted to include depth)
-                score = (0.25 * vol_score + 0.25 * vola_score + 0.25 * spread_score + 0.15 * depth_score + 0.10 * momentum_score)
+                # Composite score (weights from LLM-decided values, fallback to defaults)
+                w_vol = 0.25
+                w_vola = 0.25
+                w_spread = 0.25
+                w_depth = 0.15
+                w_momentum = 0.10
+                try:
+                    raw = await asyncio.to_thread(self.redis.get, "trading:scalping_weights")
+                    if raw:
+                        w = json.loads(raw)
+                        w_vol = float(w.get("volume", 0.25))
+                        w_vola = float(w.get("volatility", 0.25))
+                        w_spread = float(w.get("spread", 0.25))
+                        w_depth = float(w.get("depth", 0.15))
+                        w_momentum = float(w.get("momentum", 0.10))
+                except Exception:
+                    pass
+                score = (w_vol * vol_score + w_vola * vola_score + w_spread * spread_score + w_depth * depth_score + w_momentum * momentum_score)
                 symbol_scores[sym] = round(score, 3)
             except Exception:
                 symbol_scores[sym] = 0.0
@@ -2112,6 +2128,28 @@ class TradingEngine:
                     await asyncio.to_thread(self.redis.setex, "trading:max_dust_sweep_reviews", 7 * 24 * 3600, str(max_dust_sweep))
                 else:
                     await asyncio.to_thread(self.redis.delete, "trading:max_dust_sweep_reviews")
+
+                scalping_weights = parsed.get("scalping_score_weights")
+                if scalping_weights is not None and isinstance(scalping_weights, dict):
+                    w_vol = float(scalping_weights.get("volume", 0.25))
+                    w_vola = float(scalping_weights.get("volatility", 0.25))
+                    w_spread = float(scalping_weights.get("spread", 0.25))
+                    w_depth = float(scalping_weights.get("depth", 0.15))
+                    w_momentum = float(scalping_weights.get("momentum", 0.10))
+                    # Normalize so they sum to 1.0
+                    total_w = w_vol + w_vola + w_spread + w_depth + w_momentum
+                    if total_w > 0:
+                        w_vol /= total_w
+                        w_vola /= total_w
+                        w_spread /= total_w
+                        w_depth /= total_w
+                        w_momentum /= total_w
+                    await asyncio.to_thread(self.redis.setex, "trading:scalping_weights", 7 * 24 * 3600, json.dumps({
+                        "volume": w_vol, "volatility": w_vola, "spread": w_spread,
+                        "depth": w_depth, "momentum": w_momentum
+                    }))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:scalping_weights")
 
                 # Optional: LLM can set the global symbol re-evaluation interval
                 new_interval = parsed.get("stock_revaluation_interval_seconds")
@@ -3322,10 +3360,38 @@ class TradingEngine:
                     vol_score = 0.5
 
                 # Composite score (with optional market impact component)
+                # Read LLM-decided scalping weights from Redis (fallback to defaults)
+                sw_spread = 0.25
+                sw_depth = 0.25
+                sw_freq = 0.25
+                sw_vol = 0.25
+                sw_impact = 0.20
+                try:
+                    raw = await asyncio.to_thread(self.redis.get, "trading:scalping_weights")
+                    if raw:
+                        w = json.loads(raw)
+                        # Reuse the stock-selection weights as a base, but the per-symbol
+                        # scalping score uses different components (freq, impact) so we
+                        # distribute evenly if market_impact is available, otherwise
+                        # split among the 4 available components.
+                        if market_impact_score is not None:
+                            sw_spread = 0.20
+                            sw_depth = 0.20
+                            sw_freq = 0.20
+                            sw_vol = 0.20
+                            sw_impact = 0.20
+                        else:
+                            sw_spread = 0.25
+                            sw_depth = 0.25
+                            sw_freq = 0.25
+                            sw_vol = 0.25
+                except Exception:
+                    pass
+
                 if market_impact_score is not None:
-                    scalping_score = round(0.20 * spread_score + 0.20 * depth_score + 0.20 * freq_score + 0.20 * vol_score + 0.20 * market_impact_score, 3)
+                    scalping_score = round(sw_spread * spread_score + sw_depth * depth_score + sw_freq * freq_score + sw_vol * vol_score + sw_impact * market_impact_score, 3)
                 else:
-                    scalping_score = round(0.25 * spread_score + 0.25 * depth_score + 0.25 * freq_score + 0.25 * vol_score, 3)
+                    scalping_score = round(sw_spread * spread_score + sw_depth * depth_score + sw_freq * freq_score + sw_vol * vol_score, 3)
 
             # Pre-computed slippage estimate for per-symbol budget order size
             estimated_slippage_pct = None
