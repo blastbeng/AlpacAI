@@ -1286,6 +1286,8 @@ class TradingEngine:
             if symbol not in available_pairs:
                 logger.warning(f"Stock {symbol} no longer available. Removing from tracking.")
                 self.current_symbols.remove(entry)
+                # Remove any queued orders for this delisted symbol
+                self.queued_orders = [q for q in self.queued_orders if q['symbol'] != symbol]
                 if symbol in self.positions:
                     pos = self.positions.pop(symbol)
                     cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
@@ -5448,6 +5450,10 @@ class TradingEngine:
                 if pos.get("stop_loss") is None or pos.get("take_profit") is None:
                     continue
 
+                # Skip if there is already a queued order for this symbol
+                if any(q['symbol'] == symbol for q in self.queued_orders):
+                    continue
+
                 ticker = risk_tickers.get(symbol)
                 if ticker is None:
                     continue  # no real-time data yet, skip this check
@@ -7852,6 +7858,16 @@ class TradingEngine:
                         is_marketable = True
 
                     if is_marketable:
+                        # Validate if the queued order is still relevant
+                        if side == 'buy' and not any(e['symbol'] == symbol for e in self.current_symbols):
+                            logger.info(f"Queued BUY order for {symbol} cancelled: symbol no longer tracked.")
+                            self.queued_orders.remove(queued)
+                            continue
+                        if side == 'sell' and symbol not in self.positions:
+                            logger.info(f"Queued SELL order for {symbol} cancelled: position no longer open.")
+                            self.queued_orders.remove(queued)
+                            continue
+
                         logger.info(f"Queued {side} order for {symbol} is now marketable. Executing...")
                         self.queued_orders.remove(queued)
                         await self._execute_signal(
