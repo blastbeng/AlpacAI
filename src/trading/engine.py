@@ -223,6 +223,27 @@ class TradingEngine:
                 logger.warning(f"Batch quote fetch failed for positions: {e}")
         return tickers
 
+    def _get_all_position_tickers_sync(self) -> Dict[str, Dict[str, Any]]:
+        """Fetch tickers for all open positions synchronously, batching missing ones."""
+        tickers: Dict[str, Dict[str, Any]] = {}
+        missing: List[str] = []
+        for sym in self.positions:
+            t = self.ws_manager.get_ticker(sym)
+            if t is not None:
+                tickers[sym] = t
+            else:
+                missing.append(sym.split("/")[0])
+        if missing:
+            try:
+                raw = get_quotes(self.data_client, missing)
+                for sym in self.positions:
+                    base = sym.split("/")[0]
+                    if base in raw:
+                        tickers[sym] = raw[base]
+            except Exception as e:
+                logger.warning(f"Sync batch quote fetch failed for positions: {e}")
+        return tickers
+
     async def stop(self):
         """Gracefully stop the engine and all background tasks."""
         logger.info("Stopping trading engine...")
@@ -4814,13 +4835,11 @@ class TradingEngine:
         balance = self.trader.fetch_balance()
         current_balance = balance.get(self.base_currency, 0.0)
         open_value = 0.0
+        pos_tickers = self._get_all_position_tickers_sync()
         for sym, pos in self.positions.items():
             try:
-                ticker = self.ws_manager.get_ticker(sym)
-                if ticker is None:
-                    tickers_map = get_quotes(self.data_client, [sym.split("/")[0]])
-                    ticker = tickers_map.get(sym.split("/")[0])
-                price = ticker['last']
+                t = pos_tickers.get(sym)
+                price = t['last'] if t and t.get('last') else 0.0
                 open_value += pos['amount'] * price
             except Exception:
                 pass
@@ -4871,13 +4890,11 @@ class TradingEngine:
     def get_open_trades(self) -> List[Dict[str, Any]]:
         """Return current open positions as trade-like dicts with unrealized P&L."""
         open_trades = []
+        pos_tickers = self._get_all_position_tickers_sync()
         for symbol, pos in self.positions.items():
             try:
-                ticker = self.ws_manager.get_ticker(symbol)
-                if ticker is None:
-                    tickers_map = get_quotes(self.data_client, [symbol.split("/")[0]])
-                    ticker = tickers_map.get(symbol.split("/")[0])
-                current_price = ticker['last'] if ticker else pos['price']
+                t = pos_tickers.get(symbol)
+                current_price = t['last'] if t and t.get('last') else pos['price']
             except Exception:
                 current_price = pos['price']  # fallback to entry price
 
@@ -4956,13 +4973,11 @@ class TradingEngine:
         exposure = 0.0
         position_exposures = []
         total_stop_risk = 0.0
-        for pos in self.positions.values():
+        pos_tickers = self._get_all_position_tickers_sync()
+        for sym, pos in self.positions.items():
             try:
-                ticker = self.ws_manager.get_ticker(pos['symbol'])
-                if ticker is None:
-                    tickers_map = get_quotes(self.data_client, [pos['symbol'].split("/")[0]])
-                    ticker = tickers_map.get(pos['symbol'].split("/")[0])
-                price = ticker['last'] if ticker and ticker.get('last') else 0.0
+                t = pos_tickers.get(sym)
+                price = t['last'] if t and t.get('last') else 0.0
                 pos_value = pos['amount'] * price
                 exposure += pos_value
                 position_exposures.append(pos_value)
