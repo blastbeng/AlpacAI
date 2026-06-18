@@ -330,6 +330,14 @@ class TradingEngine:
                     logger.info("Symbol re-evaluation complete.")
             except Exception as e:
                 logger.error(f"Stock re-evaluation error: {e}", exc_info=True)
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"❌ Stock re-evaluation failed: {str(e)[:200]}",
+                        summary={
+                            "action": "ERROR",
+                            "reason": f"Re-evaluation error: {str(e)[:200]}",
+                        }
+                    )
             finally:
                 self._reevaluate_running = False
             try:
@@ -1336,16 +1344,17 @@ class TradingEngine:
             # unhealthy and automatically fall back to REST.
 
         # Start background tasks
-        asyncio.create_task(self._refresh_news_cache())
-        asyncio.create_task(self._refresh_current_symbols_news_fast())
-        asyncio.create_task(self._download_market_data_loop())
-        asyncio.create_task(self._risk_management_loop())
-        asyncio.create_task(self._periodic_reconcile())
-        asyncio.create_task(self._periodic_reevaluate())
-        asyncio.create_task(self._periodic_pause_check())
-        asyncio.create_task(self._periodic_full_market_breadth())
-        asyncio.create_task(self._check_pending_entries())
-        asyncio.create_task(self._cleanup_orphaned_orders())
+        self._background_tasks: list = []
+        self._background_tasks.append(asyncio.create_task(self._refresh_news_cache()))
+        self._background_tasks.append(asyncio.create_task(self._refresh_current_symbols_news_fast()))
+        self._background_tasks.append(asyncio.create_task(self._download_market_data_loop()))
+        self._background_tasks.append(asyncio.create_task(self._risk_management_loop()))
+        self._background_tasks.append(asyncio.create_task(self._periodic_reconcile()))
+        self._background_tasks.append(asyncio.create_task(self._periodic_reevaluate()))
+        self._background_tasks.append(asyncio.create_task(self._periodic_pause_check()))
+        self._background_tasks.append(asyncio.create_task(self._periodic_full_market_breadth()))
+        self._background_tasks.append(asyncio.create_task(self._check_pending_entries()))
+        self._background_tasks.append(asyncio.create_task(self._cleanup_orphaned_orders()))
 
         while self._running:
             try:
@@ -1369,7 +1378,7 @@ class TradingEngine:
                     if now - last_eval >= interval:
                         # Check if trading is paused (skip BUY signals)
                         paused = await asyncio.to_thread(self.redis.get, "trading:paused")
-                        trading_paused = paused is not None and paused == b"1"
+                        trading_paused = paused is not None and paused == "1"
                         try:
                             await asyncio.wait_for(
                                 self._process_symbol(symbol_entry, trading_paused=trading_paused),
@@ -1884,7 +1893,7 @@ class TradingEngine:
 
         # Check if trading is currently paused
         trading_paused_raw = await asyncio.to_thread(self.redis.get, "trading:paused")
-        trading_paused_bool = trading_paused_raw is not None and trading_paused_raw == b"1"
+        trading_paused_bool = trading_paused_raw is not None and trading_paused_raw == "1"
 
         # Compute symbol tenure for the prompt
         symbol_tenure = {}
@@ -2524,7 +2533,7 @@ class TradingEngine:
         # If trading is paused, keep ONLY symbols with open positions.
         # The LLM may have just set pause_trading = true, so re-read Redis.
         paused_now = await asyncio.to_thread(self.redis.get, "trading:paused")
-        if paused_now and paused_now == b"1":
+        if paused_now and paused_now == "1":
             open_symbols = set(self.positions.keys())
             before_count = len(self.current_symbols)
             self.current_symbols = [c for c in self.current_symbols if c["symbol"] in open_symbols]
@@ -2650,7 +2659,7 @@ class TradingEngine:
         async with self._symbol_reeval_lock:
             # Only run if actually paused
             paused_raw = await asyncio.to_thread(self.redis.get, "trading:paused")
-            if not paused_raw or paused_raw != b"1":
+            if not paused_raw or paused_raw != "1":
                 return
 
             # Only handle LLM-initiated pauses. Manual pauses are not subject to auto-resume logic.
@@ -7573,6 +7582,6 @@ class TradingEngine:
         # Always clear any pending entry for this symbol
         self._pending_entries.pop(symbol, None)
         paused_raw = await asyncio.to_thread(self.redis.get, "trading:paused")
-        if paused_raw and paused_raw == b"1":
+        if paused_raw and paused_raw == "1":
             self.current_symbols = [c for c in self.current_symbols if c["symbol"] != symbol]
             logger.info(f"Trading paused: removed {symbol} from current_symbols after position closed.")
