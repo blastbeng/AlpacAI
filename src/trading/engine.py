@@ -202,6 +202,27 @@ class TradingEngine:
             logger.warning(f"Failed to fetch asset info for {base}: {e}")
             return self._asset_cache.get(base)  # return stale cache if available
 
+    async def _get_all_position_tickers(self) -> Dict[str, Dict[str, Any]]:
+        """Fetch tickers for all open positions, batching missing ones into a single API call."""
+        tickers: Dict[str, Dict[str, Any]] = {}
+        missing: List[str] = []
+        for sym in self.positions:
+            t = self.ws_manager.get_ticker(sym)
+            if t is not None:
+                tickers[sym] = t
+            else:
+                missing.append(sym.split("/")[0])
+        if missing:
+            try:
+                raw = await asyncio.to_thread(get_quotes, self.data_client, missing)
+                for sym in self.positions:
+                    base = sym.split("/")[0]
+                    if base in raw:
+                        tickers[sym] = raw[base]
+            except Exception as e:
+                logger.warning(f"Batch quote fetch failed for positions: {e}")
+        return tickers
+
     async def stop(self):
         """Gracefully stop the engine and all background tasks."""
         logger.info("Stopping trading engine...")
@@ -3493,12 +3514,10 @@ class TradingEngine:
             portfolio_total_value = base_balance
             portfolio_exposure = 0.0
             portfolio_stop_risk = 0.0
+            pos_tickers = await self._get_all_position_tickers()
             for sym, pos in self.positions.items():
                 try:
-                    t = self.ws_manager.get_ticker(sym)
-                    if t is None:
-                        tickers_map = await asyncio.to_thread(get_quotes, self.data_client, [sym.split("/")[0]])
-                        t = tickers_map.get(sym.split("/")[0])
+                    t = pos_tickers.get(sym)
                     price = t['last'] if t and t.get('last') else 0.0
                     pos_value = pos['amount'] * price
                     portfolio_exposure += pos_value
@@ -5588,14 +5607,13 @@ class TradingEngine:
             # Apply max risk per trade cap if provided
             max_risk_pct = params.get("max_risk_per_trade_pct")
             if max_risk_pct is not None and sl_pct > 0:
+                pos_tickers = await self._get_all_position_tickers()
                 total_value = quote_balance
                 for sym, pos in self.positions.items():
                     try:
-                        t = self.ws_manager.get_ticker(sym)
-                        if t is None:
-                            tickers_map = await asyncio.to_thread(get_quotes, self.data_client, [sym.split("/")[0]])
-                            t = tickers_map.get(sym.split("/")[0])
-                        total_value += pos['amount'] * t['last']
+                        t = pos_tickers.get(sym)
+                        if t and t.get('last'):
+                            total_value += pos['amount'] * t['last']
                     except Exception:
                         pass
                 max_risk_amount = total_value * max_risk_pct
@@ -5610,10 +5628,7 @@ class TradingEngine:
                 total_open_risk = 0.0
                 for sym, pos in self.positions.items():
                     try:
-                        t = self.ws_manager.get_ticker(sym)
-                        if t is None:
-                            tickers_map = await asyncio.to_thread(get_quotes, self.data_client, [sym.split("/")[0]])
-                            t = tickers_map.get(sym.split("/")[0])
+                        t = pos_tickers.get(sym)
                         price = t['last'] if t and t.get('last') else 0.0
                         pos_value = pos['amount'] * price
                         total_value += pos_value
