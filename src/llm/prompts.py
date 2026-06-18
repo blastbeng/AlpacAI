@@ -1451,12 +1451,22 @@ Maximum symbols to trade: {max_symbols}
             cost_basis = t.get("cost_basis", amount * entry_price)
             pnl_pct = (pnl / cost_basis * 100) if cost_basis > 0 else 0.0
             hold_str = f"{hold_time:.0f}s" if hold_time is not None else "N/A"
+            buy_conf = t.get("buy_confidence", 0.0)
+            buy_reason = t.get("buy_reasoning", "")
+            conf_str = f", Buy Conf: {buy_conf:.2f}" if buy_conf else ""
+            reason_str = f", Buy Reason: {buy_reason}" if buy_reason else ""
             prompt += (
                 f"- Entry: {entry_price:.4f}, Exit: {exit_price:.4f}, Amount: {amount:.6f}, "
                 f"P&L: {pnl:+.4f} ({pnl_pct:+.2f}%), Reason: {exit_reason}, "
-                f"Hold: {hold_str}, Strategy: {strategy}\n"
+                f"Hold: {hold_str}, Strategy: {strategy}{conf_str}{reason_str}\n"
             )
-        prompt += "Use these past outcomes to avoid repeating mistakes and to reinforce successful patterns.\n"
+        prompt += (
+            "Use these past outcomes to avoid repeating mistakes and to reinforce successful patterns. "
+            "**Pay special attention to your Buy Confidence vs. actual P&L.** "
+            "If your high-confidence trades (>0.7) are consistently losing, you are overconfident — lower your confidence for similar setups. "
+            "If your low-confidence trades are winning, you may be underconfident — consider raising confidence for similar setups. "
+            "Calibrate your confidence based on this historical feedback.\n"
+        )
 
     # --- Aggregate sentiment summary ---
     if aggregate_sentiment:
