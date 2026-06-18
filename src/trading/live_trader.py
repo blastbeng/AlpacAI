@@ -144,7 +144,7 @@ class LiveTrader:
     # ------------------------------------------------------------------
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """Fetch open orders, optionally filtered by symbol."""
-        request = GetOrdersRequest(status=OrderStatus.OPEN)
+        request = GetOrdersRequest(status="open")
         if symbol:
             base = symbol.split("/")[0]
             request.symbols = [base]
