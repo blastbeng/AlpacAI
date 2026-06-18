@@ -10,6 +10,15 @@ from src.config.settings import settings
 from src.utils.redis_client import get_redis_client, check_redis_connection
 from src.llm.prompts import get_cached_news_summary
 from src.exchanges.market_data import get_quotes, get_multi_timeframe_bars
+from typing import Optional
+
+async def _get_display_symbol(engine, symbol: str, timeframe: Optional[str] = None) -> str:
+    """Return a formatted display string for the given symbol and timeframe."""
+    try:
+        name = await engine._get_stock_name(symbol)
+    except Exception:
+        name = symbol.split("/")[0] if "/" in symbol else symbol
+    return engine._format_symbol_display(symbol, name, timeframe)
 
 app = FastAPI(title="Stock Trading Bot")
 
@@ -44,22 +53,37 @@ async def health():
     }
 
 @app.get("/api/status")
-def status():
+async def status():
     engine = get_engine()
     redis = get_redis_client()
     paused = redis.get("trading:paused") == "1"
+
+    current_symbols = []
+    for entry in engine.current_symbols:
+        entry_copy = dict(entry)
+        entry_copy["display"] = await _get_display_symbol(engine, entry["symbol"], entry.get("timeframe"))
+        current_symbols.append(entry_copy)
+
+    positions = {}
+    for sym, pos in engine.positions.items():
+        pos_copy = dict(pos)
+        pos_copy["display_symbol"] = await _get_display_symbol(engine, sym, pos.get("timeframe"))
+        positions[sym] = pos_copy
+
     return {
-        "current_symbols": engine.current_symbols,
-        "positions": engine.positions,
+        "current_symbols": current_symbols,
+        "positions": positions,
         "balances": engine.trader.fetch_balance(),
         "paused": paused,
     }
 
 @app.get("/api/trades")
-def trades(limit: int = 0):
+async def trades(limit: int = 0):
     engine = get_engine()
-    # limit is ignored – open trades are always all current positions
-    return {"trades": engine.get_open_trades()}
+    open_trades = engine.get_open_trades()
+    for t in open_trades:
+        t["display_symbol"] = await _get_display_symbol(engine, t["symbol"], t.get("timeframe"))
+    return {"trades": open_trades}
 
 @app.get("/api/profit")
 def profit():
@@ -67,9 +91,15 @@ def profit():
     return engine.get_profit_summary()
 
 @app.get("/api/performance")
-def performance():
+async def performance():
     engine = get_engine()
-    return engine.get_performance_summary()
+    perf = engine.get_performance_summary()
+    for row in perf.get("rows", []):
+        row["display_symbol"] = await _get_display_symbol(engine, row["symbol"], row.get("timeframe"))
+    if perf.get("total"):
+        total = perf["total"]
+        total["display_symbol"] = await _get_display_symbol(engine, total["symbol"], total.get("timeframe"))
+    return perf
 
 @app.get("/api/risk")
 def risk():
@@ -80,20 +110,24 @@ def risk():
 async def news():
     engine = get_engine()
     symbols = engine.current_symbols
-    result = {}
+    result = []
     for entry in symbols:
         symbol = entry["symbol"]
         try:
             news_data = await run_in_threadpool(get_cached_news_summary, symbol)
-            result[symbol] = news_data["summary"]
+            summary = news_data["summary"]
         except Exception:
-            result[symbol] = "Could not generate summary."
+            summary = "Could not generate summary."
+        display = await _get_display_symbol(engine, symbol, entry.get("timeframe"))
+        result.append({"symbol": symbol, "display_symbol": display, "summary": summary})
     return result
 
 @app.get("/api/history")
-def history(limit: int = 50):
+async def history(limit: int = 50):
     engine = get_engine()
     trades = engine.trade_history[-limit:]
+    for t in trades:
+        t["display_symbol"] = await _get_display_symbol(engine, t["symbol"], t.get("timeframe"))
     return trades
 
 @app.post("/api/pause")
@@ -297,18 +331,46 @@ async def websocket_endpoint(websocket: WebSocket):
             try:
                 engine = get_engine()
                 redis = get_redis_client()
-                data = await asyncio.to_thread(lambda: {
-                    "current_symbols": engine.current_symbols,
-                    "positions": engine.positions,
+
+                # Build current_symbols with display
+                current_symbols = []
+                for entry in engine.current_symbols:
+                    entry_copy = dict(entry)
+                    entry_copy["display"] = await _get_display_symbol(engine, entry["symbol"], entry.get("timeframe"))
+                    current_symbols.append(entry_copy)
+
+                # Build positions with display_symbol
+                positions = {}
+                for sym, pos in engine.positions.items():
+                    pos_copy = dict(pos)
+                    pos_copy["display_symbol"] = await _get_display_symbol(engine, sym, pos.get("timeframe"))
+                    positions[sym] = pos_copy
+
+                # Build trades with display_symbol
+                trades = []
+                for t in engine.trade_history:
+                    t_copy = dict(t)
+                    t_copy["display_symbol"] = await _get_display_symbol(engine, t["symbol"], t.get("timeframe"))
+                    trades.append(t_copy)
+
+                perf = engine.get_performance_summary()
+                for row in perf.get("rows", []):
+                    row["display_symbol"] = await _get_display_symbol(engine, row["symbol"], row.get("timeframe"))
+                if perf.get("total"):
+                    total = perf["total"]
+                    total["display_symbol"] = await _get_display_symbol(engine, total["symbol"], total.get("timeframe"))
+
+                data = {
+                    "current_symbols": current_symbols,
+                    "positions": positions,
                     "balances": engine.trader.fetch_balance(),
-                    "trades": engine.trade_history,
+                    "trades": trades,
                     "profit": engine.get_profit_summary(),
-                    "performance": engine.get_performance_summary(),
+                    "performance": perf,
                     "paused": redis.get("trading:paused") == "1",
-                })
+                }
                 await websocket.send_text(json.dumps(data))
             except HTTPException:
-                # Engine not ready yet, send empty
                 await websocket.send_text(json.dumps({"status": "initializing"}))
             except Exception as e:
                 logger.error(f"WebSocket error: {e}", exc_info=True)

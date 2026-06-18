@@ -461,7 +461,7 @@
             if (data.current_symbols && data.current_symbols.length > 0) {
                 data.current_symbols.forEach(entry => {
                     const span = document.createElement('span');
-                    span.textContent = `📈 ${entry.symbol} (${entry.timeframe})`;
+                    span.textContent = `📈 ${entry.display || entry.symbol + ' (' + entry.timeframe + ')'}`;
                     span.className = 'clickable-symbol';
                     span.style.marginRight = '8px';
                     span.onclick = () => openChart(entry.symbol, entry.timeframe);
@@ -521,11 +521,15 @@
                             row.cells[8].textContent = trailing;
                             existing.trailing = trailing;
                         }
+                        if (existing.displaySymbol !== (pos.display_symbol || sym)) {
+                            row.cells[0].textContent = pos.display_symbol || sym;
+                            existing.displaySymbol = pos.display_symbol || sym;
+                        }
                     } else {
                         // Create new row
                         const row = posBody.insertRow();
                         const symCell = row.insertCell();
-                        symCell.textContent = sym;
+                        symCell.textContent = pos.display_symbol || sym;
                         symCell.className = 'clickable-symbol';
                         symCell.onclick = () => openChart(sym);
                         row.insertCell().textContent = pos.timeframe || '?';
@@ -544,7 +548,8 @@
                             stopLoss,
                             takeProfit,
                             trailing,
-                            timeframe: pos.timeframe || '?'
+                            timeframe: pos.timeframe || '?',
+                            displaySymbol: pos.display_symbol || sym
                         };
                     }
                 }
@@ -605,7 +610,7 @@
                 if (perf.rows && perf.rows.length > 0) {
                     perf.rows.forEach(r => {
                         const row = perfBody.insertRow();
-                        row.insertCell().textContent = r.symbol;
+                        row.insertCell().textContent = r.display_symbol || r.symbol;
                         row.insertCell().textContent = r.timeframe || '—';
                         row.insertCell().textContent = r.trade_count;
                         const profitCell = row.insertCell();
@@ -627,7 +632,7 @@
                 if (perf.total) {
                     const t = perf.total;
                     const footRow = perfFoot.insertRow();
-                    footRow.insertCell().textContent = t.symbol;
+                    footRow.insertCell().textContent = t.display_symbol || t.symbol;
                     footRow.insertCell().textContent = t.timeframe || '—';
                     footRow.insertCell().textContent = t.trade_count;
                     const totalProfitCell = footRow.insertCell();
@@ -704,7 +709,7 @@
                 history.forEach(t => {
                     const row = histBody.insertRow();
                     row.insertCell().textContent = new Date(t.timestamp).toLocaleString();
-                    row.insertCell().textContent = t.symbol;
+                    row.insertCell().textContent = t.display_symbol || t.symbol;
                     row.insertCell().textContent = t.side?.toUpperCase();
                     row.insertCell().textContent = t.amount?.toFixed(6);
                     row.insertCell().textContent = t.price?.toFixed(4);
@@ -913,10 +918,10 @@
             fetch('/api/news')
                 .then(res => res.json())
                 .then(news => {
-                    if (news && Object.keys(news).length > 0) {
+                    if (news && news.length > 0) {
                         let html = '';
-                        for (const [symbol, summary] of Object.entries(news)) {
-                            html += `<strong>📰 ${symbol}</strong><br>${summary}<br><br>`;
+                        for (const item of news) {
+                            html += `<strong>📰 ${item.display_symbol || item.symbol}</strong><br>${item.summary}<br><br>`;
                         }
                         newsDiv.innerHTML = html;
                     } else {
