@@ -2387,7 +2387,8 @@ class TradingEngine:
 
         # Also trigger immediate news fetch for newly selected symbols
         if settings.NEWS_ENABLED:
-            for sym in new_symbols:
+            for entry in new_symbols:
+                sym = entry["symbol"]
                 logger.info(f"Triggering immediate news fetch for newly selected symbol {sym}")
                 asyncio.create_task(self._fetch_and_store_news_for_symbol(sym))
 
