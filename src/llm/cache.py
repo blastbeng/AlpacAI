@@ -114,6 +114,37 @@ def get_cached_llm_response(
                     "Original error: %s", e
                 )
                 raise
+        elif provider == "openai":
+            # --- Fallback to Ollama provider ---
+            fallback_model = settings.OLLAMA_MIND_MODEL if model_type == "mind" else settings.OLLAMA_ACTUATOR_MODEL
+            fallback_base_url = (settings.OLLAMA_MIND_BASE_URL or settings.OLLAMA_BASE_URL) if model_type == "mind" else (settings.OLLAMA_ACTUATOR_BASE_URL or settings.OLLAMA_BASE_URL)
+            fallback_api_key = (settings.OLLAMA_MIND_API_KEY or settings.OLLAMA_API_KEY) if model_type == "mind" else (settings.OLLAMA_ACTUATOR_API_KEY or settings.OLLAMA_API_KEY)
+
+            if fallback_base_url:
+                logger.warning(
+                    "OpenAI call failed (%s). Falling back to Ollama provider "
+                    "for %s role (model=%s).", e, model_type, fallback_model
+                )
+                try:
+                    from src.llm.llm_client import _get_ollama_response
+                    response_text = _get_ollama_response(
+                        prompt, system_prompt,
+                        model=fallback_model,
+                        base_url=fallback_base_url,
+                        api_key=fallback_api_key,
+                        temperature=temperature,
+                    )
+                    used_provider = "ollama"
+                    used_model = fallback_model
+                except Exception as fallback_e:
+                    logger.error("Ollama fallback also failed: %s", fallback_e)
+                    raise
+            else:
+                logger.warning(
+                    "OpenAI call failed and no Ollama fallback base URL configured. "
+                    "Original error: %s", e
+                )
+                raise
         else:
             raise
 
