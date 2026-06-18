@@ -2949,6 +2949,7 @@ class TradingEngine:
             order_book_slope = None
             mid_price_bias = None
             mid = None
+            depth_trend = None
 
             bids = order_book.get('bids', [])
             asks = order_book.get('asks', [])
@@ -2966,7 +2967,6 @@ class TradingEngine:
                 ask_wall_volume = sum(ask[1] for ask in asks if ask[0] <= ask_threshold)
 
                 # Order book depth trend
-                depth_trend = None
                 if bid_wall_volume is not None and ask_wall_volume is not None:
                     current_depth = bid_wall_volume + ask_wall_volume
                     depth_key = f"depth:prev:{symbol}"
