@@ -1207,11 +1207,6 @@ Maximum symbols to trade: {max_symbols}
                     pp = ind['pivot_points']
                     lines.append(f"  Pivot Points: P={pp['pivot']:.6f} R1={pp['r1']:.6f} S1={pp['s1']:.6f} R2={pp['r2']:.6f} S2={pp['s2']:.6f}")
                 prompt += "\n".join(lines) + "\n"
-        prompt += (
-            "Use these indicators across timeframes to confirm signals. "
-            "For scalping, focus on 5m/15m RSI, MACD, and Bollinger Bands for entry timing, "
-            "while ensuring the 1h/4h trend supports the direction.\n"
-        )
     elif raw_candles:
         summary = _summarize_ohlcv(raw_candles)
         if summary:
@@ -1229,17 +1224,6 @@ Maximum symbols to trade: {max_symbols}
                     "Explain in your reasoning how the indicators support your decision.\n"
                 )
     if historical_ohlcv:
-        summary = _summarize_ohlcv(historical_ohlcv)
-        if summary:
-            prompt += (
-                f"\nHistorical OHLCV summary (up to 30 days, {assigned_timeframe} timeframe): "
-                f"change={summary['change_pct']}%, high={summary['high']}, low={summary['low']}, "
-                f"volume={summary['volume']}, candles={summary['candle_count']}\n"
-            )
-            prompt += (
-                "Use this longer‑term summary to assess the overall trend and avoid stocks in prolonged decline. "
-                "Prefer stocks with consistent upward momentum over the full period.\n"
-            )
         # Provide raw candles for backtesting
         raw_candles_str = _format_raw_candles_compact(historical_ohlcv, max_candles=200)
         prompt += (
@@ -1249,13 +1233,9 @@ Maximum symbols to trade: {max_symbols}
             f"{raw_candles_str}\n"
         )
         prompt += (
-            "You MUST perform a backtest using this historical OHLCV data. "
-            "Simulate your proposed strategy (entry at current price or a specified entry condition, "
-            "stop-loss, take-profit, trailing stop, etc.) on these historical candles and compute "
-            "the number of winning/losing trades, net profit/loss, and win rate. "
-            "Include a `backtest_summary` field in your JSON output with a concise summary of the "
-            "backtest results (e.g., \"Simulated 5 trades over 30 days: 3 wins, 2 losses, net +2.3%\"). "
-            "If you cannot perform a meaningful backtest (e.g., insufficient data), explain why in the summary.\n"
+            "Perform a backtest on these candles using your proposed strategy (entry, stop-loss, take-profit, trailing stop). "
+            "Include a `backtest_summary` field with results (e.g., \"3 wins, 2 losses, net +2.3%\"). "
+            "If insufficient data, explain why.\n"
         )
     if drawdown_pct is not None:
         prompt += f"Current account drawdown: {drawdown_pct}%\n"
@@ -1287,11 +1267,9 @@ Maximum symbols to trade: {max_symbols}
                 f"Hold: {hold_str}, Strategy: {strategy}{conf_str}{reason_str}\n"
             )
         prompt += (
-            "Use these past outcomes to avoid repeating mistakes and to reinforce successful patterns. "
-            "**Pay special attention to your Buy Confidence vs. actual P&L.** "
-            "If your high-confidence trades (>0.7) are consistently losing, you are overconfident — lower your confidence for similar setups. "
-            "If your low-confidence trades are winning, you may be underconfident — consider raising confidence for similar setups. "
-            "Calibrate your confidence based on this historical feedback.\n"
+            "Use these past outcomes to avoid repeating mistakes and reinforce successful patterns. "
+            "Calibrate your confidence: if high-confidence trades are losing, lower confidence for similar setups; "
+            "if low-confidence trades are winning, consider raising confidence.\n"
         )
 
     # --- Aggregate sentiment summary ---
@@ -1401,25 +1379,6 @@ You are trading spot only (no shorting). Only output SELL if you currently hold 
             "If you hold this stock, decide whether to continue holding (HOLD) or exit (SELL) "
             "based on current market conditions, risk parameters, and profit/loss status.\n"
         )
-    # Add OHLCV summary if available
-    if ohlcv_data:
-        ohlcv_summary = {}
-        for tf, candles in ohlcv_data.items():
-            if not candles:
-                continue
-            open_price = candles[0][1]
-            close_price = candles[-1][4]
-            high = max(c[2] for c in candles)
-            low = min(c[3] for c in candles)
-            volume = sum(c[5] for c in candles)
-            change_pct = ((close_price - open_price) / open_price) * 100 if open_price else 0
-            ohlcv_summary[tf] = {
-                "change_pct": round(change_pct, 2),
-                "high": high,
-                "low": low,
-                "volume": volume,
-            }
-        prompt += f"\nMulti-timeframe OHLCV data:\n{json.dumps(ohlcv_summary, indent=2)}\n"
     if performance:
         stock_perf = performance.get("stock_performance", {}).get(symbol, {})
         strategy_perf = performance.get("strategy_performance", {})
