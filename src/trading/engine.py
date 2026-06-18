@@ -462,13 +462,13 @@ class TradingEngine:
                 self._full_breadth_running = False
             await asyncio.sleep(300)  # every 5 minutes
 
-    def _get_sentiment_str(self, symbol: str) -> str:
+    async def _get_sentiment_str(self, symbol: str) -> str:
         """Get a short news sentiment string for notifications, including an LLM summary."""
         if not settings.NEWS_ENABLED:
             return ""
         try:
             base_symbol = symbol.split("/")[0] if "/" in symbol else symbol
-            agg_sent = get_aggregate_sentiment_from_db(base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
+            agg_sent = await asyncio.to_thread(get_aggregate_sentiment_from_db, base_symbol, max_age_seconds=settings.NEWS_CACHE_TTL_SECONDS)
             if not agg_sent:
                 return ""
 
@@ -479,7 +479,7 @@ class TradingEngine:
             # Try to get an LLM-generated summary of the news
             summary = ""
             try:
-                summary_raw = get_cached_news_summary(symbol)
+                summary_raw = await asyncio.to_thread(get_cached_news_summary, symbol)
                 if isinstance(summary_raw, dict):
                     summary = summary_raw.get("summary", "")
                 else:
@@ -4205,7 +4205,7 @@ class TradingEngine:
                 if pivot_points is not None:
                     ind_parts.append(f"Pivot={pivot_points['pivot']:.4f} R1={pivot_points['r1']:.4f} S1={pivot_points['s1']:.4f}")
                 indicator_str = " | ".join(ind_parts) if ind_parts else "No indicators (insufficient OHLCV data)"
-                sentiment_str = self._get_sentiment_str(symbol)
+                sentiment_str = await self._get_sentiment_str(symbol)
                 msg = f"{emoji} {display_symbol}: {validated.action} (confidence: {validated.confidence:.2f}) – {validated.reasoning}"
                 if sentiment_str:
                     msg += f"\n{sentiment_str}"
