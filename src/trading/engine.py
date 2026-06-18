@@ -5591,6 +5591,11 @@ class TradingEngine:
         if is_critical:
             return False
 
+        # If we lack key indicators, we cannot reliably determine if the market
+        # is unchanged – do not skip, let the LLM decide.
+        if rsi is None or macd_hist is None or atr is None:
+            return False
+
         snapshot = self._last_eval_snapshot.get(symbol)
         if snapshot is None:
             # First evaluation – must call
