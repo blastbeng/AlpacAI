@@ -34,19 +34,29 @@ def get_yahoo_quote(symbol: str) -> Optional[Dict[str, Any]]:
 
     try:
         ticker = yf.Ticker(base)
-        # fast_info is the quickest way to get current price data
-        info = ticker.fast_info
-        last = info.get("lastPrice")
-        bid = info.get("bid")
-        ask = info.get("ask")
+        last = None
+        bid = None
+        ask = None
 
-        # Fallback to regular info if fast_info lacks bid/ask
-        if bid is None or ask is None:
-            info2 = ticker.info
-            bid = bid or info2.get("bid")
-            ask = ask or info2.get("ask")
-            if last is None:
-                last = info2.get("regularMarketPrice") or info2.get("currentPrice")
+        try:
+            # fast_info is the quickest way to get current price data
+            info = ticker.fast_info
+            last = info.get("lastPrice")
+            bid = info.get("bid")
+            ask = info.get("ask")
+        except Exception as e:
+            logger.debug(f"fast_info failed for {base}: {e}")
+
+        # Fallback to regular info if fast_info lacks bid/ask or last
+        if bid is None or ask is None or last is None:
+            try:
+                info2 = ticker.info
+                bid = bid or info2.get("bid")
+                ask = ask or info2.get("ask")
+                if last is None:
+                    last = info2.get("regularMarketPrice") or info2.get("currentPrice")
+            except Exception as e:
+                logger.debug(f"info failed for {base}: {e}")
 
         if last is None:
             # Last resort: get the latest daily close
