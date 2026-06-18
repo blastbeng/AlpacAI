@@ -14,12 +14,12 @@ from src.news.fetcher import test_rss_feeds
 
 
 class HealthEndpointFilter(logging.Filter):
-    """Downgrade uvicorn access logs for /health to DEBUG level."""
+    """Suppress uvicorn access logs for /health."""
     def filter(self, record):
-        request_line = getattr(record, 'request_line', '')
-        if '/health' in request_line:
-            record.levelno = logging.DEBUG
-            record.levelname = 'DEBUG'
+        # Uvicorn access logs store the request details in record.args
+        # Checking the formatted message is the most reliable way to match the path
+        if '/health' in record.getMessage():
+            return False
         return True
 
 logging.basicConfig(
