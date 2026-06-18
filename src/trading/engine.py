@@ -133,6 +133,10 @@ class TradingEngine:
         self._perf_cache: Optional[Dict[str, Any]] = None
         self._perf_cache_trade_count: int = -1
 
+        # Cache for tradable assets list (refreshed every 5 minutes)
+        self._tradable_assets_cache: List[str] = []
+        self._tradable_assets_cache_time: float = 0.0
+
     async def _initialize_clients(self):
         """Create Alpaca clients and load persisted state (non‑blocking)."""
         try:
@@ -168,6 +172,16 @@ class TradingEngine:
     def trigger_symbol_reevaluation(self):
         """Signal the periodic reevaluate loop to run immediately."""
         self._reeval_trigger.set()
+
+    async def _get_tradable_assets(self) -> List[str]:
+        """Return tradable assets, cached for 5 minutes to reduce API calls."""
+        now = time.time()
+        if self._tradable_assets_cache and (now - self._tradable_assets_cache_time) < 300:
+            return self._tradable_assets_cache
+        assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
+        self._tradable_assets_cache = assets
+        self._tradable_assets_cache_time = now
+        return assets
 
     async def stop(self):
         """Gracefully stop the engine and all background tasks."""
@@ -326,7 +340,7 @@ class TradingEngine:
                 continue
             self._full_breadth_running = True
             try:
-                plain_assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
+                plain_assets = await self._get_tradable_assets()
                 available_pairs = [f"{sym}/USD" for sym in plain_assets]
                 if available_pairs:
                     # Limit to 500 pairs to avoid excessive API calls
@@ -518,7 +532,7 @@ class TradingEngine:
                 current_symbols = {entry["symbol"] for entry in self.current_symbols}
                 symbols_to_refresh = set()
                 try:
-                    plain_assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
+                    plain_assets = await self._get_tradable_assets()
                     available_pairs = [f"{sym}/USD" for sym in plain_assets]
                     # Fetch tickers for a subset to determine top volume symbols
                     # (limit to 200 to avoid excessive API calls)
@@ -1027,7 +1041,7 @@ class TradingEngine:
     async def _reconcile_positions(self):
         """Detect and handle external changes: delisted symbols, externally sold positions."""
         # --- Delisted stocks ---
-        plain_assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
+        plain_assets = await self._get_tradable_assets()
         available_pairs = [f"{sym}/USD" for sym in plain_assets]
         for entry in list(self.current_symbols):
             symbol = entry["symbol"]
@@ -1298,7 +1312,7 @@ class TradingEngine:
             return
 
         old_symbols = list(self.current_symbols)
-        plain_assets = await asyncio.to_thread(get_tradable_assets, self.exchange)
+        plain_assets = await self._get_tradable_assets()
         available_pairs = [f"{sym}/USD" for sym in plain_assets]
         if not available_pairs:
             logger.warning("No available pairs found.")
