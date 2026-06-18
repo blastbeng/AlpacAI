@@ -72,7 +72,14 @@ def parse_llm_response(response_text: str) -> Signal:
         trailing_stop_distance_pct = params.get("trailing_stop_distance_pct")
         trailing_stop_activation_pct = params.get("trailing_stop_activation_pct")
         cooldown_after_loss_seconds = params.get("cooldown_after_loss_seconds", 0)
-        
+
+        portfolio_risk_adjustment_factor = params.get("portfolio_risk_adjustment_factor")
+        if portfolio_risk_adjustment_factor is not None:
+            try:
+                portfolio_risk_adjustment_factor = max(0.1, min(1.0, float(portfolio_risk_adjustment_factor)))
+            except (TypeError, ValueError):
+                portfolio_risk_adjustment_factor = None
+
         reason = data.get("reason", "")
 
         # --- entry condition ---
@@ -115,6 +122,7 @@ def parse_llm_response(response_text: str) -> Signal:
             trailing_stop_activation_pct=trailing_stop_activation_pct,
             max_hold_time_seconds=max_hold_time_seconds,
             cooldown_after_loss_seconds=cooldown_after_loss_seconds,
+            portfolio_risk_adjustment_factor=portfolio_risk_adjustment_factor,
         )
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         raise ValueError(f"Failed to parse LLM response as valid JSON: {e}") from e

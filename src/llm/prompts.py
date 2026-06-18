@@ -212,6 +212,7 @@ Key principles:
   - `"max_unrealized_loss_pct"`: an optional decimal between 0 and 1.0 (e.g., 0.002 for 0.2%). If set, the bot will close the position immediately if the current price falls below `entry_price * (1 - max_unrealized_loss_pct)`, regardless of the stop‑loss. Must be less than `stop_loss_pct`.
   - `"position_size_multiplier"`: an optional decimal between 0.0 and 1.0 (e.g., 0.5 for 50%). If set, the final position size for this trade will be further multiplied by this factor, after the global risk multiplier.
   - `"min_confidence"`: an optional decimal between 0.0 and 1.0 (e.g., 0.6). If set, the bot will skip the trade if your confidence is below this threshold.
+- `"portfolio_risk_adjustment_factor"`: an optional decimal between 0.1 and 1.0 (e.g., 0.5). This is your per-symbol "vote" on the overall portfolio risk for the current cycle. The engine will take the **minimum** of this factor across all symbols evaluated in the current cycle and apply it as a global multiplier to all position sizes. Use a lower value (e.g., 0.3–0.5) if you detect high volatility, unfavorable market regime shifts, or elevated risk for this symbol. Use 1.0 if conditions are normal and you see no reason to reduce overall portfolio risk. This allows you to dynamically adjust the global trading risk based on the latest per-symbol market data, rather than relying solely on the periodic stock selection phase.
 
 **Pause/Resume:**
 - You may include `"pause_trading"` (boolean) in your stock selection JSON to pause/resume trading. Always include a `"pause_reason"` string when setting pause_trading. You may also set `"pause_duration_seconds"` (positive integer) to auto-resume after a delay.
@@ -765,6 +766,17 @@ Maximum symbols to trade: {max_symbols}
                 "or total stop-loss risk is elevated, reduce your position_size_fraction or output HOLD. "
                 "If you have low exposure and low risk, you may allocate more capital to high-conviction trades.\n"
             )
+    # --- Dynamic portfolio risk adjustment ---
+    prompt += (
+        "\n**Dynamic Portfolio Risk Adjustment:**\n"
+        "You can include a `\"portfolio_risk_adjustment_factor\"` (0.1–1.0) in your strategy parameters. "
+        "This is your per-symbol vote on the overall portfolio risk for the current cycle. "
+        "The engine will take the **minimum** of this factor across all symbols evaluated in this cycle "
+        "and apply it as a global multiplier to all position sizes. "
+        "Use a lower value if you detect high volatility, an unfavorable market regime shift, or elevated risk. "
+        "Use 1.0 (or omit the field) if conditions are normal. "
+        "This gives you direct control over the global trading risk based on the latest market data.\n"
+    )
     if cycle_spent is not None and remaining_balance is not None:
         prompt += (
             f"Amount already allocated to other symbols in this cycle: {cycle_spent:.2f} {base_currency}\n"
@@ -1243,7 +1255,12 @@ You are trading spot only (no shorting). Only output SELL if you currently hold 
         "  Example: {\"type\": \"indicator_combo\", \"conditions\": [ {\"indicator\": \"rsi\", \"threshold\": 30, \"direction\": \"below\"}, {\"indicator\": \"macd_hist\", \"threshold\": 0, \"direction\": \"above\"} ], \"timeout_seconds\": 600}\n"
         "If a timeout expires without the condition being met, the trade is skipped entirely.\n"
     )
-    prompt += "\n**Output ONLY the raw JSON object as specified.**\n\nReturn a JSON object as specified.\n"
+    prompt += (
+        "\n**Output ONLY the raw JSON object as specified.**\n\n"
+        "Return a JSON object as specified. "
+        "You may include `\"portfolio_risk_adjustment_factor\"` (0.1–1.0) in the strategy parameters "
+        "to vote on the overall portfolio risk for this cycle.\n"
+    )
     if trading_paused:
         prompt += (
             "\n**Trading is currently PAUSED.** You may ONLY output SELL or HOLD actions. "
