@@ -2647,6 +2647,33 @@ class TradingEngine:
                         )
                 except Exception as e:
                     logger.warning(f"OHLCV fetch failed for {symbol}: {e}")
+
+            # --- Skip if no meaningful market data is available ---
+            # If we have no OHLCV candles at all AND the order book is empty,
+            # there is nothing for the LLM to analyse. Skip to save costs and noise.
+            no_ohlcv = (
+                not ohlcv_data
+                or all(len(candles) == 0 for candles in ohlcv_data.values())
+            )
+            no_order_book = (
+                not order_book.get('bids') and not order_book.get('asks')
+            )
+            if no_ohlcv and no_order_book:
+                logger.info(
+                    f"Skipping {symbol}: no OHLCV data and empty order book – "
+                    f"market data unavailable."
+                )
+                if self.notifier:
+                    await self.notifier.send_notification(
+                        f"⚠️ Skipping {display_symbol}: no market data available.",
+                        summary={
+                            "symbol": symbol,
+                            "action": "SKIP",
+                            "reason": "No market data (empty order book & no OHLCV)",
+                        }
+                    )
+                return
+
             open_positions = [
                 pos for pos in self.positions.values() if pos.get("symbol") == symbol
             ]
