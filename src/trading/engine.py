@@ -1433,10 +1433,7 @@ class TradingEngine:
 
         self.trade_history = state.get("trade_history", [])
         self.queued_orders = state.get("queued_orders", [])
-        from src.strategies.base import Signal
         for q in self.queued_orders:
-            if isinstance(q.get('signal'), dict):
-                q['signal'] = Signal(**q['signal'])
             q['order_book'] = None
 
         if "initial_balance" in state:
@@ -7881,9 +7878,13 @@ class TradingEngine:
 
                         logger.info(f"Queued {side} order for {symbol} is now marketable. Executing...")
                         self.queued_orders.remove(queued)
+                        from src.strategies.base import Signal
+                        signal_obj = queued['signal']
+                        if isinstance(signal_obj, dict):
+                            signal_obj = Signal(**signal_obj)
                         await self._execute_signal(
                             symbol,
-                            queued['signal'],
+                            signal_obj,
                             timeframe=queued.get('timeframe'),
                             exit_reason=queued.get('exit_reason'),
                             atr=queued.get('atr'),
