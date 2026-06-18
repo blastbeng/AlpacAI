@@ -33,6 +33,9 @@ if settings.LOG_LEVEL.upper() != "DEBUG":
 else:
     logging.getLogger("httpx").setLevel(logging.DEBUG)
 
+# Suppress urllib3 warnings (e.g., "Connection pool is full, discarding connection")
+logging.getLogger("urllib3").setLevel(logging.ERROR)
+
 if not check_redis_connection():
     logging.critical("Redis is not reachable. Exiting.")
     sys.exit(1)
