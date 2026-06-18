@@ -370,6 +370,7 @@ def build_stock_selection_prompt(
     sector_etf_data: Optional[Dict[str, Dict[str, Any]]] = None,
     trade_pattern_analysis: Optional[Dict[str, Any]] = None,
     symbol_events: Optional[Dict[str, Dict[str, Any]]] = None,
+    symbol_trend_scores: Optional[Dict[str, float]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which stocks/ETFs to trade."""
     # Summarize tickers and limits for the prompt
@@ -531,6 +532,12 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "sector": "Technolo
         for sym in available_symbols:
             if sym in symbol_scores:
                 prompt += f"  {sym}: {symbol_scores[sym]:.3f}\n"
+    if symbol_trend_scores:
+        prompt += "\nTrend quality scores (0-1, higher = cleaner trend; combines ADX strength, EMA alignment, RSI consistency, MACD direction, +DI/-DI confirmation):\n"
+        for sym in available_symbols:
+            if sym in symbol_trend_scores:
+                prompt += f"  {sym}: {symbol_trend_scores[sym]:.3f}\n"
+        prompt += "High trend quality (>0.7) = strong, clean trend suitable for momentum/breakout strategies. Low score (<0.3) = choppy or ranging, better for mean reversion or avoid.\n"
     # --- Top profit opportunities summary ---
     if top_opportunities:
         prompt += "\n**Top Profit Opportunities** (best candidates for immediate trades):\n"
