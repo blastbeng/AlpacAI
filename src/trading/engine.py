@@ -1682,14 +1682,15 @@ class TradingEngine:
         ohlcv_data = {}
         if settings.OHLCV_TIMEFRAMES:
             async def fetch_ohlcv_for_symbol(sym):
-                try:
-                    data = await asyncio.to_thread(
-                        get_multi_timeframe_bars, self.data_client, sym.split("/")[0], settings.OHLCV_TIMEFRAMES, limit=50
-                    )
-                    return sym, data
-                except Exception as e:
-                    logger.warning(f"OHLCV fetch failed for {sym}: {e}")
-                    return sym, {}
+                async with self._exchange_semaphore:
+                    try:
+                        data = await asyncio.to_thread(
+                            get_multi_timeframe_bars, self.data_client, sym.split("/")[0], settings.OHLCV_TIMEFRAMES, limit=50
+                        )
+                        return sym, data
+                    except Exception as e:
+                        logger.warning(f"OHLCV fetch failed for {sym}: {e}")
+                        return sym, {}
             tasks = [fetch_ohlcv_for_symbol(sym) for sym in sorted_by_vol]
             results = await asyncio.gather(*tasks)
             ohlcv_data = dict(results)
