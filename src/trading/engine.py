@@ -5803,6 +5803,119 @@ class TradingEngine:
                 else:
                     logger.info(f"Portfolio risk check passed: {total_portfolio_risk:.2f} <= {max_allowed_portfolio_risk:.2f}")
 
+            # --- Hard enforce LLM portfolio exposure and stop risk limits ---
+            max_port_exp_raw = await asyncio.to_thread(self.redis.get, "trading:max_portfolio_exposure_pct")
+            max_port_exp = float(max_port_exp_raw) if max_port_exp_raw else None
+            max_port_risk_raw = await asyncio.to_thread(self.redis.get, "trading:max_portfolio_stop_risk_pct")
+            max_port_risk = float(max_port_risk_raw) if max_port_risk_raw else None
+
+            if max_port_exp is not None or max_port_risk is not None:
+                total_value = quote_balance
+                total_open_exposure = 0.0
+                total_open_stop_risk = 0.0
+                for sym, pos in self.positions.items():
+                    try:
+                        t = pos_tickers.get(sym)
+                        price = t['last'] if t and t.get('last') else 0.0
+                        pos_value = pos['amount'] * price
+                        total_open_exposure += pos_value
+                        total_value += pos_value
+                        stop_loss = pos.get('stop_loss')
+                        if stop_loss is not None and price > 0:
+                            loss_if_stop = pos_value * (price - stop_loss) / price
+                            total_open_stop_risk += max(0, loss_if_stop)
+                    except Exception:
+                        pass
+
+                # Check exposure limit
+                if max_port_exp is not None and total_value > 0:
+                    new_trade_exposure = desired_amount
+                    new_total_exposure_pct = (total_open_exposure + new_trade_exposure) / total_value
+                    if new_total_exposure_pct > max_port_exp:
+                        # Try to reduce position size to fit within the remaining exposure budget
+                        available_exposure_budget = max(0.0, (max_port_exp * total_value) - total_open_exposure)
+                        if available_exposure_budget > 0:
+                            old_amount = desired_amount
+                            desired_amount = min(desired_amount, available_exposure_budget)
+                            logger.info(
+                                f"Reducing BUY {symbol} amount from {old_amount:.2f} to {desired_amount:.2f} "
+                                f"to fit max portfolio exposure ({max_port_exp:.2%})"
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⚠️ Reducing BUY {display_symbol} size to fit portfolio exposure "
+                                    f"({old_amount:.2f} -> {desired_amount:.2f})",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "INFO",
+                                        "reason": "Position size reduced to fit max portfolio exposure",
+                                        "original_amount": old_amount,
+                                        "reduced_amount": desired_amount,
+                                    }
+                                )
+                        else:
+                            logger.info(
+                                f"Skipping BUY {symbol}: portfolio exposure budget exhausted "
+                                f"({total_open_exposure:.2f} >= {max_port_exp * total_value:.2f})"
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⚠️ Skipping BUY {display_symbol}: portfolio exposure budget exhausted",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "SKIP",
+                                        "reason": "Portfolio exposure budget exhausted",
+                                        "total_open_exposure": total_open_exposure,
+                                        "max_portfolio_exposure": max_port_exp * total_value,
+                                    }
+                                )
+                            return
+
+                # Check stop risk limit
+                if max_port_risk is not None and sl_pct > 0 and total_value > 0:
+                    new_trade_risk = desired_amount * sl_pct
+                    new_total_stop_risk = total_open_stop_risk + new_trade_risk
+                    max_allowed_stop_risk = total_value * max_port_risk
+                    if new_total_stop_risk > max_allowed_stop_risk:
+                        # Try to reduce position size to fit within the remaining risk budget
+                        available_risk_budget = max(0.0, max_allowed_stop_risk - total_open_stop_risk)
+                        if available_risk_budget > 0:
+                            old_amount = desired_amount
+                            desired_amount = min(desired_amount, available_risk_budget / sl_pct)
+                            logger.info(
+                                f"Reducing BUY {symbol} amount from {old_amount:.2f} to {desired_amount:.2f} "
+                                f"to fit max portfolio stop risk ({max_port_risk:.2%})"
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⚠️ Reducing BUY {display_symbol} size to fit portfolio stop risk "
+                                    f"({old_amount:.2f} -> {desired_amount:.2f})",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "INFO",
+                                        "reason": "Position size reduced to fit max portfolio stop risk",
+                                        "original_amount": old_amount,
+                                        "reduced_amount": desired_amount,
+                                    }
+                                )
+                        else:
+                            logger.info(
+                                f"Skipping BUY {symbol}: portfolio stop risk budget exhausted "
+                                f"({total_open_stop_risk:.2f} >= {max_allowed_stop_risk:.2f})"
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    f"⚠️ Skipping BUY {display_symbol}: portfolio stop risk budget exhausted",
+                                    summary={
+                                        "symbol": symbol,
+                                        "action": "SKIP",
+                                        "reason": "Portfolio stop risk budget exhausted",
+                                        "total_open_stop_risk": total_open_stop_risk,
+                                        "max_portfolio_stop_risk": max_allowed_stop_risk,
+                                    }
+                                )
+                            return
+
             # Apply global risk multiplier if set by LLM in symbol selection
             global_mult_raw = await asyncio.to_thread(self.redis.get, "trading:global_risk_multiplier")
             if global_mult_raw:
