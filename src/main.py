@@ -97,6 +97,16 @@ async def main():
     logging.info("Creating engine task...")
     engine_task = asyncio.create_task(engine.run())
 
+    def engine_task_done(task: asyncio.Task):
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            logging.info("Engine task was cancelled.")
+        except Exception as e:
+            logging.critical(f"Engine task crashed: {e}", exc_info=True)
+
+    engine_task.add_done_callback(engine_task_done)
+
     # Start Telegram bot as a background task so it never blocks the engine
     telegram_task = None
     if settings.TELEGRAM_BOT_TOKEN:

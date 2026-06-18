@@ -319,12 +319,15 @@ class TradingEngine:
                 paused = await asyncio.to_thread(self.redis.get, "trading:paused")
                 if paused:
                     # Only run the pause/resume decision, skip stock selection
+                    logger.info("Trading is paused, running pause/resume decision.")
                     await self._check_pause_resume_decision()
                 else:
+                    logger.info("Starting symbol re-evaluation...")
                     await self._reevaluate_symbols()
                     # Update WebSocket subscriptions to match current stocks
                     current_symbols = [entry["symbol"] for entry in self.current_symbols]
                     await self.ws_manager.update_subscriptions(current_symbols)
+                    logger.info("Symbol re-evaluation complete.")
             except Exception as e:
                 logger.error(f"Stock re-evaluation error: {e}", exc_info=True)
             finally:
