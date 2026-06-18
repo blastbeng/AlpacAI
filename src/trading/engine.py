@@ -2161,10 +2161,10 @@ class TradingEngine:
                     else:
                         logger.warning(f"Invalid stock_revaluation_interval_seconds: {new_interval}")
 
-                was_paused = trading_paused_bool   # captured earlier in the method
                 # Optional: LLM can request to pause/resume trading
                 pause_trading = parsed.get("pause_trading")
                 pause_reason = parsed.get("pause_reason", "")
+                pause_duration = parsed.get("pause_duration_seconds")
 
                 # Normalise string booleans from the LLM (e.g. "false" → False)
                 if isinstance(pause_trading, str):
@@ -2274,16 +2274,14 @@ class TradingEngine:
                     else:
                         logger.warning(f"Invalid pause_trading value: {pause_trading}")
 
-                # Optional: LLM can set a pause duration after which trading auto-resumes
-                pause_duration = parsed.get("pause_duration_seconds")
-                if pause_duration is not None:
-                    if isinstance(pause_duration, (int, float)) and pause_duration > 0:
-                        await asyncio.to_thread(
-                            self.redis.setex, "trading:pause_duration", 7 * 24 * 3600, str(int(pause_duration))
-                        )
-                        logger.info(f"LLM set pause duration: {pause_duration}s")
-                    else:
-                        logger.warning(f"Invalid pause_duration_seconds: {pause_duration}")
+                # Store LLM-provided pause duration in Redis (if not already stored by pause logic)
+                if pause_duration is not None and isinstance(pause_duration, (int, float)) and pause_duration > 0:
+                    await asyncio.to_thread(
+                        self.redis.setex, "trading:pause_duration", 7 * 24 * 3600, str(int(pause_duration))
+                    )
+                    logger.info(f"LLM set pause duration: {pause_duration}s")
+                elif pause_duration is not None:
+                    logger.warning(f"Invalid pause_duration_seconds: {pause_duration}")
 
                 # Optional: LLM can set a global risk multiplier to scale all position sizes
                 global_risk_mult = parsed.get("global_risk_multiplier")
