@@ -428,25 +428,11 @@ Currently tracked stocks (with assigned timeframes): {json.dumps(current_symbols
         prompt += "\n**Stock tenure (how long each stock has been continuously tracked, in seconds):**\n"
         for sym, sec in symbol_tenure.items():
             prompt += f"  {sym}: {sec:.0f}s\n"
-        prompt += (
-            "Stocks that have been tracked for longer periods allow the bot to accumulate more "
-            "historical data and refine strategies. Frequent changes disrupt this learning process. "
-            "Therefore, **prefer to keep stocks that are already in the list** unless there is a strong "
-            "reason to drop them (e.g., delisting, severe negative sentiment, consistent losses, "
-            "or budget constraints). Only replace a stock if the new candidate is clearly superior.\n"
-        )
     if symbol_max_tenure:
         prompt += "\n**Current max tenure per stock (hours, if set):**\n"
         for sym, hours in symbol_max_tenure.items():
             if hours is not None:
                 prompt += f"  {sym}: {hours:.1f}h\n"
-        prompt += (
-            "You may optionally set a `max_tenure_hours` for each stock you select. "
-            "If set, the bot will force-sell the stock after it has been in the portfolio for that many hours. "
-            "Use this to rotate out of stocks that may become stagnant. "
-            "If you omit this field, the stock will have no tenure limit (it can stay indefinitely). "
-            "If you keep a stock that already has a max tenure, you may change it or keep it as is.\n"
-        )
 
     prompt += f"""
 Available symbols with market data and minimum trade cost (in {base_currency}):
@@ -491,10 +477,6 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
         for sym in available_symbols:
             if sym in symbol_scores:
                 prompt += f"  {sym}: {symbol_scores[sym]:.3f}\n"
-        prompt += (
-            "Prioritise stocks with higher scores, but use your own judgement. "
-            "The score combines volume, volatility, spread, and momentum.\n"
-        )
     # --- Top profit opportunities summary ---
     if top_opportunities:
         prompt += "\n**Top Profit Opportunities** (best candidates for immediate trades):\n"
@@ -506,11 +488,6 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
                 f"  {opp['symbol']}: score={opp['score']:.3f}, "
                 f"change_24h={opp['change_24h']}%{sent_str}\n"
             )
-        prompt += (
-            "These are the stocks with the highest scalping suitability scores. "
-            "Even if the overall market looks bad, one or more of these may still offer a profitable scalp. "
-            "Use this list to decide whether to pause or to trade a reduced number of stocks.\n"
-        )
     if symbol_spreads or symbol_depths:
         prompt += "\nOrder book metrics for top stocks (lower spread & higher depth = better for scalping):\n"
         for sym in available_symbols:
@@ -521,7 +498,6 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
                 parts.append(f"depth={symbol_depths[sym]:.2f}")
             if parts:
                 prompt += f"  {sym}: {', '.join(parts)}\n"
-        prompt += "Prefer stocks with spread < 0.2% and high depth for scalping very small percentages.\n"
     if ohlcv_summary:
         prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
     if correlation_matrix:
@@ -532,16 +508,11 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
         prompt += (
             "\nPairwise correlation matrix (Pearson correlation of daily returns, range -1 to +1):\n"
             f"{json.dumps(trimmed, indent=2)}\n"
-            "Use this to diversify your selection. Stocks with correlation > 0.7 move very similarly – "
-            "avoid selecting too many highly correlated stocks, as they concentrate risk. "
-            "Prefer stocks with low or negative correlation to your existing selections to spread risk.\n"
         )
     if historical_ohlcv_summary:
         prompt += (
             "\nHistorical OHLCV summary from database (up to 30 days, price change %, high, low, volume, candle count):\n"
             f"{json.dumps(historical_ohlcv_summary, indent=2)}\n"
-            "Use this longer-term data to assess sustained trends and avoid stocks in prolonged decline. "
-            "Prefer stocks with consistent upward momentum over the full period.\n"
         )
     if symbol_indicators:
         prompt += "\nTechnical indicators for candidate stocks:\n"
@@ -593,11 +564,6 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
         prompt += f"\nOverall market trend ({market_trend['symbol']}): daily change {market_trend.get('change_24h')}%, last price {market_trend.get('last')}\n"
     if session_info:
         prompt += f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
-        prompt += (
-            "If the current session is not \"Regular\" (i.e., pre‑market, after‑hours, or closed), "
-            "you MUST include `limit_price` and `time_in_force` in your parameters for any BUY or SELL action. "
-            "The engine will reject market orders during extended hours.\n"
-        )
     # --- Data feed note ---
     if data_feed == "iex":
         prompt += (
@@ -613,12 +579,6 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
         )
     if vix is not None:
         prompt += f"\nCBOE Volatility Index (VIX): {vix:.2f}\n"
-        prompt += (
-            "VIX measures expected market volatility over the next 30 days. "
-            "High VIX (>30) indicates fear/uncertainty and often coincides with market bottoms; "
-            "low VIX (<15) indicates complacency and can precede sharp corrections. "
-            "Use this to gauge overall market risk and adjust position sizing accordingly.\n"
-        )
     if sector_etf_data:
         prompt += "\n## Sector ETF Performance\n"
         prompt += "Current price and daily change for key sector ETFs:\n"
@@ -627,11 +587,6 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
             change = data.get("change_pct")
             if last is not None:
                 prompt += f"  {etf}: last={last:.2f}, change={change}%\n"
-        prompt += (
-            "Use sector performance to identify strong/weak sectors. "
-            "Prefer stocks in sectors with positive daily changes and strong momentum. "
-            "Avoid stocks in sectors that are declining broadly.\n"
-        )
     if news_sentiment:
         prompt += "\n## News Sentiment\n"
         prompt += "Aggregate sentiment from recent news articles (compound score -1 to +1, higher = more positive):\n"
@@ -643,33 +598,19 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
                     f"positive={ns['positive']}, negative={ns['negative']}, "
                     f"neutral={ns['neutral']}, total_articles={ns['total_articles']}\n"
                 )
-        prompt += "\n"
     if sentiment_trend:
         prompt += "\nSentiment trend (change in compound score since last cycle):\n"
         for base, delta in sentiment_trend.items():
             if delta is not None:
                 prompt += f"  {base}: {delta:+.4f}\n"
-        prompt += (
-            "A positive delta means sentiment is improving; a negative delta means it is deteriorating. "
-            "Use this to gauge whether the narrative is strengthening or weakening. "
-            "Improving sentiment may justify higher confidence; deteriorating sentiment may warrant caution.\n"
-        )
     if news_section:
         prompt += f"\n{news_section}\n"
-    prompt += (
-        "\n**Sentiment is a critical factor in stock selection.** "
-        "Prefer stocks with a positive aggregate sentiment (compound > 0.1). "
-        "Avoid stocks with strongly negative sentiment (compound < -0.2) unless there is overwhelming technical evidence. "
-        "Use sentiment to gauge market hype and potential short‑term momentum.\n"
-    )
     if performance:
         perf_text = f"""
 Historical Performance Data:
 Overall equity curve: {json.dumps(performance.get('equity_curve', {}))}
 Per-stock performance (win rate, avg P&L, total trades): {json.dumps(performance.get('stock_performance', {}), indent=2)}
 Per-strategy performance: {json.dumps(performance.get('strategy_performance', {}), indent=2)}
-
-Use this historical data to select stocks that have been profitable in the past, and to avoid stocks with poor performance. Prefer strategies that have shown higher win rates and average P&L.
 """
         prompt += perf_text
         if daily_pnl is not None:
@@ -685,16 +626,6 @@ Use this historical data to select stocks that have been profitable in the past,
             f"\n**Account P&L**: Today's realized P&L = {daily_pnl:.4f} {base_currency}, "
             f"Total realized P&L = {total_pnl:.4f} {base_currency}.\n"
         )
-        if total_pnl < 0:
-            prompt += (
-                "Your account is currently in a loss. Be more conservative: prefer to pause unless you find "
-                "exceptional opportunities. If you do trade, reduce position sizes and tighten stops.\n"
-            )
-        else:
-            prompt += (
-                "Your account is in profit. You may take calculated risks, but do not be reckless. "
-                "Only trade if you see clear setups.\n"
-            )
     return prompt
 
 def build_strategy_prompt(
