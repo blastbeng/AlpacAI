@@ -4334,6 +4334,53 @@ class TradingEngine:
                 if trading_paused and validated.action == "BUY":
                     logger.info(f"Ignoring BUY signal for {symbol}: trading is paused.")
                 else:
+                    # --- Sector concentration limit check (only for BUY) ---
+                    if validated.action == "BUY":
+                        current_sector = None
+                        for entry in self.current_symbols:
+                            if entry["symbol"] == symbol:
+                                current_sector = entry.get("sector")
+                                break
+                        
+                        if current_sector:
+                            max_positions_per_sector_raw = await asyncio.to_thread(self.redis.get, "trading:max_positions_per_sector")
+                            if max_positions_per_sector_raw:
+                                try:
+                                    max_positions_per_sector = int(max_positions_per_sector_raw)
+                                except ValueError:
+                                    max_positions_per_sector = None
+                            else:
+                                max_positions_per_sector = None
+                            
+                            if max_positions_per_sector is not None and max_positions_per_sector > 0:
+                                sector_count = 0
+                                for pos_sym in self.positions.keys():
+                                    for entry in self.current_symbols:
+                                        if entry["symbol"] == pos_sym and entry.get("sector") == current_sector:
+                                            sector_count += 1
+                                            break
+                                
+                                if sector_count >= max_positions_per_sector:
+                                    logger.info(
+                                        f"Skipping BUY {symbol}: sector '{current_sector}' already has "
+                                        f"{sector_count} open positions (max {max_positions_per_sector})"
+                                    )
+                                    if self.notifier:
+                                        stock_name = await self._get_stock_name(symbol)
+                                        display_symbol = self._format_symbol_display(symbol, stock_name, assigned_tf)
+                                        await self.notifier.send_notification(
+                                            f"⚠️ Skipping BUY {display_symbol}: sector '{current_sector}' concentration limit reached ({sector_count}/{max_positions_per_sector})",
+                                            summary={
+                                                "symbol": symbol,
+                                                "action": "SKIP",
+                                                "reason": "Sector concentration limit",
+                                                "sector": current_sector,
+                                                "sector_count": sector_count,
+                                                "max_positions_per_sector": max_positions_per_sector,
+                                            }
+                                        )
+                                    return
+
                     # --- Entry condition check (only for BUY) ---
                     if validated.action == "BUY" and validated.entry_condition is not None:
                         etype = validated.entry_condition.get("type")
