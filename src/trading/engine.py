@@ -2516,6 +2516,10 @@ class TradingEngine:
         assigned_tf = symbol_entry["timeframe"]
         tf_seconds = self._timeframe_to_seconds(assigned_tf)
 
+        # Pre‑compute the display symbol for all notifications in this method
+        stock_name = await self._get_stock_name(symbol)
+        display_symbol = self._format_symbol_display(symbol, stock_name, assigned_tf)
+
         # --- Maximum symbol tenure (per-symbol, set by LLM) ---
         max_tenure_hours = symbol_entry.get('max_tenure_hours')
         if max_tenure_hours is not None and max_tenure_hours > 0 and 'entry_time' in symbol_entry:
@@ -2542,7 +2546,7 @@ class TradingEngine:
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"⏳ Skipping {symbol}: cooldown {remaining:.0f}s",
+                                f"⏳ Skipping {display_symbol}: cooldown {remaining:.0f}s",
                                 summary={
                                     "symbol": symbol,
                                     "action": "SKIP",
@@ -2554,7 +2558,7 @@ class TradingEngine:
 
         # If trading is paused and we have no open position, skip entirely
         if trading_paused and symbol not in self.positions:
-            logger.info(f"Skipping {symbol}: trading paused and no open position.")
+            logger.info(f"Skipping {display_symbol}: trading paused and no open position.")
             return
 
         # --- Max hold expired flag ---
@@ -3380,7 +3384,7 @@ class TradingEngine:
                     logger.warning(f"Forcing SELL for {symbol} due to {reason}")
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"⏱️ LLM timeout for {symbol} with critical flag – forcing SELL.",
+                            f"⏱️ LLM timeout for {display_symbol} with critical flag – forcing SELL.",
                             summary={"symbol": symbol, "action": "SELL", "reason": reason, "model_type": strategy_model_type}
                         )
                     await self._execute_signal(
@@ -3392,7 +3396,7 @@ class TradingEngine:
                 # No critical flag – safe to skip this cycle.
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"⏱️ LLM timeout for {symbol}, skipping.",
+                        f"⏱️ LLM timeout for {display_symbol}, skipping.",
                         summary={
                             "symbol": symbol,
                             "action": "SKIP",
@@ -3420,7 +3424,7 @@ class TradingEngine:
                     logger.warning(f"Forcing SELL for {symbol} due to {reason}")
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"⚠️ LLM returned empty response for {symbol} with critical flag – forcing SELL.",
+                            f"⚠️ LLM returned empty response for {display_symbol} with critical flag – forcing SELL.",
                             summary={"symbol": symbol, "action": "SELL", "reason": reason, "model_type": strategy_model_type}
                         )
                     await self._execute_signal(
@@ -3432,7 +3436,7 @@ class TradingEngine:
                 # No critical flag – safe to skip this cycle.
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"⚠️ LLM returned empty response for {symbol}, skipping.",
+                        f"⚠️ LLM returned empty response for {display_symbol}, skipping.",
                         summary={
                             "symbol": symbol,
                             "action": "SKIP",
@@ -3647,7 +3651,7 @@ class TradingEngine:
                     # Notify the user about the extension
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"⏰ Max hold time for {symbol} extended to {new_max_hold}s by LLM.\n"
+                            f"⏰ Max hold time for {display_symbol} extended to {new_max_hold}s by LLM.\n"
                             f"Reasoning: {validated.reasoning}",
                             summary={
                                 "symbol": symbol,
@@ -3676,7 +3680,7 @@ class TradingEngine:
                     )
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"⏰ LLM did not extend hold time for {symbol} – closing position.",
+                            f"⏰ LLM did not extend hold time for {display_symbol} – closing position.",
                             summary={
                                 "symbol": symbol,
                                 "action": "SELL",
@@ -3728,7 +3732,7 @@ class TradingEngine:
                         )
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"🔄 {symbol}: LLM adjusted stop-loss to {new_stop_pct:.4%} – holding.\n"
+                            f"🔄 {display_symbol}: LLM adjusted stop-loss to {new_stop_pct:.4%} – holding.\n"
                             f"Reasoning: {validated.reasoning}",
                             summary={
                                 "symbol": symbol,
@@ -3750,7 +3754,7 @@ class TradingEngine:
                     )
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"⛔ {symbol}: LLM did not provide new stop-loss – selling.",
+                            f"⛔ {display_symbol}: LLM did not provide new stop-loss – selling.",
                             summary={
                                 "symbol": symbol,
                                 "action": "SELL",
@@ -3801,7 +3805,7 @@ class TradingEngine:
                         )
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"🔄 {symbol}: LLM adjusted take-profit to {new_tp_pct:.4%} – holding.\n"
+                            f"🔄 {display_symbol}: LLM adjusted take-profit to {new_tp_pct:.4%} – holding.\n"
                             f"Reasoning: {validated.reasoning}",
                             summary={
                                 "symbol": symbol,
@@ -3823,7 +3827,7 @@ class TradingEngine:
                     )
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"🎯 {symbol}: LLM did not provide new take-profit – selling.",
+                            f"🎯 {display_symbol}: LLM did not provide new take-profit – selling.",
                             summary={
                                 "symbol": symbol,
                                 "action": "SELL",
@@ -3873,7 +3877,7 @@ class TradingEngine:
                     )
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"🔄 {symbol}: LLM adjusted partial TP levels – holding.",
+                            f"🔄 {display_symbol}: LLM adjusted partial TP levels – holding.",
                             summary={"symbol": symbol, "action": "HOLD", "reason": "Partial TP levels adjusted by LLM", "model_type": strategy_model_type, "llm_provider": llm_provider, "llm_model": llm_model}
                         )
                     return
@@ -3908,7 +3912,7 @@ class TradingEngine:
                 logger.info(f"LLM decided to hold dust for {symbol}")
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"🧹 {symbol}: LLM decided to keep dust – holding.",
+                        f"🧹 {display_symbol}: LLM decided to keep dust – holding.",
                         summary={"symbol": symbol, "action": "HOLD", "reason": "Dust kept by LLM"}
                     )
                 return
@@ -3934,7 +3938,7 @@ class TradingEngine:
                 logger.info(f"Skipping {symbol}: spread {spread_pct:.4f}% exceeds LLM max {max_spread:.4f}%")
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"⚠️ Skipping {symbol}: spread too high ({spread_pct:.4f}% > {max_spread:.4f}%)",
+                        f"⚠️ Skipping {display_symbol}: spread too high ({spread_pct:.4f}% > {max_spread:.4f}%)",
                         summary={
                             "symbol": symbol,
                             "action": "SKIP",
@@ -3950,7 +3954,7 @@ class TradingEngine:
                 logger.info(f"Skipping {symbol}: confidence {validated.confidence:.2f} below LLM min {min_conf:.2f}")
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"⚠️ Skipping {symbol}: confidence too low ({validated.confidence:.2f})",
+                        f"⚠️ Skipping {display_symbol}: confidence too low ({validated.confidence:.2f})",
                         summary={
                             "symbol": symbol,
                             "action": "SKIP",
@@ -3981,7 +3985,7 @@ class TradingEngine:
                     )
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"⚠️ Skipping {symbol}: insufficient depth at take-profit ({cum_vol:.4f} < {min_depth_tp:.4f})",
+                            f"⚠️ Skipping {display_symbol}: insufficient depth at take-profit ({cum_vol:.4f} < {min_depth_tp:.4f})",
                             summary={
                                 "symbol": symbol,
                                 "action": "SKIP",
@@ -4014,7 +4018,7 @@ class TradingEngine:
                             )
                             if self.notifier:
                                 await self.notifier.send_notification(
-                                    f"⚠️ Skipping BUY {symbol}: insufficient depth for partial TP level {i}",
+                                    f"⚠️ Skipping BUY {display_symbol}: insufficient depth for partial TP level {i}",
                                     summary={
                                         "symbol": symbol,
                                         "action": "SKIP",
@@ -4078,7 +4082,7 @@ class TradingEngine:
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"⚠️ Skipping BUY {symbol}: insufficient depth for order size",
+                                f"⚠️ Skipping BUY {display_symbol}: insufficient depth for order size",
                                 summary={
                                     "symbol": symbol,
                                     "action": "SKIP",
@@ -4097,7 +4101,7 @@ class TradingEngine:
                             )
                             if self.notifier:
                                 await self.notifier.send_notification(
-                                    f"⚠️ Skipping BUY {symbol}: slippage too high ({slippage_pct:.4f}%)",
+                                    f"⚠️ Skipping BUY {display_symbol}: slippage too high ({slippage_pct:.4f}%)",
                                     summary={
                                         "symbol": symbol,
                                         "action": "SKIP",
@@ -4113,7 +4117,7 @@ class TradingEngine:
                 logger.info(f"Skipping SELL for {symbol}: no open position.")
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"⚠️ Skipping SELL for {symbol}: no open position.",
+                        f"⚠️ Skipping SELL for {display_symbol}: no open position.",
                         summary={
                             "symbol": symbol,
                             "action": "SKIP",
@@ -4149,7 +4153,7 @@ class TradingEngine:
                             )
                             if self.notifier:
                                 await self.notifier.send_notification(
-                                    f"⏳ Delayed entry for {symbol} – executing in {delay_sec}s.",
+                                    f"⏳ Delayed entry for {display_symbol} – executing in {delay_sec}s.",
                                     summary={
                                         "symbol": symbol,
                                         "action": "WAIT",
@@ -4174,7 +4178,7 @@ class TradingEngine:
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"⏳ Waiting for entry condition on {symbol} "
+                                f"⏳ Waiting for entry condition on {display_symbol} "
                                 f"(type={etype}, timeout {timeout}s).",
                                 summary={
                                     "symbol": symbol,
@@ -4189,7 +4193,7 @@ class TradingEngine:
             logger.error(f"Error processing {symbol}: {e}", exc_info=True)
             if self.notifier:
                 await self.notifier.send_notification(
-                    f"❌ Error processing {symbol}: {e}",
+                    f"❌ Error processing {display_symbol}: {e}",
                     summary={
                         "symbol": symbol,
                         "action": "ERROR",
