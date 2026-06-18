@@ -1429,6 +1429,7 @@ class TradingEngine:
                 pos["_force_close"] = True
 
         self.trade_history = state.get("trade_history", [])
+        self.queued_orders = state.get("queued_orders", [])
 
         if "initial_balance" in state:
             self.initial_balance = float(state["initial_balance"])
@@ -1451,6 +1452,7 @@ class TradingEngine:
         # Keep only the last 1000 trades to avoid unbounded growth
         self.trade_history = self.trade_history[-1000:]
         await asyncio.to_thread(save_trading_state, "trade_history", self.trade_history)
+        await asyncio.to_thread(save_trading_state, "queued_orders", self.queued_orders)
         logger.info("Saved trading state: %d symbols, %d positions, %d trades",
                      len(self.current_symbols), len(self.positions), len(self.trade_history))
 
@@ -3256,6 +3258,11 @@ class TradingEngine:
                             f"Skipping {symbol}: cooldown active ({remaining:.0f}s remaining after loss)"
                         )
                         return
+
+        # Skip if there is already a queued order for this symbol
+        if any(q['symbol'] == symbol for q in self.queued_orders):
+            logger.info(f"Skipping {display_symbol}: order already queued.")
+            return
 
         # If trading is paused and we have no open position, skip entirely
         if trading_paused and symbol not in self.positions:
@@ -5903,6 +5910,11 @@ class TradingEngine:
         stock_name = await self._get_stock_name(symbol)
         tf = timeframe or (self.positions.get(symbol, {}).get("timeframe") if symbol in self.positions else None)
         display_symbol = self._format_symbol_display(symbol, stock_name, tf)
+
+        # Prevent executing new signals if an order is already queued for this symbol
+        if any(q['symbol'] == symbol for q in self.queued_orders):
+            logger.info(f"Skipping {signal.action} for {symbol}: order already queued.")
+            return
 
         # In live mode, only execute during regular market hours (manual overrides are allowed anytime)
         if not self._is_market_open() and not (exit_reason and exit_reason.startswith("manual")):
