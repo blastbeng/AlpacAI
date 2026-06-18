@@ -391,6 +391,7 @@ def build_stock_selection_prompt(
     symbol_max_tenure: Optional[Dict[str, Optional[float]]] = None,
     vix: Optional[float] = None,
     data_feed: str = "sip",
+    sector_etf_data: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which stocks/ETFs to trade."""
     # Summarize tickers and limits for the prompt
@@ -682,6 +683,19 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
             "High VIX (>30) indicates fear/uncertainty and often coincides with market bottoms; "
             "low VIX (<15) indicates complacency and can precede sharp corrections. "
             "Use this to gauge overall market risk and adjust position sizing accordingly.\n"
+        )
+    if sector_etf_data:
+        prompt += "\n## Sector ETF Performance\n"
+        prompt += "Current price and daily change for key sector ETFs:\n"
+        for etf, data in sector_etf_data.items():
+            last = data.get("last")
+            change = data.get("change_pct")
+            if last is not None:
+                prompt += f"  {etf}: last={last:.2f}, change={change}%\n"
+        prompt += (
+            "Use sector performance to identify strong/weak sectors. "
+            "Prefer stocks in sectors with positive daily changes and strong momentum. "
+            "Avoid stocks in sectors that are declining broadly.\n"
         )
     if news_sentiment:
         prompt += "\n## News Sentiment\n"

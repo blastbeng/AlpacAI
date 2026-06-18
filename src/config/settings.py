@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     # Benchmark symbol for relative strength and market trend (e.g., SPY, QQQ)
     BENCHMARK_SYMBOL: str = "SPY"
 
+    # Sector ETFs to include in market context (free via Alpaca IEX or Yahoo)
+    SECTOR_ETFS: list[str] = [
+        "XLF", "XLK", "XLE", "XLV", "XLI", "XLP",
+        "XLY", "XLB", "XLRE", "XLU", "XLC", "XBI", "SMH",
+    ]
+
     # Max symbols to trade simultaneously
     MAX_SYMBOLS: int = 10
 

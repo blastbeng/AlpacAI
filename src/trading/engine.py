@@ -1296,6 +1296,21 @@ class TradingEngine:
         raw_quotes = await asyncio.to_thread(get_quotes, self.data_client, plain_sample)
         tickers = {pair: raw_quotes.get(pair.split("/")[0], {}) for pair in sample_pairs}
 
+        # --- Sector ETF quotes for market context ---
+        sector_etf_data: Dict[str, Dict[str, Any]] = {}
+        if settings.SECTOR_ETFS:
+            try:
+                sector_quotes = await asyncio.to_thread(get_quotes, self.data_client, settings.SECTOR_ETFS)
+                for etf in settings.SECTOR_ETFS:
+                    q = sector_quotes.get(etf, {})
+                    if q:
+                        sector_etf_data[etf] = {
+                            "last": q.get("last"),
+                            "change_pct": q.get("percentage"),
+                        }
+            except Exception as e:
+                logger.warning(f"Failed to fetch sector ETF quotes: {e}")
+
         # --- Yahoo Finance fallback for missing bid/ask in stock selection ---
         if settings.YAHOO_FINANCE_ENABLED:
             missing_bid_ask = [
@@ -1731,6 +1746,7 @@ class TradingEngine:
             vix=vix,
             top_opportunities=top_opportunities,
             data_feed=settings.ALPACA_DATA_FEED,
+            sector_etf_data=sector_etf_data,
         )
         if auto_resume_note:
             prompt += "\n" + auto_resume_note
@@ -1762,6 +1778,7 @@ class TradingEngine:
             "sentiment_trend": sentiment_trend,
             "vix": vix,
             "top_opportunities": top_opportunities,
+            "sector_etf_data": sector_etf_data,
         }
         market_hash = compute_market_hash(market_snapshot)
         # Compute prompt complexity for temperature selection
