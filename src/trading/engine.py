@@ -5100,13 +5100,6 @@ class TradingEngine:
             # Desired amount based on fraction of total available quote balance
             desired_amount = quote_balance * position_fraction
 
-            # Scale position size by LLM confidence
-            desired_amount *= signal.confidence
-            logger.info(
-                f"Confidence scaling: confidence={signal.confidence:.2f}, "
-                f"adjusted desired_amount={desired_amount:.2f} {quote}"
-            )
-
             # Apply max risk per trade cap if provided
             max_risk_pct = params.get("max_risk_per_trade_pct")
             if max_risk_pct is not None and sl_pct > 0:
