@@ -408,6 +408,7 @@ Return a JSON object with the following fields:
 - "min_max_hold_time_mult": a float (e.g., 2.0) indicating the minimum max_hold_time_seconds as a multiple of the candle timeframe (in seconds). Trades with max hold time below this multiple will be rejected.
 - "max_stop_loss_reviews": an integer between 1 and 20 (e.g., 3). The maximum number of times the LLM can review a triggered stop-loss before the engine force-sells the position. Lower values = quicker exit on stop-loss; higher values = more LLM discretion.
 - "max_take_profit_reviews": an integer between 1 and 20 (e.g., 3). The maximum number of times the LLM can review a triggered take-profit before the engine force-sells the position. Lower values = quicker profit-taking; higher values = more LLM discretion.
+- "min_llm_pause_duration_seconds": an integer between 300 and 14400 (e.g., 3600). The minimum duration in seconds that the LLM must wait before it can resume trading after pausing. This prevents rapid pause/resume cycles. Lower values = faster resume capability; higher values = more conservative cooldown.
 - "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
 You may optionally include "stock_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.

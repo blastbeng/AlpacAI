@@ -2083,6 +2083,12 @@ class TradingEngine:
                 else:
                     await asyncio.to_thread(self.redis.delete, "trading:max_take_profit_reviews")
 
+                min_llm_pause = parsed.get("min_llm_pause_duration_seconds")
+                if min_llm_pause is not None and isinstance(min_llm_pause, int) and 300 <= min_llm_pause <= 14400:
+                    await asyncio.to_thread(self.redis.setex, "trading:min_llm_pause_duration", 7 * 24 * 3600, str(min_llm_pause))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:min_llm_pause_duration")
+
                 # Optional: LLM can set the global symbol re-evaluation interval
                 new_interval = parsed.get("stock_revaluation_interval_seconds")
                 if new_interval is not None:
@@ -2133,7 +2139,14 @@ class TradingEngine:
                                 await asyncio.to_thread(self.redis.set, "trading:llm_pause_time", str(time.time()))
                                 # Fallback if LLM did not provide pause_duration_seconds
                                 if pause_duration is None:
-                                    pause_duration = MIN_LLM_PAUSE_DURATION
+                                    _min_pause = MIN_LLM_PAUSE_DURATION
+                                    try:
+                                        raw = await asyncio.to_thread(self.redis.get, "trading:min_llm_pause_duration")
+                                        if raw:
+                                            _min_pause = int(raw)
+                                    except Exception:
+                                        pass
+                                    pause_duration = _min_pause
                                     await asyncio.to_thread(
                                         self.redis.setex, "trading:pause_duration", 7 * 24 * 3600, str(int(pause_duration))
                                     )
@@ -2153,6 +2166,12 @@ class TradingEngine:
                                     pause_start_raw = await asyncio.to_thread(self.redis.get, "trading:pause_start")
                                     pause_duration_raw = await asyncio.to_thread(self.redis.get, "trading:pause_duration")
                                     required_pause = MIN_LLM_PAUSE_DURATION
+                                    try:
+                                        raw = await asyncio.to_thread(self.redis.get, "trading:min_llm_pause_duration")
+                                        if raw:
+                                            required_pause = int(raw)
+                                    except Exception:
+                                        pass
                                     if pause_duration_raw:
                                         try:
                                             llm_set_duration = int(pause_duration_raw)
