@@ -126,6 +126,8 @@ def get_multi_timeframe_bars(
 
     Returns a dict mapping timeframe -> list of candles [timestamp_ms, open, high, low, close, volume].
     """
+    if not timeframes:
+        return {}
     result = {}
 
     def fetch_tf(tf: str) -> tuple:
