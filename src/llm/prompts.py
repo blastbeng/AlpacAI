@@ -390,6 +390,7 @@ def build_stock_selection_prompt(
     symbol_tenure: Optional[Dict[str, float]] = None,
     symbol_max_tenure: Optional[Dict[str, Optional[float]]] = None,
     vix: Optional[float] = None,
+    data_feed: str = "sip",
 ) -> str:
     """Build a prompt to ask the LLM which stocks/ETFs to trade."""
     # Summarize tickers and limits for the prompt
@@ -660,6 +661,19 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
             "If the current session is not \"Regular\" (i.e., pre‑market, after‑hours, or closed), "
             "you MUST include `limit_price` and `time_in_force` in your parameters for any BUY or SELL action. "
             "The engine will reject market orders during extended hours.\n"
+        )
+    # --- Data feed note ---
+    if data_feed == "iex":
+        prompt += (
+            "\n**Data feed: IEX (free).** The IEX feed does not provide real‑time order book data. "
+            "Order book metrics (spread, depth, walls) may be empty or stale. "
+            "Do NOT rely on order book data for stock selection or trade decisions. "
+            "Base your analysis on OHLCV, indicators, news sentiment, and other available data.\n"
+        )
+    else:
+        prompt += (
+            "\n**Data feed: SIP (real‑time).** Order book data is live and reliable. "
+            "You may use order book metrics normally.\n"
         )
     if vix is not None:
         prompt += f"\nCBOE Volatility Index (VIX): {vix:.2f}\n"

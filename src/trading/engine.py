@@ -1698,6 +1698,7 @@ class TradingEngine:
             symbol_max_tenure=symbol_max_tenure,
             vix=vix,
             top_opportunities=top_opportunities,
+            data_feed=settings.ALPACA_DATA_FEED,
         )
         if auto_resume_note:
             prompt += "\n" + auto_resume_note
