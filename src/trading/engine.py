@@ -2089,6 +2089,18 @@ class TradingEngine:
                 else:
                     await asyncio.to_thread(self.redis.delete, "trading:min_llm_pause_duration")
 
+                pause_max_keep = parsed.get("pause_max_consecutive_keep")
+                if pause_max_keep is not None and isinstance(pause_max_keep, int) and 1 <= pause_max_keep <= 10:
+                    await asyncio.to_thread(self.redis.setex, "trading:pause_max_consecutive_keep", 7 * 24 * 3600, str(pause_max_keep))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:pause_max_consecutive_keep")
+
+                pause_force_mult = parsed.get("pause_force_resume_risk_multiplier")
+                if pause_force_mult is not None and isinstance(pause_force_mult, (int, float)) and 0.0 <= float(pause_force_mult) <= 1.0:
+                    await asyncio.to_thread(self.redis.setex, "trading:pause_force_resume_risk_multiplier", 7 * 24 * 3600, str(float(pause_force_mult)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:pause_force_resume_risk_multiplier")
+
                 # Optional: LLM can set the global symbol re-evaluation interval
                 new_interval = parsed.get("stock_revaluation_interval_seconds")
                 if new_interval is not None:
@@ -2427,6 +2439,19 @@ class TradingEngine:
                 logger.info("Pause/resume check skipped: pause was not initiated by LLM (source=%s).", source or "unknown")
                 return
 
+            # Read LLM-decided pause recovery settings from Redis
+            max_keep = settings.PAUSE_MAX_CONSECUTIVE_KEEP
+            force_resume_mult = settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER
+            try:
+                raw = await asyncio.to_thread(self.redis.get, "trading:pause_max_consecutive_keep")
+                if raw:
+                    max_keep = int(raw)
+                raw = await asyncio.to_thread(self.redis.get, "trading:pause_force_resume_risk_multiplier")
+                if raw:
+                    force_resume_mult = float(raw)
+            except Exception:
+                pass
+
             # Gather minimal market context
             vix = await self._fetch_vix()
             spy_price = None
@@ -2500,13 +2525,12 @@ class TradingEngine:
                     pass
 
             # --- Consecutive keep warning and recovery nudge ---
-            max_keep = settings.PAUSE_MAX_CONSECUTIVE_KEEP
             if keep_count > 0:
                 prompt_parts.append(
                     f"You have chosen to keep trading paused {keep_count} time(s) in a row. "
                     f"If you keep it paused {max_keep} times consecutively, the engine will "
                     f"force‑resume trading with a reduced global risk multiplier of "
-                    f"{settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER} to attempt recovery."
+                    f"{force_resume_mult} to attempt recovery."
                 )
 
             prompt_parts.append(
@@ -2587,13 +2611,13 @@ class TradingEngine:
                     await asyncio.to_thread(self.redis.delete, keep_key)
                     await asyncio.to_thread(
                         self.redis.setex, "trading:global_risk_multiplier", 3600,
-                        str(settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER)
+                        str(force_resume_mult)
                     )
                     self._reeval_trigger.set()
                     if self.notifier:
                         await self.notifier.send_notification(
                             "▶️ Trading auto‑resumed because LLM could not be reached for pause decision. "
-                            f"Global risk multiplier set to {settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER}.",
+                            f"Global risk multiplier set to {force_resume_mult}.",
                             summary={"action": "RESUME", "reason": "LLM pause-resume failures exceeded limit"}
                         )
                 return
@@ -2678,7 +2702,7 @@ class TradingEngine:
                 # Set a TTL so it doesn't persist forever (e.g., 24h)
                 await asyncio.to_thread(self.redis.expire, keep_key, 86400)
 
-                if new_keep_count >= settings.PAUSE_MAX_CONSECUTIVE_KEEP:
+                if new_keep_count >= max_keep:
                     # Double-check that the pause is still LLM-initiated (should always be true here)
                     current_source = await asyncio.to_thread(self.redis.get, "trading:pause_source")
                     if current_source and (current_source.decode() if isinstance(current_source, bytes) else current_source) != "llm":
@@ -2686,7 +2710,7 @@ class TradingEngine:
                         return
                     logger.warning(
                         f"LLM kept trading paused {new_keep_count} times consecutively – "
-                        f"forcing resume with risk multiplier {settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER}."
+                        f"forcing resume with risk multiplier {force_resume_mult}."
                     )
                     # Force resume
                     pause_keys = [
@@ -2702,13 +2726,13 @@ class TradingEngine:
                     await asyncio.to_thread(self.redis.delete, keep_key)
                     await asyncio.to_thread(
                         self.redis.setex, "trading:global_risk_multiplier", 3600,
-                        str(settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER)
+                        str(force_resume_mult)
                     )
                     self._reeval_trigger.set()
                     if self.notifier:
                         await self.notifier.send_notification(
                             f"▶️ Trading force‑resumed after {new_keep_count} consecutive pauses. "
-                            f"Global risk multiplier set to {settings.PAUSE_FORCE_RESUME_RISK_MULTIPLIER}.",
+                            f"Global risk multiplier set to {force_resume_mult}.",
                             summary={
                                 "action": "RESUME",
                                 "reason": f"Force resume after {new_keep_count} consecutive keep-paused decisions",
@@ -2716,12 +2740,12 @@ class TradingEngine:
                             }
                         )
                 else:
-                    logger.info(f"LLM decided to keep trading paused. Reason: {reason} (keep count: {new_keep_count}/{settings.PAUSE_MAX_CONSECUTIVE_KEEP})")
+                    logger.info(f"LLM decided to keep trading paused. Reason: {reason} (keep count: {new_keep_count}/{max_keep})")
                     if self.notifier:
                         reason_text = f" – {reason}" if reason else ""
                         await self.notifier.send_notification(
                             f"⏸️ LLM decided to keep trading paused{reason_text} "
-                            f"({new_keep_count}/{settings.PAUSE_MAX_CONSECUTIVE_KEEP} consecutive keeps)",
+                            f"({new_keep_count}/{max_keep} consecutive keeps)",
                             summary={"action": "PAUSE", "reason": f"LLM keep paused: {reason}" if reason else "LLM keep paused", "model_type": "actuator", "llm_provider": llm_provider, "llm_model": llm_model}
                         )
             else:
