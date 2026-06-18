@@ -4928,10 +4928,15 @@ class TradingEngine:
             logger.info(f"Skipping {signal.action} for {symbol}: market closed (live mode).")
             if self.notifier:
                 await self.notifier.send_notification(
-                    f"⏸️ Skipping {signal.action} for {symbol}: market closed.",
+                    f"⏸️ Skipping {signal.action} for {display_symbol}: market closed.",
                     summary={"symbol": symbol, "action": "SKIP", "reason": "Market closed"}
                 )
             return
+
+        # --- Format symbol for notifications ---
+        stock_name = await self._get_stock_name(symbol)
+        tf = timeframe or (self.positions.get(symbol, {}).get("timeframe") if symbol in self.positions else None)
+        display_symbol = self._format_symbol_display(symbol, stock_name, tf)
 
         async with self._risk_lock:
             base, quote = symbol.split("/")
@@ -5033,7 +5038,7 @@ class TradingEngine:
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"⚠️ Skipping BUY {symbol}: profit too small ({expected_gross_profit:.4f} {quote})",
+                                f"⚠️ Skipping BUY {display_symbol}: profit too small ({expected_gross_profit:.4f} {quote})",
                                 summary={
                                     "symbol": symbol,
                                     "action": "SKIP",
@@ -5093,7 +5098,7 @@ class TradingEngine:
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"⚠️ BUY {symbol} capped to {amount:.2f} {quote} (slippage limit {settings.MAX_SLIPPAGE_CAP_PCT}%)",
+                                f"⚠️ BUY {display_symbol} capped to {amount:.2f} {quote} (slippage limit {settings.MAX_SLIPPAGE_CAP_PCT}%)",
                                 summary={
                                     "symbol": symbol,
                                     "action": "INFO",
@@ -5107,7 +5112,7 @@ class TradingEngine:
                 logger.info(f"Insufficient {quote} to buy {symbol}")
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"⚠️ Insufficient {quote} to buy {symbol}",
+                        f"⚠️ Insufficient {quote} to buy {display_symbol}",
                         summary={
                             "symbol": symbol,
                             "action": "SKIP",
@@ -5158,7 +5163,7 @@ class TradingEngine:
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"⚠️ BUY skipped for {symbol}: amount adjusted to {amount:.2f} but insufficient remaining budget",
+                                f"⚠️ BUY skipped for {display_symbol}: amount adjusted to {amount:.2f} but insufficient remaining budget",
                                 summary={
                                     "symbol": symbol,
                                     "action": "SKIP",
@@ -5173,7 +5178,7 @@ class TradingEngine:
                     )
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"ℹ️ {symbol}: buy amount adjusted to {amount:.2f} {quote} to meet minimum",
+                            f"ℹ️ {display_symbol}: buy amount adjusted to {amount:.2f} {quote} to meet minimum",
                             summary={
                                 "symbol": symbol,
                                 "action": "INFO",
@@ -5200,7 +5205,7 @@ class TradingEngine:
                 logger.error(f"Invalid limit_price {limit_price} for {symbol}, skipping.")
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"❌ Invalid limit price for {symbol}, skipping.",
+                        f"❌ Invalid limit price for {display_symbol}, skipping.",
                         summary={"symbol": symbol, "action": "SKIP", "reason": "Invalid limit price"}
                     )
                 return
@@ -5346,7 +5351,7 @@ class TradingEngine:
                 logger.error(f"Buy order failed for {symbol}: {e}")
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"❌ Buy order failed for {symbol}: {e}",
+                        f"❌ Buy order failed for {display_symbol}: {e}",
                         summary={
                             "symbol": symbol,
                             "action": "ERROR",
@@ -5379,7 +5384,7 @@ class TradingEngine:
                 logger.info(f"No {base} to sell for {symbol}")
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"⚠️ No {base} to sell for {symbol}",
+                        f"⚠️ No {base} to sell for {display_symbol}",
                         summary={
                             "symbol": symbol,
                             "action": "SKIP",
@@ -5411,7 +5416,7 @@ class TradingEngine:
                     logger.info(f"SELL amount {gross_amount:.6f} {base} below min amount {min_amount_limit} for {symbol}, skipping")
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"⚠️ SELL skipped for {symbol}: amount too small",
+                            f"⚠️ SELL skipped for {display_symbol}: amount too small",
                             summary={
                                 "symbol": symbol,
                                 "action": "SKIP",
@@ -5423,7 +5428,7 @@ class TradingEngine:
                     logger.info(f"SELL cost {gross_amount * price:.2f} {quote} below min cost {min_cost_limit} for {symbol}, skipping")
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"⚠️ SELL skipped for {symbol}: cost too small",
+                            f"⚠️ SELL skipped for {display_symbol}: cost too small",
                             summary={
                                 "symbol": symbol,
                                 "action": "SKIP",
@@ -5448,7 +5453,7 @@ class TradingEngine:
                 logger.error(f"Invalid limit_price {limit_price} for {symbol}, skipping.")
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"❌ Invalid limit price for {symbol}, skipping.",
+                        f"❌ Invalid limit price for {display_symbol}, skipping.",
                         summary={"symbol": symbol, "action": "SKIP", "reason": "Invalid limit price"}
                     )
                 return
@@ -5559,7 +5564,7 @@ class TradingEngine:
                 logger.error(f"Sell order failed for {symbol}: {e}")
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"❌ Sell order failed for {symbol}: {e}",
+                        f"❌ Sell order failed for {display_symbol}: {e}",
                         summary={
                             "symbol": symbol,
                             "action": "ERROR",
@@ -5641,12 +5646,15 @@ class TradingEngine:
                     entry = self._pending_entries.get(symbol)
                     if entry is None:
                         continue
+                    entry_tf = entry.get("timeframe")
+                    stock_name = await self._get_stock_name(symbol)
+                    display_symbol = self._format_symbol_display(symbol, stock_name, entry_tf)
                     if now >= entry["deadline"]:
                         # Timeout – clear and notify
                         logger.info(f"Entry condition timeout for {symbol}")
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"⏭️ Entry condition timeout for {symbol} – skipping BUY.",
+                                f"⏭️ Entry condition timeout for {display_symbol} – skipping BUY.",
                                 summary={
                                     "symbol": symbol,
                                     "action": "SKIP",
@@ -5671,7 +5679,7 @@ class TradingEngine:
                             logger.info(f"Ignoring queued BUY {symbol}: trading is now paused.")
                             if self.notifier:
                                 await self.notifier.send_notification(
-                                    f"⏸️ Queued BUY for {symbol} skipped – trading paused.",
+                                    f"⏸️ Queued BUY for {display_symbol} skipped – trading paused.",
                                     summary={"symbol": symbol, "action": "SKIP", "reason": "Trading paused"}
                                 )
                         else:
@@ -6059,6 +6067,10 @@ class TradingEngine:
             logger.warning(f"Cannot execute partial TP for {symbol}: no position.")
             return
 
+        stock_name = await self._get_stock_name(symbol)
+        tf = pos.get("timeframe") if pos else None
+        display_symbol = self._format_symbol_display(symbol, stock_name, tf)
+
         fraction = pos.get("partial_take_profit_fraction")
         if fraction is None or fraction <= 0 or fraction >= 1:
             logger.warning(f"Invalid partial_take_profit_fraction for {symbol}: {fraction}")
@@ -6175,7 +6187,7 @@ class TradingEngine:
             if self.notifier:
                 pnl_pct = (realized_pnl / prorated_cost_basis * 100) if prorated_cost_basis > 0 else 0.0
                 await self.notifier.send_notification(
-                    f"🔸 Partial TP SELL {symbol}: {filled_amount:.6f} @ {order.get('price', current_price):.4f} "
+                    f"🔸 Partial TP SELL {display_symbol}: {filled_amount:.6f} @ {order.get('price', current_price):.4f} "
                     f"| P&L: {realized_pnl:+.4f} ({pnl_pct:+.2f}%)",
                     summary={
                         "symbol": symbol,
@@ -6191,7 +6203,7 @@ class TradingEngine:
             logger.error(f"Partial TP sell failed for {symbol}: {e}")
             if self.notifier:
                 await self.notifier.send_notification(
-                    f"❌ Partial TP sell failed for {symbol}: {e}",
+                    f"❌ Partial TP sell failed for {display_symbol}: {e}",
                     summary={"symbol": symbol, "action": "ERROR", "reason": f"Partial TP sell failed: {e}"[:200]}
                 )
 
@@ -6208,6 +6220,10 @@ class TradingEngine:
         if not pos:
             logger.warning(f"Cannot execute partial TP level for {symbol}: no position.")
             return
+
+        stock_name = await self._get_stock_name(symbol)
+        tf = pos.get("timeframe") if pos else None
+        display_symbol = self._format_symbol_display(symbol, stock_name, tf)
 
         levels = pos.get("partial_take_profit_levels")
         if not levels or level_index >= len(levels):
@@ -6344,7 +6360,7 @@ class TradingEngine:
             if self.notifier:
                 pnl_pct = (realized_pnl / prorated_cost_basis * 100) if prorated_cost_basis > 0 else 0.0
                 await self.notifier.send_notification(
-                    f"🔸 Partial TP level {level_index} SELL {symbol}: {filled_amount:.6f} @ {order.get('price', current_price):.4f} "
+                    f"🔸 Partial TP level {level_index} SELL {display_symbol}: {filled_amount:.6f} @ {order.get('price', current_price):.4f} "
                     f"| P&L: {realized_pnl:+.4f} ({pnl_pct:+.2f}%)",
                     summary={
                         "symbol": symbol,
@@ -6361,7 +6377,7 @@ class TradingEngine:
             logger.error(f"Partial TP level {level_index} sell failed for {symbol}: {e}")
             if self.notifier:
                 await self.notifier.send_notification(
-                    f"❌ Partial TP level {level_index} sell failed for {symbol}: {e}",
+                    f"❌ Partial TP level {level_index} sell failed for {display_symbol}: {e}",
                     summary={"symbol": symbol, "action": "ERROR", "reason": f"Partial TP level sell failed: {e}"[:200]}
                 )
 
@@ -6375,6 +6391,10 @@ class TradingEngine:
             return
         if balance <= 0:
             return
+
+        stock_name = await self._get_stock_name(symbol)
+        tf = self.positions.get(symbol, {}).get("timeframe") if symbol in self.positions else None
+        display_symbol = self._format_symbol_display(symbol, stock_name, tf)
 
         try:
             ticker = self.ws_manager.get_ticker(symbol)
@@ -6459,7 +6479,7 @@ class TradingEngine:
 
             if self.notifier:
                 await self.notifier.send_notification(
-                    f"🧹 Dust sweep: sold remaining {balance} {base} from {symbol}",
+                    f"🧹 Dust sweep: sold remaining {balance} {base} from {display_symbol}",
                     summary={
                         "symbol": symbol,
                         "action": "SELL",
