@@ -5924,9 +5924,14 @@ class TradingEngine:
         display_symbol = self._format_symbol_display(symbol, stock_name, tf)
 
         # Prevent executing new signals if an order is already queued for this symbol
-        if any(q['symbol'] == symbol for q in self.queued_orders):
+        # (unless it's a manual override)
+        if any(q['symbol'] == symbol for q in self.queued_orders) and not (exit_reason and exit_reason.startswith("manual")):
             logger.info(f"Skipping {signal.action} for {symbol}: order already queued.")
             return
+
+        # If this is a manual sell, cancel any queued SELL order for this symbol to avoid duplicate sells
+        if exit_reason and exit_reason.startswith("manual") and signal.action == "SELL":
+            self.queued_orders = [q for q in self.queued_orders if not (q['symbol'] == symbol and q['side'] == 'sell')]
 
         # In live mode, only execute during regular market hours (manual overrides are allowed anytime)
         if not self._is_market_open() and not (exit_reason and exit_reason.startswith("manual")):
