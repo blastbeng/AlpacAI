@@ -1218,8 +1218,7 @@ Maximum symbols to trade: {max_symbols}
             news_section = "Recent news articles for this stock:\n" + _format_news_for_prompt(articles)
     if news_section:
         prompt += f"\n{news_section}\n"
-        prompt += "Consider the detailed news headlines above when setting your confidence, position size, and max hold time. "
-        prompt += "If sentiment is very negative, reduce max hold time to limit exposure.\n"
+        prompt += "Consider the news headlines above when setting confidence, position size, and max hold time.\n"
 
     prompt += f"""
 **For the {assigned_timeframe or 'default'} timeframe, a reasonable minimum max_hold_time_seconds is {min_hold} seconds. Do not set it lower unless you have a very specific, justified reason (e.g., scalping with a very tight stop and high confidence).**
@@ -1269,15 +1268,9 @@ Historical Performance:
 Use this data to decide whether to BUY, SELL, or HOLD. If the stock has a poor win rate or the overall equity curve is declining, be more conservative. Prefer strategies that have worked well historically.
 """
         perf_text += (
-            "Use this performance data to calibrate your parameters:\n"
-            "- If the stock has a low win rate or negative average P&L, reduce position_size_fraction, "
-            "widen the stop (to avoid being stopped out prematurely), and shorten max_hold_time_seconds.\n"
-            "- If the stock has a high win rate and positive average P&L, you may increase position size "
-            "and use tighter stops to lock in profits.\n"
-            "- If stop_loss_hits is high, consider using a wider stop (larger stop_loss_pct or higher ATR multiplier) "
-            "or switching to a longer timeframe.\n"
-            "- Use avg_hold_time_seconds to set a realistic max_hold_time_seconds – do not set it far below "
-            "the average unless you have a specific reason.\n"
+            "Calibrate parameters based on this data: low win rate/negative P&L → reduce size, widen stop, shorten hold time; "
+            "high win rate/positive P&L → may increase size and tighten stops; high stop_loss_hits → wider stop or longer timeframe; "
+            "use avg_hold_time_seconds to set realistic max_hold_time_seconds.\n"
         )
         prompt += perf_text
         daily_pnl = equity.get("daily_pnl", 0.0)
@@ -1287,19 +1280,11 @@ Use this data to decide whether to BUY, SELL, or HOLD. If the stock has a poor w
             prompt += f"Today's realized P&L: {daily_pnl:.4f} {base_currency}\n"
         if consecutive_losses > 0:
             prompt += f"⚠️ You have {consecutive_losses} consecutive losing trades. Consider reducing risk or skipping this trade.\n"
-        prompt += (
-            f"\n**Account P&L**: Total realized P&L = {total_pnl:.4f} {base_currency}.\n"
-        )
+        prompt += f"\n**Account P&L**: Total realized P&L = {total_pnl:.4f} {base_currency}.\n"
         if total_pnl < 0:
-            prompt += (
-                "Your account is currently in a loss. Be more conservative: prefer to HOLD unless you find "
-                "exceptional opportunities. If you do trade, reduce position sizes and tighten stops.\n"
-            )
+            prompt += "Account in loss – be more conservative (prefer HOLD unless exceptional opportunity).\n"
         else:
-            prompt += (
-                "Your account is in profit. You may take calculated risks, but do not be reckless. "
-                "Only trade if you see clear setups.\n"
-            )
+            prompt += "Account in profit – take calculated risks but only trade clear setups.\n"
     if max_hold_expired:
         prompt += (
             f"\n**IMPORTANT: The max hold time for your current position in {symbol} has expired "
