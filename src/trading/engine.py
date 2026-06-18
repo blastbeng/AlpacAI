@@ -1062,9 +1062,12 @@ class TradingEngine:
         for symbol, pos in list(self.positions.items()):
             if pos.get("_force_close"):
                 logger.info(f"Forcing close of {symbol} because it lacks LLM risk parameters.")
+                # --- Format symbol for notification ---
+                stock_name = await self._get_stock_name(symbol)
+                display_symbol = self._format_symbol_display(symbol, stock_name, pos.get("timeframe"))
                 if self.notifier:
                     await self.notifier.send_notification(
-                        f"🔻 Closing {symbol} – missing LLM risk parameters.",
+                        f"🔻 Closing {display_symbol} – missing LLM risk parameters.",
                         summary={
                             "symbol": symbol,
                             "action": "SELL",
@@ -4488,6 +4491,10 @@ class TradingEngine:
                             pos["stop_loss"] = new_stop
                             logger.info(f"Trailing stop updated for {symbol}: new stop {new_stop:.4f}")
 
+                # --- Format symbol for notifications ---
+                stock_name = await self._get_stock_name(symbol)
+                display_symbol = self._format_symbol_display(symbol, stock_name, pos.get("timeframe"))
+
                 # --- Trailing take-profit ---
                 if pos.get("trailing_take_profit") and pos.get("trailing_take_profit_distance_pct"):
                     ttp_dist = pos["trailing_take_profit_distance_pct"]
@@ -4634,7 +4641,7 @@ class TradingEngine:
                             logger.info(f"Partial TP level {i} triggered for {symbol} – asking LLM (review {review_count})")
                             if self.notifier:
                                 await self.notifier.send_notification(
-                                    f"🔸 Partial TP level {i} triggered for {symbol} – consulting LLM...",
+                                    f"🔸 Partial TP level {i} triggered for {display_symbol} – consulting LLM...",
                                     summary={"symbol": symbol, "action": "HOLD", "reason": f"Partial TP level {i} triggered – awaiting LLM"}
                                 )
                             break  # only handle one new trigger per cycle; others will be picked up after LLM responds
@@ -4667,7 +4674,7 @@ class TradingEngine:
                                 logger.info(f"Single partial TP triggered for {symbol} – asking LLM (review {review_count})")
                                 if self.notifier:
                                     await self.notifier.send_notification(
-                                        f"🔸 Partial TP triggered for {symbol} – consulting LLM...",
+                                        f"🔸 Partial TP triggered for {display_symbol} – consulting LLM...",
                                         summary={"symbol": symbol, "action": "HOLD", "reason": "Partial TP triggered – awaiting LLM"}
                                     )
 
@@ -4698,7 +4705,7 @@ class TradingEngine:
                             logger.info(f"Dust condition triggered for {symbol} – asking LLM (review {review_count})")
                             if self.notifier:
                                 await self.notifier.send_notification(
-                                    f"🧹 Dust sweep triggered for {symbol} – consulting LLM...",
+                                    f"🧹 Dust sweep triggered for {display_symbol} – consulting LLM...",
                                     summary={"symbol": symbol, "action": "HOLD", "reason": "Dust sweep triggered – awaiting LLM"}
                                 )
                 else:
@@ -4734,7 +4741,7 @@ class TradingEngine:
                             )
                             if self.notifier:
                                 await self.notifier.send_notification(
-                                    f"📰 Negative news exit for {symbol} (sentiment {agg['avg_compound']:.2f})",
+                                    f"📰 Negative news exit for {display_symbol} (sentiment {agg['avg_compound']:.2f})",
                                     summary={
                                         "symbol": symbol,
                                         "action": "SELL",
@@ -4760,7 +4767,7 @@ class TradingEngine:
                         logger.info(f"Max unrealized loss reached for {symbol} ({max_ul_pct:.2%}). Closing position.")
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"📉 Soft stop triggered for {symbol} at {current_price:.4f} (max loss {max_ul_pct:.2%})",
+                                f"📉 Soft stop triggered for {display_symbol} at {current_price:.4f} (max loss {max_ul_pct:.2%})",
                                 summary={
                                     "symbol": symbol,
                                     "action": "SELL",
@@ -4797,7 +4804,7 @@ class TradingEngine:
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"⏰ Max hold time expired for {symbol} – asking LLM whether to sell or extend.",
+                                f"⏰ Max hold time expired for {display_symbol} – asking LLM whether to sell or extend.",
                                 summary={
                                     "symbol": symbol,
                                     "action": "HOLD",
@@ -4817,7 +4824,7 @@ class TradingEngine:
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"⛔ Stop‑loss triggered for {symbol} at {current_price:.4f} – "
+                                f"⛔ Stop‑loss triggered for {display_symbol} at {current_price:.4f} – "
                                 f"max reviews reached, selling.",
                                 summary={
                                     "symbol": symbol,
@@ -4845,7 +4852,7 @@ class TradingEngine:
                             )
                             if self.notifier:
                                 await self.notifier.send_notification(
-                                    f"⛔ Stop‑loss hit for {symbol} at {current_price:.4f} – consulting LLM...",
+                                    f"⛔ Stop‑loss hit for {display_symbol} at {current_price:.4f} – consulting LLM...",
                                     summary={
                                         "symbol": symbol,
                                         "action": "HOLD",
@@ -4869,7 +4876,7 @@ class TradingEngine:
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"🎯 Take‑profit triggered for {symbol} at {current_price:.4f} – "
+                                f"🎯 Take‑profit triggered for {display_symbol} at {current_price:.4f} – "
                                 f"max reviews reached, selling.",
                                 summary={
                                     "symbol": symbol,
@@ -4897,7 +4904,7 @@ class TradingEngine:
                         )
                         if self.notifier:
                             await self.notifier.send_notification(
-                                f"🎯 Take‑profit hit for {symbol} at {current_price:.4f} – consulting LLM...",
+                                f"🎯 Take‑profit hit for {display_symbol} at {current_price:.4f} – consulting LLM...",
                                 summary={
                                     "symbol": symbol,
                                     "action": "HOLD",
