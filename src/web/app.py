@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +30,12 @@ app.mount("/static", StaticFiles(directory="src/web/static"), name="static")
 
 # Global engine reference
 _engine = None
+
+# WebSocket payload cache – shared across all connected clients to avoid
+# redundant Alpaca API calls and SQLite queries when multiple tabs are open.
+_ws_payload_cache: Optional[dict] = None
+_ws_payload_cache_time: float = 0.0
+_WS_PAYLOAD_TTL: float = 2.0  # seconds — matches the send interval
 
 def set_engine(engine):
     global _engine
@@ -333,46 +340,55 @@ async def websocket_endpoint(websocket: WebSocket):
                 engine = get_engine()
                 redis = get_redis_client()
 
-                # Build current_symbols with display
-                current_symbols = []
-                for entry in engine.current_symbols:
-                    entry_copy = dict(entry)
-                    entry_copy["display"] = await _get_display_symbol(engine, entry["symbol"], entry.get("timeframe"))
-                    current_symbols.append(entry_copy)
+                # --- Cached payload: share across all WebSocket clients ---
+                now = time.time()
+                global _ws_payload_cache, _ws_payload_cache_time
+                if _ws_payload_cache is not None and (now - _ws_payload_cache_time) < _WS_PAYLOAD_TTL:
+                    payload = _ws_payload_cache
+                else:
+                    # Build current_symbols with display
+                    current_symbols = []
+                    for entry in engine.current_symbols:
+                        entry_copy = dict(entry)
+                        entry_copy["display"] = await _get_display_symbol(engine, entry["symbol"], entry.get("timeframe"))
+                        current_symbols.append(entry_copy)
 
-                # Build positions with display_symbol
-                positions = {}
-                for sym, pos in engine.positions.items():
-                    pos_copy = dict(pos)
-                    pos_copy["display_symbol"] = await _get_display_symbol(engine, sym, pos.get("timeframe"))
-                    positions[sym] = pos_copy
+                    # Build positions with display_symbol
+                    positions = {}
+                    for sym, pos in engine.positions.items():
+                        pos_copy = dict(pos)
+                        pos_copy["display_symbol"] = await _get_display_symbol(engine, sym, pos.get("timeframe"))
+                        positions[sym] = pos_copy
 
-                # Build trades with display_symbol
-                trades = []
-                for t in engine.trade_history[-50:]:
-                    t_copy = dict(t)
-                    t_copy["display_symbol"] = await _get_display_symbol(engine, t["symbol"], t.get("timeframe"))
-                    trades.append(t_copy)
+                    # Build trades with display_symbol
+                    trades = []
+                    for t in engine.trade_history[-50:]:
+                        t_copy = dict(t)
+                        t_copy["display_symbol"] = await _get_display_symbol(engine, t["symbol"], t.get("timeframe"))
+                        trades.append(t_copy)
 
-                perf = await run_in_threadpool(engine.get_performance_summary)
-                for row in perf.get("rows", []):
-                    row["display_symbol"] = await _get_display_symbol(engine, row["symbol"], row.get("timeframe"))
-                if perf.get("total"):
-                    total = perf["total"]
-                    total["display_symbol"] = await _get_display_symbol(engine, total["symbol"], total.get("timeframe"))
+                    perf = await run_in_threadpool(engine.get_performance_summary)
+                    for row in perf.get("rows", []):
+                        row["display_symbol"] = await _get_display_symbol(engine, row["symbol"], row.get("timeframe"))
+                    if perf.get("total"):
+                        total = perf["total"]
+                        total["display_symbol"] = await _get_display_symbol(engine, total["symbol"], total.get("timeframe"))
 
-                balances = await run_in_threadpool(engine.trader.fetch_balance)
-                profit_summary = await run_in_threadpool(engine.get_profit_summary)
-                data = {
-                    "current_symbols": current_symbols,
-                    "positions": positions,
-                    "balances": balances,
-                    "trades": trades,
-                    "profit": profit_summary,
-                    "performance": perf,
-                    "paused": await asyncio.to_thread(redis.get, "trading:paused") == "1",
-                }
-                await websocket.send_text(json.dumps(data))
+                    balances = await run_in_threadpool(engine.trader.fetch_balance)
+                    profit_summary = await run_in_threadpool(engine.get_profit_summary)
+                    payload = {
+                        "current_symbols": current_symbols,
+                        "positions": positions,
+                        "balances": balances,
+                        "trades": trades,
+                        "profit": profit_summary,
+                        "performance": perf,
+                        "paused": await asyncio.to_thread(redis.get, "trading:paused") == "1",
+                    }
+                    _ws_payload_cache = payload
+                    _ws_payload_cache_time = now
+
+                await websocket.send_text(json.dumps(payload))
             except HTTPException:
                 await websocket.send_text(json.dumps({"status": "initializing"}))
             except Exception as e:
