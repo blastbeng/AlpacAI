@@ -5305,7 +5305,10 @@ class TradingEngine:
                 await asyncio.to_thread(insert_trade, order)
                 await self._save_state()
                 if self.notifier:
-                    buy_msg = f"🟢 BUY {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
+                    # --- Format symbol for notification ---
+                    stock_name = await self._get_stock_name(symbol)
+                    display_symbol = self._format_symbol_display(symbol, stock_name, timeframe)
+                    buy_msg = f"🟢 BUY {display_symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
                     buy_summary = {
                         "symbol": symbol,
                         "action": "BUY",
@@ -5507,7 +5510,12 @@ class TradingEngine:
                     }
                     reason_label = reason_labels.get(exit_reason, exit_reason) if exit_reason else None
                     reason_str = f" [{reason_label}]" if reason_label else ""
-                    sell_msg = f"🔴 SELL{reason_str} {symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
+                    # --- Format symbol for notification ---
+                    stock_name = await self._get_stock_name(symbol)
+                    # Use the timeframe from the position or the passed parameter
+                    tf = timeframe or (pos.get("timeframe") if pos else None)
+                    display_symbol = self._format_symbol_display(symbol, stock_name, tf)
+                    sell_msg = f"🔴 SELL{reason_str} {display_symbol}: {order['amount']:.6f} @ {order['price']:.4f}"
                     # Add profit/loss info
                     if pos:
                         pnl_pct = (realized_pnl / cost_basis * 100) if cost_basis > 0 else 0.0
