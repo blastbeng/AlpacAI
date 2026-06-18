@@ -1231,11 +1231,14 @@ Maximum symbols to trade: {max_symbols}
                 f"change={summary['change_pct']}%, high={summary['high']}, low={summary['low']}, "
                 f"volume={summary['volume']}, candles={summary['candle_count']}\n"
             )
-            prompt += (
-                "The technical indicators (RSI, MACD, Bollinger Bands, EMA) have already been computed for you from this data. "
-                "Use them together with the summary to time entries and exits. "
-                "Explain in your reasoning how the indicators support your decision.\n"
-            )
+            # Only claim indicators are available if at least one key indicator is present
+            has_indicators = any(v is not None for v in [rsi, macd, bb_upper, ema_9])
+            if has_indicators:
+                prompt += (
+                    "The technical indicators (RSI, MACD, Bollinger Bands, EMA) have already been computed for you from this data. "
+                    "Use them together with the summary to time entries and exits. "
+                    "Explain in your reasoning how the indicators support your decision.\n"
+                )
     if historical_ohlcv:
         summary = _summarize_ohlcv(historical_ohlcv)
         if summary:
