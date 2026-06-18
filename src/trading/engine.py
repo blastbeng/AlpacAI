@@ -1332,7 +1332,7 @@ class TradingEngine:
         await self._initialize_clients()
         logger.info("Trading engine started.")
         try:
-            await self.ws_manager.start()
+            asyncio.create_task(self.ws_manager.start())
             logger.info("WebSocket manager started successfully.")
         except Exception as e:
             logger.error(
