@@ -132,6 +132,22 @@ class LiveTrader:
                 )
         order = self.trading_client.submit_order(order_data)
         filled_order = self._wait_for_order_fill(order.id, base, timeout)
+        if filled_order is None:
+            if settings.ALPACA_PAPER and limit_price is not None:
+                logger.info(f"Paper buy limit order for {symbol} timed out, queuing locally.")
+                return {
+                    'id': f'queued_{base}_{int(time.time()*1000)}',
+                    'symbol': symbol,
+                    'side': 'buy',
+                    'amount': 0.0,
+                    'price': 0.0,
+                    'cost': 0.0,
+                    'fee': {'cost': 0.0, 'currency': 'USD'},
+                    'status': 'queued',
+                    'limit_price': limit_price,
+                    'timestamp': int(time.time() * 1000),
+                }
+            raise RuntimeError(f"Order for {symbol} did not fill within {timeout}s and was cancelled.")
         return self._order_to_dict(filled_order, symbol)
 
     def create_market_sell_order(
@@ -183,6 +199,22 @@ class LiveTrader:
             )
         order = self.trading_client.submit_order(order_data)
         filled_order = self._wait_for_order_fill(order.id, base, timeout)
+        if filled_order is None:
+            if settings.ALPACA_PAPER and limit_price is not None:
+                logger.info(f"Paper sell limit order for {symbol} timed out, queuing locally.")
+                return {
+                    'id': f'queued_{base}_{int(time.time()*1000)}',
+                    'symbol': symbol,
+                    'side': 'sell',
+                    'amount': 0.0,
+                    'price': 0.0,
+                    'cost': 0.0,
+                    'fee': {'cost': 0.0, 'currency': 'USD'},
+                    'status': 'queued',
+                    'limit_price': limit_price,
+                    'timestamp': int(time.time() * 1000),
+                }
+            raise RuntimeError(f"Order for {symbol} did not fill within {timeout}s and was cancelled.")
         return self._order_to_dict(filled_order, symbol)
 
     # ------------------------------------------------------------------
@@ -239,9 +271,7 @@ class LiveTrader:
         except Exception as e:
             logger.error(f"Failed to cancel order {order_id}: {e}")
 
-        raise RuntimeError(
-            f"Order {order_id} for {symbol} did not fill within {timeout}s and was cancelled."
-        )
+        return None
 
     def _order_to_dict(self, order, symbol: str) -> Dict[str, Any]:
         """Convert an Alpaca order object to the dict format expected by the engine."""
