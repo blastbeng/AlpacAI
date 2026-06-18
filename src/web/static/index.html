@@ -373,6 +373,16 @@
             </div>
 
             <div class="card card-full">
+                <h2>⏳ Queued Orders</h2>
+                <div class="table-wrapper">
+                    <table id="queued-orders-table">
+                        <thead><tr><th>Symbol</th><th>Side</th><th>Amount</th><th>Limit Price</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card card-full">
                 <h2>🏆 Performance</h2>
                 <div class="table-wrapper">
                     <table id="performance-table">
@@ -556,6 +566,26 @@
 
                 // Immediately fetch prices for the current set
                 fetchPositionPrices();
+
+            // Queued Orders
+            const queuedBody = document.querySelector('#queued-orders-table tbody');
+            queuedBody.innerHTML = '';
+            if (data.queued_orders && data.queued_orders.length > 0) {
+                data.queued_orders.forEach(q => {
+                    const row = queuedBody.insertRow();
+                    row.insertCell().textContent = q.symbol;
+                    row.insertCell().textContent = q.side?.toUpperCase();
+                    row.insertCell().textContent = q.amount?.toFixed(6);
+                    row.insertCell().textContent = q.limit_price?.toFixed(4);
+                });
+            } else {
+                const row = queuedBody.insertRow();
+                const cell = row.insertCell();
+                cell.colSpan = 4;
+                cell.textContent = '📭 No queued orders';
+                cell.style.textAlign = 'center';
+                cell.style.color = 'var(--text-secondary)';
+            }
             } else {
                 // No positions data – clear everything
                 for (const sym of Object.keys(positionsMap)) {
