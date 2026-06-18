@@ -596,12 +596,7 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours":
     if market_trend:
         prompt += f"\nOverall market trend ({market_trend['symbol']}): daily change {market_trend.get('change_24h')}%, last price {market_trend.get('last')}\n"
     if session_info:
-        prompt += (
-            f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
-            "Use this to gauge market activity: pre‑market and after‑hours sessions have lower liquidity and wider spreads; "
-            "the regular session (9:30 AM – 4:00 PM ET) has the highest volume and tightest spreads. "
-            "Adjust your stock selection and risk parameters accordingly.\n"
-        )
+        prompt += f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
         prompt += (
             "If the current session is not \"Regular\" (i.e., pre‑market, after‑hours, or closed), "
             "you MUST include `limit_price` and `time_in_force` in your parameters for any BUY or SELL action. "
@@ -910,19 +905,8 @@ Maximum symbols to trade: {max_symbols}
 
     if vwap is not None:
         prompt += f"\nVWAP ({assigned_timeframe or 'current'}): {vwap:.6f}\n"
-        prompt += (
-            "VWAP (Volume Weighted Average Price) is the average price weighted by volume. "
-            "It acts as a fair value benchmark: price above VWAP suggests bullish sentiment, "
-            "price below VWAP suggests bearish sentiment. Use it as a dynamic support/resistance level. "
-            "A break above VWAP with volume can confirm an uptrend; a rejection at VWAP may signal a reversal.\n"
-        )
     if vwap_multi_tf:
         prompt += f"VWAP across timeframes: {json.dumps(vwap_multi_tf)}\n"
-        prompt += (
-            "Compare VWAP across timeframes: if the price is above VWAP on all timeframes, "
-            "the trend is strongly bullish. Divergences (e.g., above on 5m but below on 1h) "
-            "may indicate a short‑term bounce within a larger downtrend.\n"
-        )
     if session_info:
         prompt += (
             f"\nCurrent UTC hour: {session_info['utc_hour']} ({session_info['session']} session)\n"
@@ -932,66 +916,26 @@ Maximum symbols to trade: {max_symbols}
         )
     if minutes_to_market_close is not None:
         if minutes_to_market_close > 0:
-            prompt += (
-                f"  Minutes until market close (4:00 PM ET): {minutes_to_market_close}\n"
-                "**Use this to set max_hold_time_seconds appropriately.** "
-                "If the market closes soon, do not set a max_hold_time_seconds that extends far past close — "
-                "the position would be forced into after-hours trading with wider spreads and lower liquidity. "
-                "For day trades, set max_hold_time_seconds to at most the remaining session minutes. "
-                "For swing trades (holding overnight), this is less critical, but be aware that overnight "
-                "positions face gap risk at the next open.\n"
-            )
+            prompt += f"  Minutes until market close (4:00 PM ET): {minutes_to_market_close}\n"
         else:
             prompt += (
                 "  Market is currently closed. If you are in an extended-hours session (pre-market or after-hours), "
                 "keep hold times short and use limit orders.\n"
             )
     if current_strategy_interval_seconds is not None:
-        prompt += (
-            f"  Current strategy evaluation interval for this symbol: {current_strategy_interval_seconds}s\n"
-            "You may change this by setting `strategy_interval_seconds` in your parameters. "
-            "Use shorter intervals (60-120s) for active scalping with tight stops, or longer intervals (300-600s) "
-            "for swing trades. If the current interval is too long, you may miss exit opportunities; "
-            "if too short, you waste LLM calls on unchanged conditions.\n"
-        )
+        prompt += f"  Current strategy evaluation interval for this symbol: {current_strategy_interval_seconds}s\n"
 
     # --- Volatility, order book imbalance, and position P&L context ---
     if atr is not None:
         prompt += f"ATR (14-period, {assigned_timeframe or 'default'}): {atr:.6f}\n"
-        prompt += (
-            "**Strongly prefer using ATR‑based stops.** Set `\"stop_loss_method\": \"atr_multiple\"` and provide "
-            "`stop_loss_atr_multiple`. Choose the multiplier based on volatility and market regime: "
-            "2.0–3.0 for normal conditions, 3.0–5.0 for high volatility (ATR percentile > 80%), "
-            "1.5–2.0 for low volatility (ATR percentile < 20%). "
-            "The engine will compute the stop distance as `multiplier × ATR` and convert it to a percentage. "
-            "This ensures your stop adapts to current market conditions.\n"
-            "If you use a fixed percentage stop, make sure it is at least 1.5× the ATR% unless you have a specific reason.\n"
-        )
     if atr is not None and current_price is not None and current_price > 0:
         atr_pct = atr / current_price
         min_sl = 1.5 * atr_pct
-        prompt += (
-            f"\n**Current ATR%: {atr_pct:.4%}**. "
-            f"The engine's absolute minimum fixed stop is 1.5× ATR% = {min_sl:.4%}. "
-            "**Do NOT use this minimum as your stop.** It is a safety floor, not a target. "
-            "Set your stop well above this value – at least 2–3× ATR% for normal conditions, "
-            "and wider in high volatility. A stop that is too tight is the most common reason for losing trades.\n"
-        )
+        prompt += f"\n**Current ATR%: {atr_pct:.4%}**. Minimum fixed stop: {min_sl:.4%}.\n"
     if atr_percentile is not None:
         prompt += f"ATR percentile (relative to last 100 observations): {atr_percentile:.1f}%\n"
-        prompt += (
-            "This tells you whether current volatility is unusually high or low. "
-            "A high percentile (>80%) means volatility is elevated – consider wider stops and smaller positions. "
-            "A low percentile (<20%) means volatility is compressed – a breakout may be imminent; "
-            "use tighter stops but be prepared for a sudden expansion. "
-            "A mid-range percentile (40-60%) indicates normal volatility conditions.\n"
-        )
     if atr_multi_tf:
         prompt += f"ATR across timeframes: {json.dumps(atr_multi_tf)}\n"
-        prompt += (
-            "Use the higher-timeframe ATR to gauge overall volatility and the lower-timeframe ATR for precise stop-loss placement. "
-            "If the higher‑timeframe ATR is large, widen your stop accordingly to avoid being stopped out by normal swings.\n"
-        )
     if order_book_imbalance is not None:
         prompt += f"Order book imbalance (bid_vol / ask_vol): {order_book_imbalance:.2f} ( >1 = buying pressure)\n"
     if spread_pct is not None:
