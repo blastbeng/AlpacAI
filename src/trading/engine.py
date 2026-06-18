@@ -870,8 +870,8 @@ class TradingEngine:
             },
         }
 
-    @staticmethod
-    def _classify_market_regime(
+    async def _classify_market_regime(
+        self,
         adx: Optional[float],
         plus_di: Optional[float],
         minus_di: Optional[float],
@@ -888,13 +888,43 @@ class TradingEngine:
         if current_price <= 0:
             return "unknown"
 
+        # Read LLM-decided regime thresholds from Redis (set during stock selection)
+        # Fall back to reasonable defaults if not yet set
+        adx_strong = 40.0
+        adx_moderate = 25.0
+        vol_high_pct = 80.0
+        vol_low_pct = 20.0
+        bb_squeeze_width = 0.02
+        bb_expansion_width = 0.08
+        try:
+            raw = await asyncio.to_thread(self.redis.get, "trading:regime_adx_strong")
+            if raw:
+                adx_strong = float(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:regime_adx_moderate")
+            if raw:
+                adx_moderate = float(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:regime_volatility_high_pct")
+            if raw:
+                vol_high_pct = float(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:regime_volatility_low_pct")
+            if raw:
+                vol_low_pct = float(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:regime_bb_squeeze_width")
+            if raw:
+                bb_squeeze_width = float(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:regime_bb_expansion_width")
+            if raw:
+                bb_expansion_width = float(raw)
+        except Exception:
+            pass  # use defaults if Redis is unavailable
+
         # --- Trend direction and strength ---
         trend_dir = "neutral"
         trend_strength = "weak"
         if adx is not None and plus_di is not None and minus_di is not None:
-            if adx > 40:
+            if adx > adx_strong:
                 trend_strength = "strong"
-            elif adx > 25:
+            elif adx > adx_moderate:
                 trend_strength = "moderate"
             else:
                 trend_strength = "weak"
@@ -919,26 +949,26 @@ class TradingEngine:
         if atr is not None and current_price > 0:
             atr_pct = (atr / current_price) * 100
             if atr_percentile is not None:
-                if atr_percentile > 80:
+                if atr_percentile > vol_high_pct:
                     volatility = "high"
-                elif atr_percentile < 20:
+                elif atr_percentile < vol_low_pct:
                     volatility = "low"
                 else:
                     volatility = "normal"
             else:
                 # Fallback to simple thresholds
-                if atr_pct > 5.0:
+                if atr_pct > (bb_expansion_width * 100):
                     volatility = "high"
-                elif atr_pct < 1.0:
+                elif atr_pct < (bb_squeeze_width * 100):
                     volatility = "low"
 
         # --- Bollinger Band squeeze/expansion ---
         bb_state = ""
         if bb_upper is not None and bb_lower is not None and bb_middle is not None and bb_middle > 0:
             bb_width = (bb_upper - bb_lower) / bb_middle
-            if bb_width < 0.02:   # very narrow bands
+            if bb_width < bb_squeeze_width:   # very narrow bands
                 bb_state = " squeeze"
-            elif bb_width > 0.08: # wide bands
+            elif bb_width > bb_expansion_width: # wide bands
                 bb_state = " expansion"
 
         # --- Compose final regime string ---
@@ -2974,7 +3004,7 @@ class TradingEngine:
                     logger.info(f"ATR percentile computation failed for {symbol}: {e}")
 
             # --- Market regime classification (enhanced) ---
-            market_regime = self._classify_market_regime(
+            market_regime = await self._classify_market_regime(
                 adx=adx,
                 plus_di=plus_di,
                 minus_di=minus_di,
