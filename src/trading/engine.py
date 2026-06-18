@@ -1961,6 +1961,25 @@ class TradingEngine:
                     # Fallback if not provided: remove the limit
                     await asyncio.to_thread(self.redis.delete, "trading:max_positions_per_sector")
 
+                # Parse LLM evaluation skip thresholds
+                skip_price_mult = parsed.get("skip_eval_price_change_atr_mult")
+                if skip_price_mult is not None and isinstance(skip_price_mult, (int, float)) and skip_price_mult > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:skip_eval_price_change_atr_mult", 7 * 24 * 3600, str(float(skip_price_mult)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:skip_eval_price_change_atr_mult")
+
+                skip_rsi = parsed.get("skip_eval_rsi_change")
+                if skip_rsi is not None and isinstance(skip_rsi, (int, float)) and skip_rsi > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:skip_eval_rsi_change", 7 * 24 * 3600, str(float(skip_rsi)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:skip_eval_rsi_change")
+
+                skip_macd = parsed.get("skip_eval_macd_hist_change")
+                if skip_macd is not None and isinstance(skip_macd, (int, float)) and skip_macd > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:skip_eval_macd_hist_change", 7 * 24 * 3600, str(float(skip_macd)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:skip_eval_macd_hist_change")
+
                 # Optional: LLM can set the global symbol re-evaluation interval
                 new_interval = parsed.get("stock_revaluation_interval_seconds")
                 if new_interval is not None:
