@@ -4978,6 +4978,27 @@ class TradingEngine:
 
     async def _check_risk_management(self):
         """Check open positions and close if stop-loss, take-profit, or trailing stop is hit."""
+        # Read LLM-decided review limits from Redis once (before the per-position loop)
+        max_sl_reviews = MAX_STOP_LOSS_REVIEWS
+        max_tp_reviews = MAX_TAKE_PROFIT_REVIEWS
+        max_partial_tp_reviews = settings.MAX_PARTIAL_TP_REVIEWS
+        max_dust_sweep_reviews = settings.MAX_DUST_SWEEP_REVIEWS
+        try:
+            raw = await asyncio.to_thread(self.redis.get, "trading:max_stop_loss_reviews")
+            if raw:
+                max_sl_reviews = int(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:max_take_profit_reviews")
+            if raw:
+                max_tp_reviews = int(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:max_partial_tp_reviews")
+            if raw:
+                max_partial_tp_reviews = int(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:max_dust_sweep_reviews")
+            if raw:
+                max_dust_sweep_reviews = int(raw)
+        except Exception:
+            pass
+
         for symbol, pos in list(self.positions.items()):
             try:
                 # Skip positions that don't have LLM-defined risk parameters yet
@@ -4996,31 +5017,6 @@ class TradingEngine:
                     else:
                         continue  # no real-time data yet, skip this check
                 current_price = ticker['last']
-
-                # Read LLM-decided review limits from Redis
-                max_sl_reviews = MAX_STOP_LOSS_REVIEWS
-                max_tp_reviews = MAX_TAKE_PROFIT_REVIEWS
-                try:
-                    raw = await asyncio.to_thread(self.redis.get, "trading:max_stop_loss_reviews")
-                    if raw:
-                        max_sl_reviews = int(raw)
-                    raw = await asyncio.to_thread(self.redis.get, "trading:max_take_profit_reviews")
-                    if raw:
-                        max_tp_reviews = int(raw)
-                except Exception:
-                    pass
-
-                max_partial_tp_reviews = settings.MAX_PARTIAL_TP_REVIEWS
-                max_dust_sweep_reviews = settings.MAX_DUST_SWEEP_REVIEWS
-                try:
-                    raw = await asyncio.to_thread(self.redis.get, "trading:max_partial_tp_reviews")
-                    if raw:
-                        max_partial_tp_reviews = int(raw)
-                    raw = await asyncio.to_thread(self.redis.get, "trading:max_dust_sweep_reviews")
-                    if raw:
-                        max_dust_sweep_reviews = int(raw)
-                except Exception:
-                    pass
 
                 # Trailing stop update (only if enabled)
                 if pos.get("trailing_stop") and pos.get("trailing_stop_distance_pct"):
