@@ -1895,6 +1895,9 @@ class TradingEngine:
                                 if tf not in settings.OHLCV_TIMEFRAMES:
                                     tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
                                 entry = {"symbol": sym, "timeframe": tf}
+                                sector = item.get("sector")
+                                if sector:
+                                    entry["sector"] = sector
                                 mth = item.get("max_tenure_hours")
                                 if mth is not None:
                                     entry["max_tenure_hours"] = mth
@@ -1913,6 +1916,9 @@ class TradingEngine:
                                 if tf not in settings.OHLCV_TIMEFRAMES:
                                     tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
                                 entry = {"symbol": sym, "timeframe": tf}
+                                sector = item.get("sector")
+                                if sector:
+                                    entry["sector"] = sector
                                 mth = item.get("max_tenure_hours")
                                 if mth is not None:
                                     entry["max_tenure_hours"] = mth
@@ -1945,6 +1951,15 @@ class TradingEngine:
                 else:
                     # Fallback: use the length of the deduped list, capped at the engine's max
                     self.effective_max_symbols = min(len(deduped), self.effective_max_symbols)
+
+                # Parse max_positions_per_sector from LLM
+                max_positions_per_sector = parsed.get("max_positions_per_sector")
+                if max_positions_per_sector is not None and isinstance(max_positions_per_sector, int) and max_positions_per_sector > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:max_positions_per_sector", 7 * 24 * 3600, str(max_positions_per_sector))
+                    logger.info(f"LLM set max positions per sector to {max_positions_per_sector}")
+                else:
+                    # Fallback if not provided: remove the limit
+                    await asyncio.to_thread(self.redis.delete, "trading:max_positions_per_sector")
 
                 # Optional: LLM can set the global symbol re-evaluation interval
                 new_interval = parsed.get("stock_revaluation_interval_seconds")

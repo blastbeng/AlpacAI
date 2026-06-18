@@ -388,13 +388,14 @@ Each symbol can only appear once in your selection. Choose the single best timef
 **Output ONLY the raw JSON object as specified.**
 
 Return a JSON object with the following fields:
-- "stocks": a JSON array of objects, each with "symbol" and "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h"). Each object may optionally include "max_tenure_hours" (a positive float, hours) to force-sell the stock after that many hours in the portfolio. Omit or set to null for no limit.
+- "stocks": a JSON array of objects, each with "symbol", "timeframe" (the timeframe must be one of the available timeframes, e.g., "5m", "15m", "1h", "4h"), and "sector" (a string representing the stock's sector, e.g., "Technology", "Healthcare", "Financials", "Energy", "Consumer Discretionary", "Consumer Staples", "Industrials", "Materials", "Real Estate", "Utilities", "Communication Services"). Each object may optionally include "max_tenure_hours" (a positive float, hours) to force-sell the stock after that many hours in the portfolio. Omit or set to null for no limit.
 - "max_stocks": an integer between 0 and {max_symbols} indicating how many stocks you actually want to trade. Set to 0 to pause trading. This must equal the length of the "stocks" array.
+- "max_positions_per_sector": an integer between 1 and {max_symbols} indicating the maximum number of open positions allowed in the same sector at the same time. This helps diversify risk across different sectors. You decide this value based on current market volatility and your confidence in specific sectors.
 - "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
 You may optionally include "stock_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.
 
-Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "max_tenure_hours": 48}}, {{"symbol": "MSFT", "timeframe": "15m"}}], "max_stocks": 2, "reasoning": "AAPL shows strong uptrend on 1h with high volume; MSFT has bullish MACD crossover on 15m.", "stock_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
+Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "sector": "Technology", "max_tenure_hours": 48}}, {{"symbol": "MSFT", "timeframe": "15m", "sector": "Technology"}}], "max_stocks": 2, "max_positions_per_sector": 2, "reasoning": "AAPL shows strong uptrend on 1h with high volume; MSFT has bullish MACD crossover on 15m.", "stock_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
     # --- Enhanced pause/resume guidance ---
     if trading_paused:
         prompt += (
