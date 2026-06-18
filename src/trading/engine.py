@@ -7049,7 +7049,7 @@ class TradingEngine:
                             return False
                     elif ind == "macd_hist":
                         macd_vals = compute_macd(closes)
-                        macd_hist_val = macd_vals[2][-1] if macd_vals and len(macd_vals[2]) > 0 else None
+                        macd_hist_val = macd_vals[2] if macd_vals and macd_vals[2] is not None else None
                         if macd_hist_val is None or (direction == "below" and macd_hist_val > thresh) or (direction == "above" and macd_hist_val < thresh):
                             return False
                 return True
