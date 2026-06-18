@@ -7768,7 +7768,7 @@ class TradingEngine:
                         logger.warning(f"Cancelling orphaned order {order['id']} for {order['symbol']} (open for {now - created_at:.0f}s).")
                         await asyncio.to_thread(self.trader.cancel_order, order['id'])
             except Exception as e:
-                logger.error(f"Orphaned order cleanup error: {e}")
+                logger.error(f"Orphaned order cleanup error: {e}", exc_info=True)
             await asyncio.sleep(300)  # every 5 minutes
 
     def _is_excluded(self, symbol: str, timeframe: str) -> bool:
