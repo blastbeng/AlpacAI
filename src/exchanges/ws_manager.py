@@ -220,3 +220,18 @@ class WebSocketManager:
         self.trades[symbol].append(trade_dict)
         if len(self.trades[symbol]) > 50:
             self.trades[symbol] = self.trades[symbol][-50:]
+
+        # Update the 'last' price in the ticker from the actual trade price
+        if symbol in self.tickers:
+            self.tickers[symbol]['last'] = trade.price
+        else:
+            self.tickers[symbol] = {
+                'symbol': symbol,
+                'last': trade.price,
+                'bid': None,
+                'ask': None,
+                'percentage': None,
+                'quoteVolume': None,
+                'timestamp': int(trade.timestamp.timestamp() * 1000) if trade.timestamp else None,
+            }
+        await self._ticker_queue.put((symbol, self.tickers[symbol]))
