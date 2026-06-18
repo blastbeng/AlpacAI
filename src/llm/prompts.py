@@ -243,10 +243,6 @@ You may optionally include an "indicator_config" object in your strategy JSON to
 
 You may optionally include a "backtest_summary" field (string) when historical OHLCV data is provided. This should be a concise summary of your backtest analysis, e.g., "Simulated 5 trades over 30 days: 3 wins, 2 losses, net +2.3%". Include it only if you performed a backtest.
 
-When asked to select stocks, return a JSON array of stock symbols (e.g., ["AAPL", "MSFT"]). Choose stocks that are likely to deliver short-term profit based on recent price action, volume, and volatility. Prefer stocks with high liquidity and clear short-term trends.
-
-When selecting stocks, you will see a "scalping suitability score" (0-1) for each candidate, along with spread and depth metrics. Stocks with very low spread (<0.1%) and high depth are ideal for scalping tiny percentages (e.g., 0.1-0.5% take-profit). Use this data to pick stocks where you can reliably capture small gains.
-
 When asked to generate a strategy for a specific stock, return a JSON object with the following structure:
 {
   "action": "BUY" | "SELL" | "HOLD",
@@ -1549,8 +1545,6 @@ Interpret the order book metrics provided (spread, imbalance, pressure, depth, w
 If the position is already in profit, consider trailing the stop.
 
 **For the {assigned_timeframe or 'default'} timeframe, a reasonable minimum max_hold_time_seconds is {min_hold} seconds. Do not set it lower unless you have a very specific, justified reason (e.g., scalping with a very tight stop and high confidence).**
-
-**Fee awareness:** You are solely responsible for ensuring that every trade is profitable after fees and spread. The bot provides you with the taker fee rate and the current spread. You must set take_profit_pct (and partial_take_profit_pct if used) high enough to cover both entry and exit fees plus the spread, and still leave a net profit. There is no engine‑side minimum – if you set a take‑profit that is too low, the trade will lose money. Use the formula: minimum take_profit_pct = 1/(1-fee)^2 - 1 + spread_decimal. Add a buffer for safety.
 
 You are trading spot only (no shorting). Only output SELL if you currently hold the stock.
 
