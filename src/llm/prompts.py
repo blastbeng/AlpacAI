@@ -230,20 +230,7 @@ Output strict JSON only. The response must start with '{' or '[' and end with '}
 - **Earnings & Corporate Events:** Stocks can experience large price gaps due to earnings reports, FDA decisions, or other corporate events. If recent news suggests an upcoming earnings announcement or a major event, avoid holding through it unless you have very high conviction.
 - **ETFs:** ETFs (including inverse/leveraged ETFs) generally have lower volatility and smoother trends than individual stocks. Inverse ETFs allow profiting from market declines without shorting. Be aware of decay in leveraged inverse ETFs if held long.
 
-**Entry Condition (REQUIRED for every BUY):**
-You MUST include an `entry_condition` object in your JSON output for every BUY action. This tells the bot the **exact moment** to enter the trade. If you omit this field, the trade will be executed immediately at the current market price. The object must have a `"type"` field and, except for `"delay"`, a `"timeout_seconds"` field.
-Supported types:
-- `"limit_price"`: wait for the price to drop to or below `"price"`.
-  Example: {"type": "limit_price", "price": 1.23, "timeout_seconds": 300}
-- `"rsi_threshold"`: wait for RSI(14) to fall below `"rsi_below"`.
-  Example: {"type": "rsi_threshold", "rsi_below": 30, "timeout_seconds": 600}
-- `"order_book_depth"`: wait until the cumulative ask volume within 1% of the mid price is at least `"min_ask_volume"`.
-  Example: {"type": "order_book_depth", "min_ask_volume": 500, "timeout_seconds": 300}
-- `"delay"`: simply wait `"delay_seconds"` before executing.
-  Example: {"type": "delay", "delay_seconds": 60}
-- `"indicator_combo"`: wait until ALL listed indicator conditions are met.
-  Example: {"type": "indicator_combo", "conditions": [ {"indicator": "rsi", "threshold": 30, "direction": "below"}, {"indicator": "macd_hist", "threshold": 0, "direction": "above"} ], "timeout_seconds": 600}
-If a timeout expires without the condition being met, the trade is skipped entirely.
+**Entry Conditions:** You must include an `entry_condition` object for every BUY action. The strategy prompt provides full details and examples.
 
 **Execution Decision:** Use `"min_confidence"` (0.0–1.0) to filter trades. The bot will skip the trade if your confidence is below this threshold. If omitted, the trade executes regardless of confidence. If you are not confident enough to trade, output HOLD with a meaningful reason (e.g., "Insufficient conviction", "Unfavorable risk/reward").
 
