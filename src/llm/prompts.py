@@ -408,6 +408,8 @@ Return a JSON object with the following fields:
 - "max_positions_per_sector": an integer between 1 and {max_symbols} indicating the maximum number of open positions allowed in the same sector at the same time. This helps diversify risk across different sectors. You decide this value based on current market volatility and your confidence in specific sectors.
 - "skip_eval_price_change_atr_mult": a float (e.g., 0.5) indicating the minimum price change (as a multiple of ATR%) required to trigger a new LLM strategy evaluation for a stock. If the price moves less than this, the LLM is skipped to save costs.
 - "skip_eval_rsi_change": a float (e.g., 5.0) indicating the minimum absolute RSI change required to trigger a new LLM evaluation.
+- "skip_eval_rsi_oversold": a float (e.g., 30.0) indicating the RSI level below which the bot should always trigger a new LLM evaluation (potential oversold buy signal), even if nothing else changed.
+- "skip_eval_rsi_overbought": a float (e.g., 70.0) indicating the RSI level above which the bot should always trigger a new LLM evaluation (potential overbought sell signal), even if nothing else changed.
 - "skip_eval_macd_hist_change": a float (e.g., 0.0005) indicating the minimum absolute MACD histogram change required to trigger a new LLM evaluation.
 - "regime_adx_strong": a float (e.g., 40.0) indicating the ADX level above which a trend is considered strong.
 - "regime_adx_moderate": a float (e.g., 25.0) indicating the ADX level above which a trend is considered moderate.

@@ -2004,6 +2004,18 @@ class TradingEngine:
                 else:
                     await asyncio.to_thread(self.redis.delete, "trading:skip_eval_rsi_change")
 
+                skip_rsi_oversold = parsed.get("skip_eval_rsi_oversold")
+                if skip_rsi_oversold is not None and isinstance(skip_rsi_oversold, (int, float)) and skip_rsi_oversold > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:skip_eval_rsi_oversold", 7 * 24 * 3600, str(float(skip_rsi_oversold)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:skip_eval_rsi_oversold")
+
+                skip_rsi_overbought = parsed.get("skip_eval_rsi_overbought")
+                if skip_rsi_overbought is not None and isinstance(skip_rsi_overbought, (int, float)) and skip_rsi_overbought > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:skip_eval_rsi_overbought", 7 * 24 * 3600, str(float(skip_rsi_overbought)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:skip_eval_rsi_overbought")
+
                 skip_macd = parsed.get("skip_eval_macd_hist_change")
                 if skip_macd is not None and isinstance(skip_macd, (int, float)) and skip_macd > 0:
                     await asyncio.to_thread(self.redis.setex, "trading:skip_eval_macd_hist_change", 7 * 24 * 3600, str(float(skip_macd)))
@@ -6069,8 +6081,19 @@ class TradingEngine:
         # If we have no open position and nothing is screaming, skip
         if not has_position:
             # Only call if there is a potential entry signal (extreme RSI, MACD crossover, etc.)
-            # RSI extreme?
-            if rsi is not None and (rsi < 30 or rsi > 70):
+            # RSI extreme? (thresholds are LLM-decided)
+            rsi_oversold = 30.0
+            rsi_overbought = 70.0
+            try:
+                raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_rsi_oversold")
+                if raw:
+                    rsi_oversold = float(raw)
+                raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_rsi_overbought")
+                if raw:
+                    rsi_overbought = float(raw)
+            except Exception:
+                pass
+            if rsi is not None and (rsi < rsi_oversold or rsi > rsi_overbought):
                 return False
             # MACD histogram direction change? (harder to detect without previous sign – skip for simplicity)
             # Otherwise, no strong signal → skip
