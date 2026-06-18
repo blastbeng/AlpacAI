@@ -1185,9 +1185,30 @@ Maximum symbols to trade: {max_symbols}
         )
     if fee_rate is not None:
         prompt += f"Taker fee rate for this symbol: {fee_rate*100:.2f}%\n"
+        # Calculate exact break-even take-profit percentage
+        # Round trip: buy at P, sell at P*(1+TP). Fees: P*fee + P*(1+TP)*fee
+        # Break even: P*(1+TP) - P*(1+TP)*fee - P - P*fee = 0
+        # 1 + TP - fee - TP*fee - 1 - fee = 0
+        # TP(1 - fee) = 2*fee
+        # TP = 2*fee / (1 - fee)
+        if fee_rate < 1.0:
+            break_even_tp_pct = (2 * fee_rate) / (1 - fee_rate)
+        else:
+            break_even_tp_pct = 0.0
+        
+        spread_decimal = 0.0
+        if spread_pct is not None:
+            spread_decimal = spread_pct / 100.0
+        
+        min_profitable_tp_pct = break_even_tp_pct + spread_decimal
+        
         prompt += (
-            "You must set take_profit_pct high enough to cover round‑trip fees and the spread. "
-            "The engine will not enforce any minimum – it trusts your calculation.\n"
+            f"You must set take_profit_pct high enough to cover round‑trip fees and the spread. "
+            f"The engine will not enforce any minimum – it trusts your calculation.\n"
+            f"**Break-even calculation:** To cover entry and exit fees ({fee_rate*100:.2f}% each) and the current spread ({spread_pct:.4f}%), "
+            f"your `take_profit_pct` MUST be strictly greater than {min_profitable_tp_pct:.4%}. "
+            f"If you set it lower, the trade will lose money even if the take-profit is hit. "
+            f"Please set your take_profit_pct comfortably above this break-even point.\n"
         )
     # Help the LLM set min_profit_per_trade by showing the expected profit for a 1% take-profit
     example_tp = 0.01
