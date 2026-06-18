@@ -1420,7 +1420,7 @@ class TradingEngine:
                 logger.warning(f"News stock discovery failed: {e}")
 
         # Fetch balance and compute per-symbol budget
-        balance = await asyncio.to_thread(self.trader.fetch_balance)
+        balance = await self._get_cached_balance()
         base_balance = balance.get(self.base_currency, 0.0)
         per_symbol_budget = base_balance / self.max_symbols if self.max_symbols > 0 else 0.0
 
@@ -4642,13 +4642,12 @@ class TradingEngine:
                 max_risk_pct = params.get("max_risk_per_trade_pct")
                 if max_risk_pct is not None and sl_pct is not None and sl_pct > 0:
                     total_value = quote_balance
+                    slippage_pos_tickers = await self._get_all_position_tickers()
                     for sym, pos in self.positions.items():
                         try:
-                            t = self.ws_manager.get_ticker(sym)
-                            if t is None:
-                                tickers_map = await asyncio.to_thread(get_quotes, self.data_client, [sym.split("/")[0]])
-                                t = tickers_map.get(sym.split("/")[0])
-                            total_value += pos['amount'] * t['last']
+                            t = slippage_pos_tickers.get(sym)
+                            if t and t.get('last'):
+                                total_value += pos['amount'] * t['last']
                         except Exception:
                             pass
                     max_risk_amount = total_value * max_risk_pct
@@ -5611,7 +5610,7 @@ class TradingEngine:
 
         async with self._risk_lock:
             base, quote = symbol.split("/")
-            balance = await asyncio.to_thread(self.trader.fetch_balance)
+            balance = await self._get_cached_balance()
 
         if signal.action == "BUY":
             # Safety: never buy when trading is paused
@@ -5650,10 +5649,12 @@ class TradingEngine:
             # Desired amount based on fraction of total available quote balance
             desired_amount = quote_balance * position_fraction
 
+            # Fetch all position tickers once for risk calculations
+            pos_tickers = await self._get_all_position_tickers()
+
             # Apply max risk per trade cap if provided
             max_risk_pct = params.get("max_risk_per_trade_pct")
             if max_risk_pct is not None and sl_pct > 0:
-                pos_tickers = await self._get_all_position_tickers()
                 total_value = quote_balance
                 for sym, pos in self.positions.items():
                     try:
