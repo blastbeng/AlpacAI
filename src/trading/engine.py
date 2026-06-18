@@ -5489,6 +5489,8 @@ class TradingEngine:
                         self._strategy_intervals[symbol] = custom_interval
                     self.positions[symbol]["timeframe"] = timeframe
                     self.positions[symbol]["indicator_config"] = signal.indicator_config
+                    self.positions[symbol]["buy_confidence"] = signal.confidence
+                    self.positions[symbol]["buy_reasoning"] = (signal.reasoning or "")[:200]
                 else:
                     entry_price = cost_basis / net_base if net_base > 0 else order["price"]
                     self.positions[symbol] = {
@@ -5501,6 +5503,8 @@ class TradingEngine:
                         "take_profit": entry_price * (1 + tp_pct),
                         "cost_basis": cost_basis,
                         "net_base": net_base,
+                        "buy_confidence": signal.confidence,
+                        "buy_reasoning": (signal.reasoning or "")[:200],
                         "trailing_stop": trailing_stop,
                         "trailing_stop_distance_pct": trailing_stop_distance_pct,
                         "max_hold_time_seconds": params.get("max_hold_time_seconds"),
@@ -5528,6 +5532,8 @@ class TradingEngine:
                         self._strategy_intervals[symbol] = custom_interval
                 order["strategy_type"] = signal.strategy_type
                 order["timeframe"] = timeframe
+                order["buy_confidence"] = signal.confidence
+                order["buy_reasoning"] = (signal.reasoning or "")[:200]
                 self.trade_history.append(order)
                 await asyncio.to_thread(insert_trade, order)
                 await self._save_state()
@@ -5709,6 +5715,9 @@ class TradingEngine:
                 tf = timeframe or (pos.get("timeframe") if pos else None)
                 order["timeframe"] = tf
                 order["strategy_type"] = signal.strategy_type
+                if pos:
+                    order["buy_confidence"] = pos.get("buy_confidence", 0.0)
+                    order["buy_reasoning"] = pos.get("buy_reasoning", "")
                 order["exit_reason"] = exit_reason
                 order["exit_price"] = order["price"]
                 if pos and "timestamp" in pos:
