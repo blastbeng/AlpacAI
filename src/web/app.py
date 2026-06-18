@@ -349,7 +349,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # Build trades with display_symbol
                 trades = []
-                for t in engine.trade_history:
+                for t in engine.trade_history[-50:]:
                     t_copy = dict(t)
                     t_copy["display_symbol"] = await _get_display_symbol(engine, t["symbol"], t.get("timeframe"))
                     trades.append(t_copy)
