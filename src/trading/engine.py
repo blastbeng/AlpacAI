@@ -5305,6 +5305,13 @@ class TradingEngine:
                     logger.error(f"Cannot place limit order for {symbol}: no limit price available.")
                     return
 
+            if limit_price is not None:
+                # Round to valid tick size (Alpaca: $0.01 for >=$1, $0.0001 for <$1)
+                if limit_price >= 1.0:
+                    limit_price = round(limit_price, 2)
+                else:
+                    limit_price = round(limit_price, 4)
+
             if limit_price is not None and limit_price <= 0:
                 logger.error(f"Invalid limit_price {limit_price} for {symbol}, skipping.")
                 if self.notifier:
@@ -5552,6 +5559,13 @@ class TradingEngine:
                 if limit_price is None:
                     logger.error(f"Cannot place limit order for {symbol}: no limit price available.")
                     return
+
+            if limit_price is not None:
+                # Round to valid tick size (Alpaca: $0.01 for >=$1, $0.0001 for <$1)
+                if limit_price >= 1.0:
+                    limit_price = round(limit_price, 2)
+                else:
+                    limit_price = round(limit_price, 4)
 
             if limit_price is not None and limit_price <= 0:
                 logger.error(f"Invalid limit_price {limit_price} for {symbol}, skipping.")
@@ -6666,18 +6680,39 @@ class TradingEngine:
             if order_book and order_book.get('asks'):
                 best_ask = order_book['asks'][0][0]
                 if best_ask > 0:
-                    return best_ask * 1.001   # 0.1% above ask
+                    limit = best_ask * 1.001   # 0.1% above ask
+                    # Round to valid tick size
+                    if best_ask >= 1.0:
+                        limit = round(limit, 2)
+                    else:
+                        limit = round(limit, 4)
+                    return limit
             last = ticker.get('last')
             if last and last > 0:
-                return last * 1.002
+                limit = last * 1.002
+                if last >= 1.0:
+                    limit = round(limit, 2)
+                else:
+                    limit = round(limit, 4)
+                return limit
         elif action == "SELL":
             if order_book and order_book.get('bids'):
                 best_bid = order_book['bids'][0][0]
                 if best_bid > 0:
-                    return best_bid * 0.999   # 0.1% below bid
+                    limit = best_bid * 0.999   # 0.1% below bid
+                    if best_bid >= 1.0:
+                        limit = round(limit, 2)
+                    else:
+                        limit = round(limit, 4)
+                    return limit
             last = ticker.get('last')
             if last and last > 0:
-                return last * 0.998
+                limit = last * 0.998
+                if last >= 1.0:
+                    limit = round(limit, 2)
+                else:
+                    limit = round(limit, 4)
+                return limit
         return None
 
     async def _remove_symbol_if_paused(self, symbol: str):
