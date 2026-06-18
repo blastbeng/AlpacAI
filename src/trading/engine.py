@@ -3502,7 +3502,7 @@ class TradingEngine:
             is_critical = max_hold_expired or stop_loss_triggered or take_profit_triggered or partial_tp_triggered or dust_sweep_triggered
             has_position = symbol in self.positions
 
-            if self._should_skip_llm_eval(
+            if await self._should_skip_llm_eval(
                 symbol=symbol,
                 current_price=current_price,
                 atr=atr,
@@ -5934,7 +5934,7 @@ class TradingEngine:
                         }
                     )
 
-    def _should_skip_llm_eval(
+    async def _should_skip_llm_eval(
         self,
         symbol: str,
         current_price: float,
@@ -5971,22 +5971,32 @@ class TradingEngine:
         if now - last_time > 2 * timeframe_seconds:
             return False
 
+        # Fetch LLM-driven skip thresholds from Redis
+        skip_price_mult_raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_price_change_atr_mult")
+        skip_price_mult = float(skip_price_mult_raw) if skip_price_mult_raw else 0.5
+
+        skip_rsi_raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_rsi_change")
+        skip_rsi = float(skip_rsi_raw) if skip_rsi_raw else 5.0
+
+        skip_macd_raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_macd_hist_change")
+        skip_macd = float(skip_macd_raw) if skip_macd_raw else 0.0005
+
         # Price change since last evaluation
         if last_price > 0:
             price_change_pct = abs(current_price - last_price) / last_price
-            # If price moved less than 0.2× ATR (in %), it’s boring
+            # If price moved less than skip_price_mult × ATR (in %), it’s boring
             atr_pct = (atr / current_price) if (atr and atr > 0) else 0.005
-            if price_change_pct > atr_pct * 0.5:
+            if price_change_pct > atr_pct * skip_price_mult:
                 return False   # enough movement to warrant a new look
 
         # Indicator changes
         last_rsi = snapshot.get("rsi")
         last_macd_hist = snapshot.get("macd_hist")
         if rsi is not None and last_rsi is not None:
-            if abs(rsi - last_rsi) > 5:
+            if abs(rsi - last_rsi) > skip_rsi:
                 return False
         if macd_hist is not None and last_macd_hist is not None:
-            if abs(macd_hist - last_macd_hist) > 0.0005:
+            if abs(macd_hist - last_macd_hist) > skip_macd:
                 return False
 
         # If we have no open position and nothing is screaming, skip
