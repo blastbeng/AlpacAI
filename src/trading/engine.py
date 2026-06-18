@@ -6265,8 +6265,14 @@ class TradingEngine:
             need_limit = settings.ALPACA_PAPER and not self._is_regular_hours()
             limit_price = None
             time_in_force = "day"
-            if need_limit:
-                limit_price = params.get("limit_price") or self._default_limit_price(symbol, "BUY", ticker, order_book)
+            # If LLM provided a limit_price, use it even during regular hours
+            llm_limit_price = params.get("limit_price")
+            if llm_limit_price is not None and llm_limit_price > 0:
+                limit_price = llm_limit_price
+                time_in_force = params.get("time_in_force", "day")
+                need_limit = True  # force limit order path
+            elif need_limit:
+                limit_price = self._default_limit_price(symbol, "BUY", ticker, order_book)
                 time_in_force = params.get("time_in_force", "day")
                 if limit_price is None:
                     logger.error(f"Cannot place limit order for {symbol}: no limit price available.")
