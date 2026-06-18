@@ -38,15 +38,17 @@ def validate_signal(
             return Signal(action="HOLD", confidence=0.0, reasoning="Invalid stop_loss_method")
 
         if stop_method == "atr_multiple":
-            # stop_loss_pct is optional; stop_loss_atr_multiple is required
+            # stop_loss_atr_multiple is required
             if "stop_loss_atr_multiple" not in params:
                 return Signal(action="HOLD", confidence=0.0, reasoning="Missing stop_loss_atr_multiple for atr_multiple method")
             atr_mult = params["stop_loss_atr_multiple"]
             if not isinstance(atr_mult, (int, float)) or atr_mult <= 0:
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid stop_loss_atr_multiple")
-            # We still allow stop_loss_pct if present, but it's not required
-            sl = params.get("stop_loss_pct")
-            if sl is not None and (not isinstance(sl, (int, float)) or not (0 < sl < 1.0)):
+            # stop_loss_pct is REQUIRED as a fallback when ATR is unavailable at execution time
+            if "stop_loss_pct" not in params:
+                return Signal(action="HOLD", confidence=0.0, reasoning="Missing stop_loss_pct (required as fallback for atr_multiple method)")
+            sl = params["stop_loss_pct"]
+            if not isinstance(sl, (int, float)) or not (0 < sl < 1.0):
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid stop_loss_pct")
         else:  # "fixed"
             if "stop_loss_pct" not in params:

@@ -232,7 +232,7 @@ Key principles:
 - **Required parameters for every BUY/SELL:**
   - `"stop_loss_method"`: "fixed" (default) or "atr_multiple".
   - `"stop_loss_atr_multiple"`: required if method is "atr_multiple". A positive float (e.g., 2.0).
-  - `"stop_loss_pct"`: required if method is "fixed". A decimal between 0.001 and 0.5 (e.g., 0.02 for 2%).
+  - `"stop_loss_pct"`: ALWAYS required, even when using "atr_multiple" method. Used as a fallback if ATR is unavailable at execution time. A decimal between 0.001 and 0.5 (e.g., 0.02 for 2%). When using "atr_multiple", set this to your best estimate of what the ATR-based stop would be (e.g., if ATR is 2% of price and your multiplier is 2.0, set stop_loss_pct to 0.04).
 
 **Take-Profit:**
 - Set a take-profit that you believe is achievable given the current trend, volatility, and order‑book depth. The reward:risk ratio is entirely your decision.

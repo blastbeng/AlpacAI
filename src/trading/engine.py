@@ -5945,6 +5945,8 @@ class TradingEngine:
                 sl_pct = (atr_mult * atr) / current_price
                 logger.info(f"ATR-based stop: ATR={atr}, multiplier={atr_mult}, stop_loss_pct={sl_pct:.4%}")
             else:
+                if stop_method == "atr_multiple":
+                    logger.warning(f"ATR unavailable for {symbol}, falling back to fixed stop_loss_pct from LLM params.")
                 sl_pct = params.get("stop_loss_pct")
                 if sl_pct is None:
                     logger.warning(f"Cannot execute BUY for {symbol}: stop_loss_pct missing and ATR method not applicable/available.")
