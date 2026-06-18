@@ -1548,12 +1548,7 @@ If the position is already in profit, consider trailing the stop.
 
 You are trading spot only (no shorting). Only output SELL if you currently hold the stock.
 
-**Execution Decision:**
-- **There is NO separate "execute flag".** The only mechanism to control whether a trade is taken is the `"min_confidence"` parameter.
-- Set `"min_confidence"` to a value between 0.0 and 1.0 (e.g., 0.6). The bot will skip the trade if your confidence is below this threshold.
-- If you omit `"min_confidence"`, the trade will be executed regardless of confidence (as long as all other parameters are valid).
-- **IMPORTANT: Do NOT output HOLD with the reason "LLM execute flag false".** That concept no longer exists. If you are not confident enough to trade, output HOLD with a meaningful reason (e.g., "Insufficient conviction", "Unfavorable risk/reward", "No clear edge"). Use `min_confidence` to filter trades, not a separate flag.
-- You may set `"min_confidence"` to 0.0 to effectively disable the filter.
+**Execution Decision:** Use `"min_confidence"` (0.0–1.0) to filter trades. The bot will skip the trade if your confidence is below this threshold. If omitted, the trade executes regardless of confidence. If you are not confident enough to trade, output HOLD with a meaningful reason (e.g., "Insufficient conviction", "Unfavorable risk/reward").
 
 """
     prompt += (
