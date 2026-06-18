@@ -106,7 +106,7 @@ async def performance():
         row["display_symbol"] = await _get_display_symbol(engine, row["symbol"], row.get("timeframe"))
     if perf.get("total"):
         total = perf["total"]
-        total["display_symbol"] = await _get_display_symbol(engine, total["symbol"], total.get("timeframe"))
+        total["display_symbol"] = "TOTAL"
     return perf
 
 @app.get("/api/risk")
@@ -372,7 +372,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         row["display_symbol"] = await _get_display_symbol(engine, row["symbol"], row.get("timeframe"))
                     if perf.get("total"):
                         total = perf["total"]
-                        total["display_symbol"] = await _get_display_symbol(engine, total["symbol"], total.get("timeframe"))
+                        total["display_symbol"] = "TOTAL"
 
                     balances = await run_in_threadpool(engine.trader.fetch_balance)
                     profit_summary = await run_in_threadpool(engine.get_profit_summary)
