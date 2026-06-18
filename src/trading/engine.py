@@ -1980,6 +1980,43 @@ class TradingEngine:
                 else:
                     await asyncio.to_thread(self.redis.delete, "trading:skip_eval_macd_hist_change")
 
+                # Parse LLM-driven market regime thresholds
+                regime_adx_strong = parsed.get("regime_adx_strong")
+                if regime_adx_strong is not None and isinstance(regime_adx_strong, (int, float)) and regime_adx_strong > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:regime_adx_strong", 7 * 24 * 3600, str(float(regime_adx_strong)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:regime_adx_strong")
+
+                regime_adx_moderate = parsed.get("regime_adx_moderate")
+                if regime_adx_moderate is not None and isinstance(regime_adx_moderate, (int, float)) and regime_adx_moderate > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:regime_adx_moderate", 7 * 24 * 3600, str(float(regime_adx_moderate)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:regime_adx_moderate")
+
+                regime_vol_high = parsed.get("regime_volatility_high_pct")
+                if regime_vol_high is not None and isinstance(regime_vol_high, (int, float)) and regime_vol_high > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:regime_volatility_high_pct", 7 * 24 * 3600, str(float(regime_vol_high)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:regime_volatility_high_pct")
+
+                regime_vol_low = parsed.get("regime_volatility_low_pct")
+                if regime_vol_low is not None and isinstance(regime_vol_low, (int, float)) and regime_vol_low > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:regime_volatility_low_pct", 7 * 24 * 3600, str(float(regime_vol_low)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:regime_volatility_low_pct")
+
+                regime_bb_squeeze = parsed.get("regime_bb_squeeze_width")
+                if regime_bb_squeeze is not None and isinstance(regime_bb_squeeze, (int, float)) and regime_bb_squeeze > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:regime_bb_squeeze_width", 7 * 24 * 3600, str(float(regime_bb_squeeze)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:regime_bb_squeeze_width")
+
+                regime_bb_expansion = parsed.get("regime_bb_expansion_width")
+                if regime_bb_expansion is not None and isinstance(regime_bb_expansion, (int, float)) and regime_bb_expansion > 0:
+                    await asyncio.to_thread(self.redis.setex, "trading:regime_bb_expansion_width", 7 * 24 * 3600, str(float(regime_bb_expansion)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:regime_bb_expansion_width")
+
                 # Optional: LLM can set the global symbol re-evaluation interval
                 new_interval = parsed.get("stock_revaluation_interval_seconds")
                 if new_interval is not None:

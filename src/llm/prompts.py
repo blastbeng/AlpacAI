@@ -394,11 +394,17 @@ Return a JSON object with the following fields:
 - "skip_eval_price_change_atr_mult": a float (e.g., 0.5) indicating the minimum price change (as a multiple of ATR%) required to trigger a new LLM strategy evaluation for a stock. If the price moves less than this, the LLM is skipped to save costs.
 - "skip_eval_rsi_change": a float (e.g., 5.0) indicating the minimum absolute RSI change required to trigger a new LLM evaluation.
 - "skip_eval_macd_hist_change": a float (e.g., 0.0005) indicating the minimum absolute MACD histogram change required to trigger a new LLM evaluation.
+- "regime_adx_strong": a float (e.g., 40.0) indicating the ADX level above which a trend is considered strong.
+- "regime_adx_moderate": a float (e.g., 25.0) indicating the ADX level above which a trend is considered moderate.
+- "regime_volatility_high_pct": a float (e.g., 80.0) indicating the ATR percentile above which volatility is considered high.
+- "regime_volatility_low_pct": a float (e.g., 20.0) indicating the ATR percentile below which volatility is considered low.
+- "regime_bb_squeeze_width": a float (e.g., 0.02) indicating the Bollinger Band width below which the market is considered in a squeeze.
+- "regime_bb_expansion_width": a float (e.g., 0.08) indicating the Bollinger Band width above which the market is considered in expansion.
 - "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
 You may optionally include "stock_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.
 
-Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "sector": "Technology", "max_tenure_hours": 48}}, {{"symbol": "MSFT", "timeframe": "15m", "sector": "Technology"}}], "max_stocks": 2, "max_positions_per_sector": 2, "skip_eval_price_change_atr_mult": 0.5, "skip_eval_rsi_change": 5.0, "skip_eval_macd_hist_change": 0.0005, "reasoning": "AAPL shows strong uptrend on 1h with high volume; MSFT has bullish MACD crossover on 15m.", "stock_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
+Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "sector": "Technology", "max_tenure_hours": 48}}, {{"symbol": "MSFT", "timeframe": "15m", "sector": "Technology"}}], "max_stocks": 2, "max_positions_per_sector": 2, "skip_eval_price_change_atr_mult": 0.5, "skip_eval_rsi_change": 5.0, "skip_eval_macd_hist_change": 0.0005, "regime_adx_strong": 40.0, "regime_adx_moderate": 25.0, "regime_volatility_high_pct": 80.0, "regime_volatility_low_pct": 20.0, "regime_bb_squeeze_width": 0.02, "regime_bb_expansion_width": 0.08, "reasoning": "AAPL shows strong uptrend on 1h with high volume; MSFT has bullish MACD crossover on 15m.", "stock_revaluation_interval_seconds": 300, "pause_trading": false, "pause_reason": "Market conditions are favorable"}}"""
     # --- Enhanced pause/resume guidance ---
     if trading_paused:
         prompt += (
