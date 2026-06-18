@@ -4,6 +4,7 @@ import logging
 import math
 import re
 import time
+from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
@@ -1432,6 +1433,11 @@ class TradingEngine:
 
         self.trade_history = state.get("trade_history", [])
         self.queued_orders = state.get("queued_orders", [])
+        from src.strategies.base import Signal
+        for q in self.queued_orders:
+            if isinstance(q.get('signal'), dict):
+                q['signal'] = Signal(**q['signal'])
+            q['order_book'] = None
 
         if "initial_balance" in state:
             self.initial_balance = float(state["initial_balance"])
@@ -6462,11 +6468,11 @@ class TradingEngine:
                         'amount': amount,
                         'limit_price': limit_price,
                         'time_in_force': time_in_force,
-                        'signal': signal,
+                        'signal': asdict(signal),
                         'timeframe': timeframe,
                         'atr': atr,
                         'spread_pct': spread_pct,
-                        'order_book': order_book,
+                        'order_book': None,
                     })
                     if self.notifier:
                         await self.notifier.send_notification(
@@ -6743,11 +6749,11 @@ class TradingEngine:
                         'amount': gross_amount,
                         'limit_price': limit_price,
                         'time_in_force': time_in_force,
-                        'signal': signal,
+                        'signal': asdict(signal),
                         'timeframe': timeframe,
                         'atr': atr,
                         'spread_pct': spread_pct,
-                        'order_book': order_book,
+                        'order_book': None,
                         'exit_reason': exit_reason,
                     })
                     if self.notifier:
