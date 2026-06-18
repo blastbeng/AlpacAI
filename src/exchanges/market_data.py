@@ -1,6 +1,7 @@
 import concurrent.futures
 import logging
 import time
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import (
@@ -79,12 +80,24 @@ def get_quotes(
         q = quotes.get(sym)
         if q:
             result[sym] = {
-                "last": q.ask_price,  # use ask as "last" for simplicity; we'll refine later
+                "last": q.ask_price,
                 "bid": q.bid_price,
                 "ask": q.ask_price,
-                "volume": None,  # not available in quote
+                "volume": None,
                 "change_24h": None,
             }
+        else:
+            # Initialize from bars if quote failed
+            b = bars.get(sym)
+            if b:
+                result[sym] = {
+                    "last": b.close,
+                    "bid": b.close,
+                    "ask": b.close,
+                    "volume": b.volume,
+                    "change_24h": ((b.close - b.open) / b.open) * 100 if b.open and b.open > 0 else None,
+                }
+
     # Enrich with daily bar for volume and change
     for sym in symbols:
         b = bars.get(sym)
@@ -155,7 +168,8 @@ def get_multi_timeframe_bars(
             logger.warning(f"Failed to fetch bars for {symbol} {tf}: {e}")
             return tf, []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(timeframes)) as executor:
+    max_workers = min(len(timeframes), 5)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(fetch_tf, tf) for tf in timeframes]
         for future in concurrent.futures.as_completed(futures):
             tf, candles = future.result()
@@ -175,7 +189,6 @@ def get_bars_range(
 
     Returns a list of candles [timestamp_ms, open, high, low, close, volume].
     """
-    from datetime import datetime, timezone
     alpaca_tf = TIMEFRAME_MAP.get(timeframe)
     if not alpaca_tf:
         logger.warning(f"Unsupported timeframe: {timeframe}")
