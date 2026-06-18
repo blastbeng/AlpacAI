@@ -99,12 +99,6 @@ async def main():
     if settings.TELEGRAM_BOT_TOKEN:
         telegram_task = asyncio.create_task(telegram_bot.start())
 
-        async def _post_start():
-            await telegram_task
-            await telegram_bot.send_notification("🤖 AlpacAI started! Use the buttons below to control me.")
-
-        asyncio.create_task(_post_start())
-
     # Graceful shutdown handling
     shutdown_event = asyncio.Event()
 
