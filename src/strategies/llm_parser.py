@@ -27,6 +27,11 @@ def parse_llm_response(response_text: str) -> Signal:
                 else:
                     raise ValueError("No JSON object found in LLM response")
 
+        if isinstance(data, list):
+            if not data:
+                raise ValueError("LLM returned an empty JSON array")
+            data = data[0]
+
         action = data.get("action", "HOLD").upper()
         if action not in ("BUY", "SELL", "HOLD"):
             action = "HOLD"
