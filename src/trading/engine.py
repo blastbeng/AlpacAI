@@ -3542,15 +3542,14 @@ class TradingEngine:
                     ind_parts.append(f"Kelt={keltner_channels['lower']:.4f}/{keltner_channels['middle']:.4f}/{keltner_channels['upper']:.4f}")
                 if pivot_points is not None:
                     ind_parts.append(f"Pivot={pivot_points['pivot']:.4f} R1={pivot_points['r1']:.4f} S1={pivot_points['s1']:.4f}")
-                indicator_str = " | ".join(ind_parts) if ind_parts else ""
+                indicator_str = " | ".join(ind_parts) if ind_parts else "No indicators (insufficient OHLCV data)"
                 sentiment_str = self._get_sentiment_str(symbol)
                 msg = f"{emoji} {symbol}: {validated.action} (confidence: {validated.confidence:.2f}) – {validated.reasoning}"
                 if sentiment_str:
                     msg += f"\n{sentiment_str}"
                 if getattr(validated, 'backtest_summary', None):
                     msg += f"\n📈 Backtest: {validated.backtest_summary}"
-                if indicator_str:
-                    msg += f"\n📊 {indicator_str}"
+                msg += f"\n📊 {indicator_str}"
                 # Build summary dict for logging
                 decision_summary = {
                     "symbol": symbol,
