@@ -675,6 +675,7 @@
         });
 
         let chartInstance = null;
+        let chartUpdateTimer = null;
         const modal = document.getElementById('chart-modal');
         const closeBtn = document.getElementById('close-modal');
         const timeframeSelect = document.getElementById('timeframe-select');
@@ -828,6 +829,10 @@
                 chartInstance.destroy();
                 chartInstance = null;
             }
+            if (chartUpdateTimer) {
+                clearInterval(chartUpdateTimer);
+                chartUpdateTimer = null;
+            }
         };
 
         timeframeSelect.onchange = () => {
@@ -840,48 +845,62 @@
             timeframeSelect.value = timeframe;
             modal.style.display = 'flex';
             await fetchAndRenderChart(symbol, timeframe);
+            
+            if (chartUpdateTimer) clearInterval(chartUpdateTimer);
+            chartUpdateTimer = setInterval(() => {
+                if (currentSymbol && modal.style.display === 'flex') {
+                    fetchAndRenderChart(currentSymbol, timeframeSelect.value);
+                } else {
+                    clearInterval(chartUpdateTimer);
+                    chartUpdateTimer = null;
+                }
+            }, 10000); // Update every 10 seconds
         }
 
         async function fetchAndRenderChart(symbol, timeframe) {
+            const baseSymbol = symbol.split('/')[0];
             try {
-                const resp = await fetch(`/api/ohlcv/${encodeURIComponent(symbol)}?timeframe=${timeframe}&limit=48`);
+                const resp = await fetch(`/api/ohlcv/${encodeURIComponent(baseSymbol)}?timeframe=${timeframe}&limit=48`);
                 if (!resp.ok) throw new Error('Failed to fetch OHLCV data');
                 const json = await resp.json();
-                const data = json.data;
+                const data = json.data || [];
                 const labels = data.map(d => new Date(d.timestamp).toLocaleString());
                 const closes = data.map(d => d.close);
 
-                const ctx = document.getElementById('ohlcv-chart').getContext('2d');
-                if (chartInstance) chartInstance.destroy();
-
-                chartInstance = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: symbol + ' Close',
-                            data: closes,
-                            borderColor: '#58a6ff',
-                            backgroundColor: 'rgba(88,166,255,0.1)',
-                            fill: true,
-                            tension: 0.2,
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false }
+                if (chartInstance) {
+                    chartInstance.data.labels = labels;
+                    chartInstance.data.datasets[0].data = closes;
+                    chartInstance.update();
+                } else {
+                    const ctx = document.getElementById('ohlcv-chart').getContext('2d');
+                    chartInstance = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: symbol + ' Close',
+                                data: closes,
+                                borderColor: '#58a6ff',
+                                backgroundColor: 'rgba(88,166,255,0.1)',
+                                fill: true,
+                                tension: 0.2,
+                            }]
                         },
-                        scales: {
-                            x: { ticks: { color: '#8b949e' } },
-                            y: { ticks: { color: '#8b949e' } }
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false }
+                            },
+                            scales: {
+                                x: { ticks: { color: '#8b949e' } },
+                                y: { ticks: { color: '#8b949e' } }
+                            }
                         }
-                    }
-                });
+                    });
+                }
             } catch (err) {
                 console.error(err);
-                alert('Could not load chart data.');
             }
         }
 
