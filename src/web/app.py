@@ -83,6 +83,7 @@ async def status():
         "positions": positions,
         "balances": balances,
         "paused": await asyncio.to_thread(redis.get, "trading:paused") == "1",
+        "queued_orders": engine.queued_orders,
     }
 
 @app.get("/api/trades")
@@ -384,6 +385,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "profit": profit_summary,
                         "performance": perf,
                         "paused": await asyncio.to_thread(redis.get, "trading:paused") == "1",
+                        "queued_orders": engine.queued_orders,
                     }
                     _ws_payload_cache = payload
                     _ws_payload_cache_time = now

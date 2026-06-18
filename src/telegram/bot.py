@@ -214,6 +214,10 @@ class TelegramBot:
         status_text = "⏸️ Paused" if paused else "▶️ Active"
         msg += f"\n<b>⚙️ Trading:</b> {status_text}\n"
 
+        queued_count = len(self.engine.queued_orders)
+        if queued_count > 0:
+            msg += f"\n<b>⏳ Queued Orders:</b> {queued_count}\n"
+
         await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
 
     async def cmd_trades(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
