@@ -52,26 +52,61 @@ class LiveTrader:
         limit_price: Optional[float] = None, time_in_force: str = "day"
     ) -> Dict[str, Any]:
         base = symbol.split("/")[0]
-        if limit_price is not None:
-            if limit_price <= 0:
-                raise ValueError(f"Invalid limit_price {limit_price} for {symbol}")
-            qty = quote_amount / limit_price
-            tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
-            order_data = LimitOrderRequest(
-                symbol=base,
-                qty=qty,
-                limit_price=limit_price,
-                side=OrderSide.BUY,
-                time_in_force=tif,
-                extended_hours=True,
-            )
+        asset = self.trading_client.get_asset(base)
+        if not asset.fractionable:
+            # Non-fractionable asset: must use integer qty
+            if limit_price is not None:
+                if limit_price <= 0:
+                    raise ValueError(f"Invalid limit_price {limit_price} for {symbol}")
+                price = limit_price
+            else:
+                # Fetch latest quote to determine price for integer qty calculation
+                quote = self.trading_client.get_latest_quote(base)
+                price = float(quote.ask_price)
+            
+            qty = int(quote_amount / price)
+            if qty < 1:
+                raise ValueError(f"Insufficient funds to buy 1 whole share of {symbol} (need {price}, have {quote_amount})")
+            
+            if limit_price is not None:
+                tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
+                order_data = LimitOrderRequest(
+                    symbol=base,
+                    qty=qty,
+                    limit_price=limit_price,
+                    side=OrderSide.BUY,
+                    time_in_force=tif,
+                    extended_hours=True,
+                )
+            else:
+                order_data = MarketOrderRequest(
+                    symbol=base,
+                    qty=qty,
+                    side=OrderSide.BUY,
+                    time_in_force=TimeInForce.DAY,
+                )
         else:
-            order_data = MarketOrderRequest(
-                symbol=base,
-                notional=quote_amount,
-                side=OrderSide.BUY,
-                time_in_force=TimeInForce.DAY,
-            )
+            # Fractionable asset: existing logic
+            if limit_price is not None:
+                if limit_price <= 0:
+                    raise ValueError(f"Invalid limit_price {limit_price} for {symbol}")
+                qty = quote_amount / limit_price
+                tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
+                order_data = LimitOrderRequest(
+                    symbol=base,
+                    qty=qty,
+                    limit_price=limit_price,
+                    side=OrderSide.BUY,
+                    time_in_force=tif,
+                    extended_hours=True,
+                )
+            else:
+                order_data = MarketOrderRequest(
+                    symbol=base,
+                    notional=quote_amount,
+                    side=OrderSide.BUY,
+                    time_in_force=TimeInForce.DAY,
+                )
         order = self.trading_client.submit_order(order_data)
         filled_order = self._wait_for_order_fill(order.id, base, timeout)
         return self._order_to_dict(filled_order, symbol)
