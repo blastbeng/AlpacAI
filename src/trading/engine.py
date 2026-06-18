@@ -894,14 +894,15 @@ class TradingEngine:
         if current_price <= 0:
             return "unknown"
 
-        # Read LLM-decided regime thresholds from Redis (set during stock selection)
-        # Fall back to reasonable defaults if not yet set
-        adx_strong = 40.0
-        adx_moderate = 25.0
-        vol_high_pct = 80.0
-        vol_low_pct = 20.0
-        bb_squeeze_width = 0.02
-        bb_expansion_width = 0.08
+        # Read LLM-decided regime thresholds from Redis (set during stock selection).
+        # If any threshold is missing, we cannot classify the regime reliably –
+        # return "unknown" instead of falling back to hardcoded defaults.
+        adx_strong = None
+        adx_moderate = None
+        vol_high_pct = None
+        vol_low_pct = None
+        bb_squeeze_width = None
+        bb_expansion_width = None
         try:
             raw = await asyncio.to_thread(self.redis.get, "trading:regime_adx_strong")
             if raw:
@@ -922,7 +923,19 @@ class TradingEngine:
             if raw:
                 bb_expansion_width = float(raw)
         except Exception:
-            pass  # use defaults if Redis is unavailable
+            pass  # leave as None if Redis is unavailable
+
+        # If the LLM has not provided all required thresholds, we cannot
+        # classify the regime – return "unknown" rather than using defaults.
+        if (
+            adx_strong is None
+            or adx_moderate is None
+            or vol_high_pct is None
+            or vol_low_pct is None
+            or bb_squeeze_width is None
+            or bb_expansion_width is None
+        ):
+            return "unknown"
 
         # --- Trend direction and strength ---
         trend_dir = "neutral"
@@ -6256,15 +6269,22 @@ class TradingEngine:
         if now - last_time > 2 * timeframe_seconds:
             return False
 
-        # Fetch LLM-driven skip thresholds from Redis
+        # Fetch LLM-driven skip thresholds from Redis.
+        # If the LLM has not configured the skip logic, do not skip – always
+        # call the LLM so it can decide based on the current market data.
         skip_price_mult_raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_price_change_atr_mult")
-        skip_price_mult = float(skip_price_mult_raw) if skip_price_mult_raw else 0.5
+        skip_price_mult = float(skip_price_mult_raw) if skip_price_mult_raw else None
 
         skip_rsi_raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_rsi_change")
-        skip_rsi = float(skip_rsi_raw) if skip_rsi_raw else 5.0
+        skip_rsi = float(skip_rsi_raw) if skip_rsi_raw else None
 
         skip_macd_raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_macd_hist_change")
-        skip_macd = float(skip_macd_raw) if skip_macd_raw else 0.0005
+        skip_macd = float(skip_macd_raw) if skip_macd_raw else None
+
+        # If the core skip thresholds are missing, the LLM has not configured
+        # the skip logic – always call the LLM.
+        if skip_price_mult is None or skip_rsi is None or skip_macd is None:
+            return False
 
         # Price change since last evaluation
         if last_price > 0:
@@ -6288,8 +6308,9 @@ class TradingEngine:
         if not has_position:
             # Only call if there is a potential entry signal (extreme RSI, MACD crossover, etc.)
             # RSI extreme? (thresholds are LLM-decided)
-            rsi_oversold = 30.0
-            rsi_overbought = 70.0
+            # RSI extremes are optional – only use them if the LLM has set them.
+            rsi_oversold = None
+            rsi_overbought = None
             try:
                 raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_rsi_oversold")
                 if raw:
@@ -6299,7 +6320,12 @@ class TradingEngine:
                     rsi_overbought = float(raw)
             except Exception:
                 pass
-            if rsi is not None and (rsi < rsi_oversold or rsi > rsi_overbought):
+            if (
+                rsi is not None
+                and rsi_oversold is not None
+                and rsi_overbought is not None
+                and (rsi < rsi_oversold or rsi > rsi_overbought)
+            ):
                 return False
             # MACD histogram direction change? (harder to detect without previous sign – skip for simplicity)
             # Otherwise, no strong signal → skip
