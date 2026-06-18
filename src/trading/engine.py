@@ -5125,6 +5125,53 @@ class TradingEngine:
                 desired_amount = min(desired_amount, max_allowed_amount)
                 logger.info(f"Max risk per trade: {max_risk_pct:.2%} of {total_value:.2f} = {max_risk_amount:.2f}, max allowed amount = {max_allowed_amount:.2f}")
 
+            # Apply max portfolio risk cap if provided
+            max_portfolio_risk_pct = params.get("max_portfolio_risk_pct")
+            if max_portfolio_risk_pct is not None and sl_pct > 0:
+                total_value = quote_balance
+                total_open_risk = 0.0
+                for sym, pos in self.positions.items():
+                    try:
+                        t = self.ws_manager.get_ticker(sym)
+                        if t is None:
+                            tickers_map = get_quotes(self.data_client, [sym.split("/")[0]])
+                            t = tickers_map.get(sym.split("/")[0])
+                        price = t['last'] if t and t.get('last') else 0.0
+                        pos_value = pos['amount'] * price
+                        total_value += pos_value
+                        stop_loss = pos.get('stop_loss')
+                        if stop_loss is not None and price > 0:
+                            loss_if_stop = pos_value * (price - stop_loss) / price
+                            total_open_risk += loss_if_stop
+                    except Exception:
+                        pass
+                
+                # Potential loss of the new trade
+                new_trade_risk = desired_amount * sl_pct
+                total_portfolio_risk = total_open_risk + new_trade_risk
+                max_allowed_portfolio_risk = total_value * max_portfolio_risk_pct
+                
+                if total_portfolio_risk > max_allowed_portfolio_risk:
+                    logger.info(
+                        f"Skipping BUY {symbol}: total portfolio risk {total_portfolio_risk:.2f} "
+                        f"exceeds LLM max {max_allowed_portfolio_risk:.2f} ({max_portfolio_risk_pct:.2%})"
+                    )
+                    if self.notifier:
+                        await self.notifier.send_notification(
+                            f"⚠️ Skipping BUY {display_symbol}: total portfolio risk too high "
+                            f"({total_portfolio_risk:.2f} > {max_allowed_portfolio_risk:.2f})",
+                            summary={
+                                "symbol": symbol,
+                                "action": "SKIP",
+                                "reason": "Total portfolio risk too high",
+                                "total_portfolio_risk": total_portfolio_risk,
+                                "max_portfolio_risk": max_allowed_portfolio_risk,
+                            }
+                        )
+                    return
+                else:
+                    logger.info(f"Portfolio risk check passed: {total_portfolio_risk:.2f} <= {max_allowed_portfolio_risk:.2f}")
+
             # Apply global risk multiplier if set by LLM in symbol selection
             global_mult_raw = await asyncio.to_thread(self.redis.get, "trading:global_risk_multiplier")
             if global_mult_raw:
