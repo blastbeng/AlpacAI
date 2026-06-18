@@ -303,6 +303,11 @@ class TradingEngine:
 
     async def _periodic_reevaluate(self):
         """Re-evaluate stock selection periodically."""
+        # Initial delay to allow WebSocket and Telegram bot to initialize
+        logger.info(
+            f"Waiting {settings.INITIAL_EVALUATION_DELAY_SECONDS}s before initial symbol evaluation..."
+        )
+        await asyncio.sleep(settings.INITIAL_EVALUATION_DELAY_SECONDS)
         while self._running:
             if self._reevaluate_running:
                 logger.warning("Symbol re-evaluation still running; skipping this cycle.")
@@ -1338,16 +1343,6 @@ class TradingEngine:
         asyncio.create_task(self._periodic_full_market_breadth())
         asyncio.create_task(self._check_pending_entries())
         asyncio.create_task(self._cleanup_orphaned_orders())
-
-        # Initial symbol selection and subscription update
-        # Wait before first evaluation to allow WebSocket and Telegram bot to initialize
-        logger.info(
-            f"Waiting {settings.INITIAL_EVALUATION_DELAY_SECONDS}s before initial symbol evaluation..."
-        )
-        await asyncio.sleep(settings.INITIAL_EVALUATION_DELAY_SECONDS)
-        await self._reevaluate_symbols()
-        current_symbols = [entry["symbol"] for entry in self.current_symbols]
-        await self.ws_manager.update_subscriptions(current_symbols)
 
         while self._running:
             try:
