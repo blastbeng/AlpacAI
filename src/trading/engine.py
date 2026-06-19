@@ -2455,6 +2455,13 @@ class TradingEngine:
                 else:
                     await asyncio.to_thread(self.redis.delete, "trading:min_risk_reward_ratio")
 
+                # Parse LLM-controlled limit price max distance
+                limit_price_max_dist = parsed.get("limit_price_max_distance_pct")
+                if limit_price_max_dist is not None and isinstance(limit_price_max_dist, (int, float)) and 0.0 <= float(limit_price_max_dist) <= 1.0:
+                    await asyncio.to_thread(self.redis.setex, "trading:limit_price_max_distance_pct", 7 * 24 * 3600, str(float(limit_price_max_dist)))
+                else:
+                    await asyncio.to_thread(self.redis.delete, "trading:limit_price_max_distance_pct")
+
                 # Parse LLM evaluation skip thresholds
                 skip_price_mult = parsed.get("skip_eval_price_change_atr_mult")
                 if skip_price_mult is not None and isinstance(skip_price_mult, (int, float)) and skip_price_mult > 0:
@@ -6559,9 +6566,16 @@ class TradingEngine:
                 time_in_force = params.get("time_in_force", "day")
                 need_limit = True  # force limit order path
                 # Validate that the limit price is within a reasonable distance from the market
-                if ticker and ticker.get('ask') and settings.LIMIT_PRICE_MAX_DISTANCE_PCT > 0:
+                # Read LLM-controlled limit price max distance (fallback to static setting)
+                max_distance = settings.LIMIT_PRICE_MAX_DISTANCE_PCT
+                try:
+                    raw = await asyncio.to_thread(self.redis.get, "trading:limit_price_max_distance_pct")
+                    if raw:
+                        max_distance = float(raw)
+                except Exception:
+                    pass
+                if ticker and ticker.get('ask') and max_distance > 0:
                     ask = ticker['ask']
-                    max_distance = settings.LIMIT_PRICE_MAX_DISTANCE_PCT
                     if limit_price < ask * (1 - max_distance):
                         logger.warning(
                             f"LLM limit_price {limit_price} for {symbol} is >{max_distance*100:.0f}% below ask {ask}. "
@@ -6957,11 +6971,18 @@ class TradingEngine:
                     )
                 return
 
-            if limit_price is not None and settings.LIMIT_PRICE_MAX_DISTANCE_PCT > 0:
+            if limit_price is not None:
+                # Read LLM-controlled limit price max distance (fallback to static setting)
+                max_distance = settings.LIMIT_PRICE_MAX_DISTANCE_PCT
+                try:
+                    raw = await asyncio.to_thread(self.redis.get, "trading:limit_price_max_distance_pct")
+                    if raw:
+                        max_distance = float(raw)
+                except Exception:
+                    pass
                 # For a sell, the limit must not be too far above the bid
-                if ticker and ticker.get('bid'):
+                if max_distance > 0 and ticker and ticker.get('bid'):
                     bid = ticker['bid']
-                    max_distance = settings.LIMIT_PRICE_MAX_DISTANCE_PCT
                     if limit_price > bid * (1 + max_distance):
                         logger.warning(
                             f"LLM limit_price {limit_price} for SELL {symbol} is >{max_distance*100:.0f}% above bid {bid}. "
