@@ -263,25 +263,44 @@ class TelegramBot:
             except Exception as e:
                 logger.warning(f"Could not fetch current price for {sym}: {e}")
 
+            # --- Get position for SL/TP and sector ---
+            pos = self.engine.positions.get(sym)
+            sl = pos.get('stop_loss') if pos else None
+            tp = pos.get('take_profit') if pos else None
+            sector = None
+            for entry in self.engine.current_symbols:
+                if entry['symbol'] == sym:
+                    sector = entry.get('sector')
+                    break
+
             line = f"<b>#{idx}</b> 🟢 <b>BUY</b> <code>{trade_display}</code>\n"
+            if sector:
+                line += f"   🏭 Sector: {sector}\n"
             tf = t.get('timeframe')
             if tf:
                 line += f"   ⏱️ {tf}\n"
             line += f"   🕒 {ts}\n"
-            line += f"   Amount: {amt:.6f}  Entry: {price:.4f}"
+            line += f"   Amount: {amt:.6f}  Entry: ${price:.2f}"
             if current_price is not None:
-                line += f"  Current: {current_price:.4f}"
+                line += f"  Current: ${current_price:.2f}"
             line += "\n"
             line += f"   Fee: {fee_str}\n"
-            # Add position value in base currency (USDT)
+            # Add position value in base currency
             value = amt * (current_price if current_price is not None else price)
-            line += f"   Value: {value:.2f} {self.engine.base_currency}\n"
+            line += f"   Value: ${value:,.2f} {self.engine.base_currency}\n"
+            # SL/TP
+            if sl is not None:
+                line += f"   🛑 Stop: ${sl:.2f}"
+            if tp is not None:
+                line += f"  🎯 Target: ${tp:.2f}"
+            if sl is not None or tp is not None:
+                line += "\n"
 
             pnl = t['unrealized_pnl']
             pnl_pct = t['unrealized_pnl_pct']
             pnl_sign = "+" if pnl >= 0 else ""
             pnl_pct_sign = "+" if pnl_pct >= 0 else ""
-            line += f"   Unrealized P&L: {pnl_sign}{pnl:.4f} ({pnl_pct_sign}{pnl_pct:.2f}%)"
+            line += f"   Unrealized P&L: {pnl_sign}${pnl:,.2f} ({pnl_pct_sign}{pnl_pct:.2f}%)"
 
             msg += line + "\n\n"
 
