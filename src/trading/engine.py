@@ -5893,7 +5893,10 @@ class TradingEngine:
                             )
                         continue   # skip further checks for this symbol in this cycle
 
-                if current_price <= pos["stop_loss"]:
+                if pos.get("stop_loss_order_id") or pos.get("take_profit_order_id"):
+                    # Native exit orders are active – skip manual stop/tp triggers
+                    pass
+                elif current_price <= pos["stop_loss"]:
                     # Instead of immediately selling, ask the LLM whether to sell or adjust the stop.
                     review_count = pos.get("_stop_loss_review_count", 0)
                     if review_count >= max_sl_reviews:
@@ -6756,6 +6759,14 @@ class TradingEngine:
                     custom_interval = params.get("strategy_interval_seconds")
                     if custom_interval is not None:
                         self._strategy_intervals[symbol] = custom_interval
+                # --- Place native exit orders (OCO) if LLM specified them ---
+                current_entry = self.positions[symbol]["price"]
+                exit_prices = self._compute_exit_order_prices(
+                    entry_price=current_entry,
+                    signal=signal,
+                    atr=atr,
+                )
+                await self._place_exit_orders(symbol, signal, exit_prices, timeframe)
                 order["strategy_type"] = signal.strategy_type
                 order["timeframe"] = timeframe
                 order["buy_confidence"] = signal.confidence
@@ -7639,6 +7650,203 @@ class TradingEngine:
 
         logger.info(f"Updated risk parameters for {symbol} from LLM strategy_params")
 
+    def _compute_exit_order_prices(
+        self,
+        entry_price: float,
+        signal: Signal,
+        atr: Optional[float] = None,
+    ) -> Dict[str, Optional[float]]:
+        """
+        Return a dict with keys:
+          - stop_loss_price: the trigger/limit price for the stop-loss order
+          - take_profit_price: the limit price for the take-profit order
+        Uses the LLM's exit order type fields; falls back to the standard
+        stop_loss_pct / take_profit_pct if exit order types are not provided.
+        """
+        params = signal.strategy_params or {}
+        stop_loss_pct = params.get("stop_loss_pct")
+        take_profit_pct = params.get("take_profit_pct")
+
+        # --- Stop-loss price ---
+        sl_ot = signal.stop_loss_order_type
+        if sl_ot == "stop":
+            sl_price = signal.stop_loss_stop_price
+            if sl_price is None and stop_loss_pct is not None:
+                sl_price = entry_price * (1 - stop_loss_pct)
+        elif sl_ot == "stop_limit":
+            sl_price = signal.stop_loss_stop_price
+            if sl_price is None and stop_loss_pct is not None:
+                sl_price = entry_price * (1 - stop_loss_pct)
+        elif sl_ot == "trailing_stop":
+            sl_price = None  # not a fixed price
+        else:
+            sl_price = None
+
+        # --- Take-profit price ---
+        tp_ot = signal.take_profit_order_type
+        if tp_ot == "limit":
+            tp_price = signal.take_profit_limit_price
+            if tp_price is None and take_profit_pct is not None:
+                tp_price = entry_price * (1 + take_profit_pct)
+        elif tp_ot == "market":
+            tp_price = None  # will be handled by risk loop later
+        else:
+            tp_price = None
+
+        return {
+            "stop_loss_price": sl_price,
+            "take_profit_price": tp_price,
+        }
+
+    async def _place_exit_orders(
+        self,
+        symbol: str,
+        signal: Signal,
+        exit_prices: Dict[str, Optional[float]],
+        timeframe: Optional[str] = None,
+    ):
+        """Place native stop-loss and take-profit orders for a position."""
+        pos = self.positions.get(symbol)
+        if not pos:
+            return
+
+        base, quote = symbol.split("/")
+        qty = pos["amount"]  # base quantity to sell
+        if qty <= 0:
+            return
+
+        # --- Stop-loss order ---
+        sl_ot = signal.stop_loss_order_type
+        sl_price = exit_prices.get("stop_loss_price")
+        sl_order_id = None
+        if sl_ot in ("stop", "stop_limit") and sl_price is not None:
+            try:
+                if sl_ot == "stop":
+                    order = await asyncio.to_thread(
+                        self.trader.create_stop_sell_order,
+                        symbol, qty, sl_price,
+                        time_in_force="gtc", timeout=60.0
+                    )
+                else:  # stop_limit
+                    limit_price = signal.stop_loss_limit_price or sl_price
+                    order = await asyncio.to_thread(
+                        self.trader.create_stop_limit_sell_order,
+                        symbol, qty, sl_price, limit_price,
+                        time_in_force="gtc", timeout=60.0
+                    )
+                sl_order_id = order["id"]
+                self.queued_orders.append({
+                    "symbol": symbol,
+                    "side": "sell",
+                    "amount": qty,
+                    "original_amount": qty,
+                    "limit_price": order.get("limit_price"),
+                    "stop_price": order.get("stop_price"),
+                    "trail_offset": order.get("trail_offset"),
+                    "order_type": sl_ot,
+                    "time_in_force": "gtc",
+                    "signal": asdict(signal),
+                    "timeframe": timeframe,
+                    "atr": None,
+                    "spread_pct": None,
+                    "order_book": None,
+                    "exit_reason": "stop_loss",
+                    "order_id": sl_order_id,
+                    "queued_at": time.time(),
+                    "filled_qty": 0,
+                    "filled_cost": 0.0,
+                    "is_exit_order": True,
+                    "oco_pair": None,
+                })
+            except Exception as e:
+                logger.error(f"Failed to place stop-loss order for {symbol}: {e}")
+
+        elif sl_ot == "trailing_stop":
+            trail_offset = signal.stop_loss_trail_offset
+            if trail_offset is not None and trail_offset > 0:
+                try:
+                    order = await asyncio.to_thread(
+                        self.trader.create_trailing_stop_sell_order,
+                        symbol, qty, trail_offset,
+                        time_in_force="gtc", timeout=60.0
+                    )
+                    sl_order_id = order["id"]
+                    self.queued_orders.append({
+                        "symbol": symbol,
+                        "side": "sell",
+                        "amount": qty,
+                        "original_amount": qty,
+                        "limit_price": None,
+                        "stop_price": None,
+                        "trail_offset": trail_offset,
+                        "order_type": "trailing_stop",
+                        "time_in_force": "gtc",
+                        "signal": asdict(signal),
+                        "timeframe": timeframe,
+                        "atr": None,
+                        "spread_pct": None,
+                        "order_book": None,
+                        "exit_reason": "stop_loss",
+                        "order_id": sl_order_id,
+                        "queued_at": time.time(),
+                        "filled_qty": 0,
+                        "filled_cost": 0.0,
+                        "is_exit_order": True,
+                        "oco_pair": None,
+                    })
+                except Exception as e:
+                    logger.error(f"Failed to place trailing-stop order for {symbol}: {e}")
+
+        # --- Take-profit order ---
+        tp_ot = signal.take_profit_order_type
+        tp_price = exit_prices.get("take_profit_price")
+        tp_order_id = None
+        if tp_ot == "limit" and tp_price is not None:
+            try:
+                order = await asyncio.to_thread(
+                    self.trader.create_market_sell_order,
+                    symbol, qty, 60.0,
+                    limit_price=tp_price, time_in_force="gtc"
+                )
+                tp_order_id = order["id"]
+                self.queued_orders.append({
+                    "symbol": symbol,
+                    "side": "sell",
+                    "amount": qty,
+                    "original_amount": qty,
+                    "limit_price": tp_price,
+                    "stop_price": None,
+                    "trail_offset": None,
+                    "order_type": "limit",
+                    "time_in_force": "gtc",
+                    "signal": asdict(signal),
+                    "timeframe": timeframe,
+                    "atr": None,
+                    "spread_pct": None,
+                    "order_book": None,
+                    "exit_reason": "take_profit",
+                    "order_id": tp_order_id,
+                    "queued_at": time.time(),
+                    "filled_qty": 0,
+                    "filled_cost": 0.0,
+                    "is_exit_order": True,
+                    "oco_pair": None,
+                })
+            except Exception as e:
+                logger.error(f"Failed to place take-profit order for {symbol}: {e}")
+
+        # --- Link OCO pair ---
+        if sl_order_id and tp_order_id:
+            for q in self.queued_orders:
+                if q.get("order_id") == sl_order_id:
+                    q["oco_pair"] = tp_order_id
+                elif q.get("order_id") == tp_order_id:
+                    q["oco_pair"] = sl_order_id
+
+        # Store order IDs in position for risk management
+        pos["stop_loss_order_id"] = sl_order_id
+        pos["take_profit_order_id"] = tp_order_id
+
     async def _execute_partial_tp_single(
         self,
         symbol: str,
@@ -8257,6 +8465,24 @@ class TradingEngine:
                             original_amount = queued.get('original_amount', queued['amount'])
                             queued['amount'] = original_amount - filled_qty
                             await self._handle_queued_sell_fill(trade_dict, queued, partial=True)
+
+                        # --- OCO handling for exit orders ---
+                        if queued.get("is_exit_order"):
+                            oco_pair_id = queued.get("oco_pair")
+                            if oco_pair_id:
+                                try:
+                                    await asyncio.to_thread(self.trader.cancel_order, oco_pair_id)
+                                    logger.info(f"Cancelled OCO pair {oco_pair_id} for {queued['symbol']}")
+                                except Exception as e:
+                                    logger.warning(f"Failed to cancel OCO order {oco_pair_id}: {e}")
+                                self.queued_orders = [
+                                    q for q in self.queued_orders
+                                    if q.get("order_id") != oco_pair_id
+                                ]
+                            pos = self.positions.get(queued["symbol"])
+                            if pos:
+                                pos.pop("stop_loss_order_id", None)
+                                pos.pop("take_profit_order_id", None)
 
                     if status == 'filled':
                         logger.info(f"Queued limit order {order_id} for {queued['symbol']} completely filled.")
