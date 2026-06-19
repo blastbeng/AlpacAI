@@ -682,29 +682,48 @@ def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
 
         articles = []
         for msg in data.get("messages", []):
-            body = msg.get("body", "")
-            title = body[:100]
-            sentiment_label = msg.get("entities", {}).get("sentiment", {}).get("basic", "")
-            if sentiment_label == "Bullish":
-                label = "positive"
-                compound = 0.5
-            elif sentiment_label == "Bearish":
-                label = "negative"
-                compound = -0.5
-            else:
-                sentiment = _analyze_sentiment(body)
-                label = sentiment["label"]
-                compound = sentiment["compound"]
-            if not _is_relevant(symbol, title, body[:300]):
+            try:
+                body = msg.get("body", "")
+                title = body[:100]
+
+                # Safe access: user may be None
+                user = msg.get("user") or {}
+                username = user.get("username", "")
+                msg_id = msg.get("id", "")
+
+                # Safe access: entities may be None
+                entities = msg.get("entities") or {}
+                sentiment_obj = entities.get("sentiment") or {}
+                sentiment_label = sentiment_obj.get("basic", "")
+
+                if sentiment_label == "Bullish":
+                    label = "positive"
+                    compound = 0.5
+                elif sentiment_label == "Bearish":
+                    label = "negative"
+                    compound = -0.5
+                else:
+                    sentiment = _analyze_sentiment(body)
+                    label = sentiment["label"]
+                    compound = sentiment["compound"]
+
+                if not _is_relevant(symbol, title, body[:300]):
+                    continue
+
+                articles.append({
+                    "title": title,
+                    "source": "StockTwits",
+                    "url": f"https://stocktwits.com/{username}/message/{msg_id}",
+                    "published_at": msg.get("created_at", ""),
+                    "summary": body[:300],
+                    "sentiment": {"label": label, "compound": compound},
+                })
+            except Exception as e:
+                logger.warning(
+                    f"StockTwits: failed to process message id={msg.get('id', '?')} "
+                    f"for {symbol}: {e}. Raw message: {json.dumps(msg, default=str)[:500]}"
+                )
                 continue
-            articles.append({
-                "title": title,
-                "source": "StockTwits",
-                "url": f"https://stocktwits.com/{msg.get('user', {}).get('username', '')}/message/{msg.get('id', '')}",
-                "published_at": msg.get("created_at", ""),
-                "summary": body[:300],
-                "sentiment": {"label": label, "compound": compound},
-            })
         logger.debug(f"StockTwits returned {len(articles)} articles for {symbol}")
         return articles
     except Exception as e:
