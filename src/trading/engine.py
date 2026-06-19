@@ -6370,6 +6370,8 @@ class TradingEngine:
                 try:
                     asset = await self._get_asset_info(symbol)
                     min_amount_limit = float(asset.min_order_size) if asset.min_order_size else None
+                    if not asset.fractionable and (min_amount_limit is None or min_amount_limit < 1.0):
+                        min_amount_limit = 1.0
                 except Exception:
                     min_amount_limit = None
                 # Compute min cost from min amount and current price
@@ -6680,6 +6682,8 @@ class TradingEngine:
                 try:
                     asset = await self._get_asset_info(symbol)
                     min_amount_limit = float(asset.min_order_size) if asset.min_order_size else None
+                    if not asset.fractionable and (min_amount_limit is None or min_amount_limit < 1.0):
+                        min_amount_limit = 1.0
                 except Exception:
                     min_amount_limit = None
                 if min_amount_limit is not None and price:
@@ -7430,6 +7434,8 @@ class TradingEngine:
         try:
             asset = await self._get_asset_info(symbol)
             min_amount = float(asset.min_order_size) if asset.min_order_size else None
+            if not asset.fractionable and (min_amount is None or min_amount < 1.0):
+                min_amount = 1.0
         except Exception:
             min_amount = None
         if min_amount is not None and current_price:
@@ -7589,6 +7595,8 @@ class TradingEngine:
         try:
             asset = await self._get_asset_info(symbol)
             min_amount = float(asset.min_order_size) if asset.min_order_size else None
+            if not asset.fractionable and (min_amount is None or min_amount < 1.0):
+                min_amount = 1.0
         except Exception:
             min_amount = None
         if min_amount is not None and current_price:
@@ -7755,6 +7763,8 @@ class TradingEngine:
         try:
             asset = await self._get_asset_info(symbol)
             min_amount = float(asset.min_order_size) if asset.min_order_size else None
+            if not asset.fractionable and (min_amount is None or min_amount < 1.0):
+                min_amount = 1.0
         except Exception:
             min_amount = None
         if min_amount is not None and price:
