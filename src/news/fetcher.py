@@ -130,7 +130,8 @@ def _get_enabled_sources() -> List[str]:
     # Google News is free
     if "googlenews" not in _permanently_disabled_sources:
         sources.append("googlenews")
-    if settings.STOCKTWITS_API_KEY and "stocktwits" not in _permanently_disabled_sources:
+    # StockTwits is free/public – no API key required
+    if "stocktwits" not in _permanently_disabled_sources:
         sources.append("stocktwits")
     if settings.RSS_FEEDS and "rss" not in _permanently_disabled_sources:
         sources.append("rss")
@@ -653,25 +654,37 @@ def _fetch_googlenews(symbol: str) -> List[Dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
-    if not settings.STOCKTWITS_API_KEY:
-        return []
+    """Fetch recent twits from StockTwits public API (no key required)."""
     try:
         _get_rate_limiter().wait("stocktwits")
         logger.debug(f"Fetching StockTwits for {symbol}...")
         base = symbol.split("/")[0]
-        # StockTwits uses tickers like AAPL.X for stocks
-        ticker = f"{base}.X"
-        url = f"https://api.stocktwits.com/api/2/streams/symbol/{ticker}.json"
-        params = {"access_token": settings.STOCKTWITS_API_KEY, "limit": settings.STOCKTWITS_MAX_POSTS}
+        # Public endpoint uses the raw ticker (e.g., AAPL), no .X suffix
+        url = f"https://api.stocktwits.com/api/2/streams/symbol/{base}.json"
+        params = {"limit": settings.STOCKTWITS_MAX_POSTS}
         response = httpx.get(url, params=params, timeout=settings.NEWS_HTTP_TIMEOUT_SECONDS)
-        response.raise_for_status()
-        data = response.json()
+
+        if response.status_code != 200:
+            if response.status_code == 404:
+                logger.debug(f"StockTwits: symbol {base} not found (404)")
+            else:
+                logger.warning(
+                    f"StockTwits returned HTTP {response.status_code} for {symbol}: "
+                    f"{response.text[:200]}"
+                )
+            return []
+
+        try:
+            data = response.json()
+        except (ValueError, json.JSONDecodeError) as e:
+            logger.warning(f"StockTwits JSON decode failed for {symbol}: {e}")
+            return []
+
         articles = []
         for msg in data.get("messages", []):
             body = msg.get("body", "")
             title = body[:100]
             sentiment_label = msg.get("entities", {}).get("sentiment", {}).get("basic", "")
-            # Map StockTwits sentiment to our labels
             if sentiment_label == "Bullish":
                 label = "positive"
                 compound = 0.5
@@ -679,7 +692,6 @@ def _fetch_stocktwits(symbol: str) -> List[Dict[str, str]]:
                 label = "negative"
                 compound = -0.5
             else:
-                # Fallback to VADER
                 sentiment = _analyze_sentiment(body)
                 label = sentiment["label"]
                 compound = sentiment["compound"]
