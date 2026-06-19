@@ -916,10 +916,36 @@ Maximum symbols to trade: {max_symbols}
         symbol_queued = [q for q in queued_orders if q.get('symbol') == symbol]
         if symbol_queued:
             prompt += "\n**Queued orders for this symbol (already waiting to fill):**\n"
+            now = time.time()
+            current_price = ticker.get('last') if ticker else None
             for q in symbol_queued:
                 side = q.get('side', '?').upper()
                 limit_price = q.get('limit_price')
-                prompt += f"  - {side} limit order at {limit_price}\n"
+                queued_at = q.get('queued_at')
+                age_str = ""
+                if queued_at is not None:
+                    age_sec = now - queued_at
+                    if age_sec < 60:
+                        age_str = f" (placed {age_sec:.0f}s ago)"
+                    elif age_sec < 3600:
+                        age_str = f" (placed {age_sec/60:.1f}m ago)"
+                    else:
+                        age_str = f" (placed {age_sec/3600:.1f}h ago)"
+                dist_str = ""
+                if current_price is not None and limit_price is not None and current_price > 0:
+                    if side == 'BUY':
+                        dist_pct = ((limit_price - current_price) / current_price) * 100
+                        if dist_pct > 0:
+                            dist_str = f" (limit is {dist_pct:.2f}% above current price {current_price:.4f})"
+                        else:
+                            dist_str = f" (limit is {abs(dist_pct):.2f}% below current price – should be marketable)"
+                    else:  # SELL
+                        dist_pct = ((current_price - limit_price) / current_price) * 100
+                        if dist_pct > 0:
+                            dist_str = f" (limit is {dist_pct:.2f}% below current price {current_price:.4f})"
+                        else:
+                            dist_str = f" (limit is {abs(dist_pct):.2f}% above current price – should be marketable)"
+                prompt += f"  - {side} limit order at {limit_price}{age_str}{dist_str}\n"
             prompt += (
                 "A queued order means the bot has already placed a limit order that is waiting "
                 "for the market price to reach the limit. **Do NOT output a new BUY or SELL signal "

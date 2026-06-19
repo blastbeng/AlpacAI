@@ -6479,6 +6479,7 @@ class TradingEngine:
                         'spread_pct': spread_pct,
                         'order_book': None,
                         'order_id': order['id'],
+                        'queued_at': time.time(),
                     })
                     if self.notifier:
                         await self.notifier.send_notification(
@@ -6764,6 +6765,7 @@ class TradingEngine:
                         'order_book': None,
                         'exit_reason': exit_reason,
                         'order_id': order['id'],
+                        'queued_at': time.time(),
                     })
                     if self.notifier:
                         await self.notifier.send_notification(
