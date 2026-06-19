@@ -2,7 +2,14 @@ import time
 import logging
 from typing import Dict, List, Optional, Any
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, GetOrdersRequest
+from alpaca.trading.requests import (
+    MarketOrderRequest,
+    LimitOrderRequest,
+    StopOrderRequest,
+    StopLimitOrderRequest,
+    TrailingStopOrderRequest,
+    GetOrdersRequest,
+)
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce, OrderStatus
 from src.config.settings import settings
 from src.utils.retry import retry_on_rate_limit
@@ -201,6 +208,181 @@ class LiveTrader:
             return self._order_to_dict(filled_order, symbol)
 
     # ------------------------------------------------------------------
+    # Advanced order placement (stop, stop-limit, trailing-stop)
+    # ------------------------------------------------------------------
+    @retry_on_rate_limit(max_retries=3, base_delay=1.0)
+    def create_stop_buy_order(
+        self, symbol: str, quote_amount: float, stop_price: float,
+        time_in_force: str = "day", timeout: float = 60.0
+    ) -> Dict[str, Any]:
+        base = symbol.split("/")[0]
+        asset = self.trading_client.get_asset(base)
+        tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
+        stop_price = self._round_price(stop_price)
+
+        if not asset.fractionable:
+            # Need integer qty – use current ask price to compute qty
+            quote = self.trading_client.get_latest_quote(base)
+            price = float(quote.ask_price)
+            qty = int(quote_amount / price)
+            if qty < 1:
+                raise ValueError(f"Insufficient funds to buy 1 whole share of {symbol} (need {price}, have {quote_amount})")
+            order_data = StopOrderRequest(
+                symbol=base,
+                qty=qty,
+                stop_price=stop_price,
+                side=OrderSide.BUY,
+                time_in_force=tif,
+                extended_hours=True,
+            )
+        else:
+            # Fractionable – use notional
+            order_data = StopOrderRequest(
+                symbol=base,
+                notional=quote_amount,
+                stop_price=stop_price,
+                side=OrderSide.BUY,
+                time_in_force=tif,
+                extended_hours=True,
+            )
+        order = self.trading_client.submit_order(order_data)
+        return self._order_to_dict(order, symbol)
+
+    @retry_on_rate_limit(max_retries=3, base_delay=1.0)
+    def create_stop_sell_order(
+        self, symbol: str, qty: float, stop_price: float,
+        time_in_force: str = "day", timeout: float = 60.0
+    ) -> Dict[str, Any]:
+        base = symbol.split("/")[0]
+        tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
+        stop_price = self._round_price(stop_price)
+        order_data = StopOrderRequest(
+            symbol=base,
+            qty=qty,
+            stop_price=stop_price,
+            side=OrderSide.SELL,
+            time_in_force=tif,
+            extended_hours=True,
+        )
+        order = self.trading_client.submit_order(order_data)
+        return self._order_to_dict(order, symbol)
+
+    @retry_on_rate_limit(max_retries=3, base_delay=1.0)
+    def create_stop_limit_buy_order(
+        self, symbol: str, quote_amount: float, stop_price: float, limit_price: float,
+        time_in_force: str = "day", timeout: float = 60.0
+    ) -> Dict[str, Any]:
+        base = symbol.split("/")[0]
+        asset = self.trading_client.get_asset(base)
+        tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
+        stop_price = self._round_price(stop_price)
+        limit_price = self._round_price(limit_price)
+
+        if not asset.fractionable:
+            # Use limit_price to compute integer qty
+            qty = int(quote_amount / limit_price)
+            if qty < 1:
+                raise ValueError(f"Insufficient funds to buy 1 whole share of {symbol} (need {limit_price}, have {quote_amount})")
+            order_data = StopLimitOrderRequest(
+                symbol=base,
+                qty=qty,
+                stop_price=stop_price,
+                limit_price=limit_price,
+                side=OrderSide.BUY,
+                time_in_force=tif,
+                extended_hours=True,
+            )
+        else:
+            order_data = StopLimitOrderRequest(
+                symbol=base,
+                notional=quote_amount,
+                stop_price=stop_price,
+                limit_price=limit_price,
+                side=OrderSide.BUY,
+                time_in_force=tif,
+                extended_hours=True,
+            )
+        order = self.trading_client.submit_order(order_data)
+        return self._order_to_dict(order, symbol)
+
+    @retry_on_rate_limit(max_retries=3, base_delay=1.0)
+    def create_stop_limit_sell_order(
+        self, symbol: str, qty: float, stop_price: float, limit_price: float,
+        time_in_force: str = "day", timeout: float = 60.0
+    ) -> Dict[str, Any]:
+        base = symbol.split("/")[0]
+        tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
+        stop_price = self._round_price(stop_price)
+        limit_price = self._round_price(limit_price)
+        order_data = StopLimitOrderRequest(
+            symbol=base,
+            qty=qty,
+            stop_price=stop_price,
+            limit_price=limit_price,
+            side=OrderSide.SELL,
+            time_in_force=tif,
+            extended_hours=True,
+        )
+        order = self.trading_client.submit_order(order_data)
+        return self._order_to_dict(order, symbol)
+
+    @retry_on_rate_limit(max_retries=3, base_delay=1.0)
+    def create_trailing_stop_buy_order(
+        self, symbol: str, quote_amount: float, trail_offset: float,
+        time_in_force: str = "day", timeout: float = 60.0
+    ) -> Dict[str, Any]:
+        base = symbol.split("/")[0]
+        asset = self.trading_client.get_asset(base)
+        tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
+        trail_offset = self._round_price(trail_offset)
+
+        if not asset.fractionable:
+            # Need integer qty – use current ask price
+            quote = self.trading_client.get_latest_quote(base)
+            price = float(quote.ask_price)
+            qty = int(quote_amount / price)
+            if qty < 1:
+                raise ValueError(f"Insufficient funds to buy 1 whole share of {symbol} (need {price}, have {quote_amount})")
+            order_data = TrailingStopOrderRequest(
+                symbol=base,
+                qty=qty,
+                trail_offset=trail_offset,
+                side=OrderSide.BUY,
+                time_in_force=tif,
+                extended_hours=True,
+            )
+        else:
+            order_data = TrailingStopOrderRequest(
+                symbol=base,
+                notional=quote_amount,
+                trail_offset=trail_offset,
+                side=OrderSide.BUY,
+                time_in_force=tif,
+                extended_hours=True,
+            )
+        order = self.trading_client.submit_order(order_data)
+        return self._order_to_dict(order, symbol)
+
+    @retry_on_rate_limit(max_retries=3, base_delay=1.0)
+    def create_trailing_stop_sell_order(
+        self, symbol: str, qty: float, trail_offset: float,
+        time_in_force: str = "day", timeout: float = 60.0
+    ) -> Dict[str, Any]:
+        base = symbol.split("/")[0]
+        tif = TimeInForce.DAY if time_in_force.lower() == "day" else TimeInForce.GTC
+        trail_offset = self._round_price(trail_offset)
+        order_data = TrailingStopOrderRequest(
+            symbol=base,
+            qty=qty,
+            trail_offset=trail_offset,
+            side=OrderSide.SELL,
+            time_in_force=tif,
+            extended_hours=True,
+        )
+        order = self.trading_client.submit_order(order_data)
+        return self._order_to_dict(order, symbol)
+
+    # ------------------------------------------------------------------
     # Order management
     # ------------------------------------------------------------------
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -229,6 +411,14 @@ class LiveTrader:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def _round_price(price: float) -> float:
+        """Round a price to Alpaca's valid tick size: $0.01 for >=$1, $0.0001 for <$1."""
+        if price >= 1.0:
+            return round(price, 2)
+        else:
+            return round(price, 4)
+
     def _wait_for_order_fill(self, order_id: str, symbol: str, timeout: float, cancel_on_timeout: bool = True) -> Any:
         """Poll Alpaca until the order is filled, rejected, or cancelled.
         If the timeout expires and *cancel_on_timeout* is True, cancel the
@@ -279,4 +469,10 @@ class LiveTrader:
         # Include limit price if the order has one
         if hasattr(order, 'limit_price') and order.limit_price is not None:
             result['limit_price'] = float(order.limit_price)
+        # Include stop price if present
+        if hasattr(order, 'stop_price') and order.stop_price is not None:
+            result['stop_price'] = float(order.stop_price)
+        # Include trail offset if present
+        if hasattr(order, 'trail_offset') and order.trail_offset is not None:
+            result['trail_offset'] = float(order.trail_offset)
         return result
