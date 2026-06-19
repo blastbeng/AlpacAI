@@ -87,7 +87,7 @@ class TelegramBot:
         if not self._is_authorized(update):
             return
         text = update.message.text
-        logger.info(f"Received button text: {text}")
+        logger.debug(f"Received button text: {text}")
         if text == "📊 Status":
             await self.cmd_status(update, context)
         elif text == "📈 Trades":
