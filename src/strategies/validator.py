@@ -233,6 +233,24 @@ def validate_signal(
             if not isinstance(si, (int, float)) or si <= 0:
                 return Signal(action="HOLD", confidence=0.0, reasoning="Invalid strategy_interval_seconds")
 
+        # --- Native order type validation ---
+        order_type = params.get("order_type")
+        if order_type is not None:
+            if order_type not in ("market", "limit", "stop", "stop_limit", "trailing_stop"):
+                return Signal(action="HOLD", confidence=0.0, reasoning=f"Invalid order_type: {order_type}")
+            if order_type in ("stop", "stop_limit"):
+                sp = params.get("stop_price")
+                if sp is None or not isinstance(sp, (int, float)) or sp <= 0:
+                    return Signal(action="HOLD", confidence=0.0, reasoning=f"Missing or invalid stop_price for order_type={order_type}")
+            if order_type in ("limit", "stop_limit"):
+                lp = params.get("limit_price")
+                if lp is None or not isinstance(lp, (int, float)) or lp <= 0:
+                    return Signal(action="HOLD", confidence=0.0, reasoning=f"Missing or invalid limit_price for order_type={order_type}")
+            if order_type == "trailing_stop":
+                to = params.get("trail_offset")
+                if to is None or not isinstance(to, (int, float)) or to <= 0:
+                    return Signal(action="HOLD", confidence=0.0, reasoning="Missing or invalid trail_offset for order_type=trailing_stop")
+
         # Logical consistency checks (no hardcoded values)
         if sl is not None and tp <= sl:
             return Signal(action="HOLD", confidence=0.0, reasoning="take_profit_pct must be greater than stop_loss_pct")

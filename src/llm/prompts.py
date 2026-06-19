@@ -337,6 +337,18 @@ Output strict JSON only. The response must start with '{' or '[' and end with '}
 - `"limit_price"`: (optional) a specific limit price for the order. **Required for extended‑hours trading** (pre‑market, after‑hours, weekends in paper mode). If the `session_info` shows a session other than "Regular", you MUST provide this field for BUY and SELL orders. During regular hours, you may also provide a `limit_price` for BUY orders to get a better entry price (e.g., at or near the VWAP). If you provide a `limit_price` during regular hours, the bot will place a limit order instead of a market order. If the price does not reach your limit, the order will not fill.
 - `"time_in_force"`: (optional) "day" or "gtc". Default "day". Required together with `limit_price` for extended‑hours orders.
 
+**Order Types (REQUIRED for every BUY/SELL):**
+You must specify the order type the bot should use. Available types:
+- `"market"`: Market order. Fills immediately at best available price. No extra parameters.
+- `"limit"`: Limit order. Requires `"limit_price"` (the maximum price to pay for a buy, or minimum to accept for a sell). Optionally `"time_in_force"` ("day" or "gtc").
+- `"stop"`: Stop order. Requires `"stop_price"`. For a buy, the order becomes a market buy when the price rises to or above the stop price. For a sell, it becomes a market sell when the price falls to or below the stop price. Optionally `"time_in_force"`.
+- `"stop_limit"`: Stop-Limit order. Requires `"stop_price"` and `"limit_price"`. When the stop price is reached, a limit order is placed at the limit price. Optionally `"time_in_force"`.
+- `"trailing_stop"`: Trailing Stop order. Requires `"trail_offset"` (in dollars, e.g., 0.50 for $0.50 trail). The stop price trails the market price by this offset. For a buy, the order triggers when the price rises to the trailing stop price; for a sell, when it falls to it. Optionally `"time_in_force"`.
+
+For BUY orders, you may use any type. For SELL orders, you may use market, limit, stop, stop_limit, or trailing_stop. If you use a stop or trailing_stop for a sell, the engine will place that order immediately after the buy fills, and it will act as the stop-loss. You may also place a separate take-profit limit order (by outputting a SELL with order_type "limit" and a limit_price above the entry). The engine will manage both orders (OCO – one cancels the other when filled).
+
+If you omit `order_type`, the engine will default to `"market"` for market orders, or `"limit"` if a `limit_price` is provided (backward compatible).
+
 Required parameters must be provided for every BUY/SELL. If omitted, the trade is skipped. Optional parameters use standard behavior when omitted.
 """
 
@@ -1446,6 +1458,11 @@ You are trading spot only (no shorting). Only output SELL if you currently hold 
         "- `confidence`: a float between 0.0 and 1.0\n"
         "- `reasoning`: a string explaining **why** you chose this action and this confidence level. "
         "Include the key factors (indicators, sentiment, order book, market regime, etc.) that led to your decision.\n"
+        "- `order_type`: one of \"market\", \"limit\", \"stop\", \"stop_limit\", \"trailing_stop\". Required for BUY/SELL.\n"
+        "- `stop_price`: required if order_type is \"stop\" or \"stop_limit\".\n"
+        "- `limit_price`: required if order_type is \"limit\" or \"stop_limit\".\n"
+        "- `trail_offset`: required if order_type is \"trailing_stop\" (in dollars, e.g., 0.50).\n"
+        "- `time_in_force`: optional, \"day\" or \"gtc\". Default \"day\".\n"
         "You may include `\"portfolio_risk_adjustment_factor\"` (0.1–1.0) in the strategy parameters "
         "to vote on the overall portfolio risk for this cycle.\n"
     )

@@ -34,6 +34,10 @@ class Signal:
     model_type: Optional[str] = None
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
+    # --- Native Alpaca order type support ---
+    order_type: Optional[str] = None          # "market", "limit", "stop", "stop_limit", "trailing_stop"
+    stop_price: Optional[float] = None        # for stop/stop_limit orders
+    trail_offset: Optional[float] = None      # for trailing_stop orders (in dollars)
 
 
 class Strategy:

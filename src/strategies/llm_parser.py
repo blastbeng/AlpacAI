@@ -71,7 +71,8 @@ def parse_llm_response(response_text: str) -> Signal:
             "max_risk_per_trade_pct", "min_profit_per_trade", "min_risk_reward_ratio",
             "max_spread_pct", "min_depth_at_take_profit", "max_slippage_pct",
             "max_unrealized_loss_pct", "min_confidence", "news_sentiment_exit_threshold",
-            "strategy_interval_seconds", "limit_price", "time_in_force"
+            "strategy_interval_seconds", "limit_price", "time_in_force",
+            "order_type", "stop_price", "trail_offset"
         ]
         for k in known_params:
             if k in data:
@@ -102,6 +103,25 @@ def parse_llm_response(response_text: str) -> Signal:
                 portfolio_risk_adjustment_factor = max(0.1, min(1.0, float(portfolio_risk_adjustment_factor)))
             except (TypeError, ValueError):
                 portfolio_risk_adjustment_factor = None
+
+        # --- Native order type ---
+        order_type = params.get("order_type")
+        if order_type not in ("market", "limit", "stop", "stop_limit", "trailing_stop", None):
+            order_type = None
+
+        stop_price = params.get("stop_price")
+        if stop_price is not None:
+            try:
+                stop_price = float(stop_price)
+            except (TypeError, ValueError):
+                stop_price = None
+
+        trail_offset = params.get("trail_offset")
+        if trail_offset is not None:
+            try:
+                trail_offset = float(trail_offset)
+            except (TypeError, ValueError):
+                trail_offset = None
 
         reason = data.get("reason", "")
 
@@ -146,6 +166,9 @@ def parse_llm_response(response_text: str) -> Signal:
             max_hold_time_seconds=max_hold_time_seconds,
             cooldown_after_loss_seconds=cooldown_after_loss_seconds,
             portfolio_risk_adjustment_factor=portfolio_risk_adjustment_factor,
+            order_type=order_type,
+            stop_price=stop_price,
+            trail_offset=trail_offset,
         )
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         raise ValueError(f"Failed to parse LLM response as valid JSON: {e}") from e
