@@ -6464,7 +6464,7 @@ class TradingEngine:
                 order = await asyncio.to_thread(
                     self.trader.create_market_buy_order, symbol, amount, fill_timeout, limit_price, time_in_force
                 )
-                if order.get('status') == 'queued':
+                if order.get('status') == 'open':
                     logger.info(f"BUY limit order for {symbol} queued at {limit_price}")
                     self.queued_orders.append({
                         'symbol': symbol,
@@ -6748,7 +6748,7 @@ class TradingEngine:
                 order = await asyncio.to_thread(
                     self.trader.create_market_sell_order, symbol, gross_amount, fill_timeout, limit_price, time_in_force
                 )
-                if order.get('status') == 'queued':
+                if order.get('status') == 'open':
                     logger.info(f"SELL limit order for {symbol} queued at {limit_price}")
                     self.queued_orders.append({
                         'symbol': symbol,
