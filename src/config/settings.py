@@ -180,16 +180,16 @@ class Settings(BaseSettings):
 
     # OpenAI-compatible API
     OPENAI_API_KEY: Optional[str] = None
-    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
-    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_BASE_URL: Optional[str] = None
+    OPENAI_MODEL: Optional[str] = None
 
     # Mind model (complex reasoning: symbol selection, strategy generation)
     OLLAMA_MIND_MODEL: str = "deepseek-v4-flash"
-    OPENAI_MIND_MODEL: str = "gpt-4o"
+    OPENAI_MIND_MODEL: Optional[str] = None
 
     # Actuator model (fast, time‑critical decisions: stop‑loss/take‑profit reviews, corrections)
     OLLAMA_ACTUATOR_MODEL: str = "deepseek-v4-flash"
-    OPENAI_ACTUATOR_MODEL: str = "gpt-4o-mini"
+    OPENAI_ACTUATOR_MODEL: Optional[str] = None
 
     # Per‑role provider overrides (empty = use global LLM_PROVIDER)
     LLM_MIND_PROVIDER: str = ""
@@ -198,8 +198,8 @@ class Settings(BaseSettings):
     # Per‑role OpenAI settings (empty or None = use global OPENAI_*)
     OPENAI_MIND_API_KEY: Optional[str] = None
     OPENAI_ACTUATOR_API_KEY: Optional[str] = None
-    OPENAI_MIND_BASE_URL: str = ""
-    OPENAI_ACTUATOR_BASE_URL: str = ""
+    OPENAI_MIND_BASE_URL: Optional[str] = None
+    OPENAI_ACTUATOR_BASE_URL: Optional[str] = None
 
     # Per‑role Ollama settings (empty or None = use global OLLAMA_*)
     OLLAMA_MIND_BASE_URL: str = ""
