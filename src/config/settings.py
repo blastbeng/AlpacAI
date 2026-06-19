@@ -171,8 +171,8 @@ class Settings(BaseSettings):
         return self
 
     # Ollama
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "deepseek-v4-flash"
+    OLLAMA_BASE_URL: Optional[str] = None
+    OLLAMA_MODEL: Optional[str] = None
     OLLAMA_API_KEY: Optional[str] = None
 
     # LLM Provider selection
@@ -184,11 +184,11 @@ class Settings(BaseSettings):
     OPENAI_MODEL: Optional[str] = None
 
     # Mind model (complex reasoning: symbol selection, strategy generation)
-    OLLAMA_MIND_MODEL: str = "deepseek-v4-flash"
+    OLLAMA_MIND_MODEL: Optional[str] = None
     OPENAI_MIND_MODEL: Optional[str] = None
 
     # Actuator model (fast, time‑critical decisions: stop‑loss/take‑profit reviews, corrections)
-    OLLAMA_ACTUATOR_MODEL: str = "deepseek-v4-flash"
+    OLLAMA_ACTUATOR_MODEL: Optional[str] = None
     OPENAI_ACTUATOR_MODEL: Optional[str] = None
 
     # Per‑role provider overrides (empty = use global LLM_PROVIDER)
@@ -202,8 +202,8 @@ class Settings(BaseSettings):
     OPENAI_ACTUATOR_BASE_URL: Optional[str] = None
 
     # Per‑role Ollama settings (empty or None = use global OLLAMA_*)
-    OLLAMA_MIND_BASE_URL: str = ""
-    OLLAMA_ACTUATOR_BASE_URL: str = ""
+    OLLAMA_MIND_BASE_URL: Optional[str] = None
+    OLLAMA_ACTUATOR_BASE_URL: Optional[str] = None
     OLLAMA_MIND_API_KEY: Optional[str] = None
     OLLAMA_ACTUATOR_API_KEY: Optional[str] = None
 
