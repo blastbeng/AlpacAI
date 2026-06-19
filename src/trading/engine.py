@@ -5171,8 +5171,8 @@ class TradingEngine:
                     }
                 )
 
-    def get_profit_summary(self) -> Dict[str, float]:
-        """Return profit/loss summary."""
+    def get_profit_summary(self) -> Dict[str, Any]:
+        """Return profit/loss summary including queued orders."""
         balance = self.trader.fetch_balance()
         current_balance = balance.get(self.base_currency, 0.0)
         open_value = 0.0
@@ -5184,6 +5184,37 @@ class TradingEngine:
                 open_value += pos['amount'] * price
             except Exception:
                 pass
+
+        # --- Queued orders ---
+        queued_buy_count = 0
+        queued_sell_count = 0
+        queued_buy_quote_total = 0.0
+        queued_sell_base_total = 0.0
+        queued_sell_value = 0.0
+
+        # Collect symbols for queued sells to fetch prices
+        queued_sell_symbols = []
+        for q in self.queued_orders:
+            if q['side'] == 'buy':
+                queued_buy_count += 1
+                # 'amount' is the remaining quote to spend
+                queued_buy_quote_total += q.get('amount', 0.0)
+            elif q['side'] == 'sell':
+                queued_sell_count += 1
+                queued_sell_base_total += q.get('amount', 0.0)
+                queued_sell_symbols.append(q['symbol'])
+
+        if queued_sell_symbols:
+            sell_tickers = self._get_tickers_for_symbols_sync(queued_sell_symbols)
+            for q in self.queued_orders:
+                if q['side'] == 'sell':
+                    sym = q['symbol']
+                    t = sell_tickers.get(sym)
+                    price = t['last'] if t and t.get('last') else 0.0
+                    queued_sell_value += q.get('amount', 0.0) * price
+
+        effective_balance = current_balance - queued_buy_quote_total
+
         total_fees = 0.0
         for t in self.trade_history:
             fee = t.get('fee', {})
@@ -5217,6 +5248,7 @@ class TradingEngine:
         return {
             "initial_balance": self.initial_balance,
             "current_balance": current_balance,
+            "effective_balance": effective_balance,
             "open_value": open_value,
             "total_pnl": pnl,
             "pnl_percent": pnl_percent,
@@ -5226,6 +5258,11 @@ class TradingEngine:
             "losses": losses,
             "win_rate": round(win_rate, 4),
             "base_currency": self.base_currency,
+            "queued_buy_count": queued_buy_count,
+            "queued_sell_count": queued_sell_count,
+            "queued_buy_quote_total": queued_buy_quote_total,
+            "queued_sell_base_total": queued_sell_base_total,
+            "queued_sell_value": queued_sell_value,
         }
 
     def get_open_trades(self) -> List[Dict[str, Any]]:
@@ -8342,3 +8379,24 @@ class TradingEngine:
         if paused_raw and paused_raw == "1":
             self.current_symbols = [c for c in self.current_symbols if c["symbol"] != symbol]
             logger.info(f"Trading paused: removed {symbol} from current_symbols after position closed.")
+
+    def _get_tickers_for_symbols_sync(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Fetch latest quotes for a list of symbols synchronously, batching missing ones."""
+        tickers: Dict[str, Dict[str, Any]] = {}
+        missing: List[str] = []
+        for sym in symbols:
+            t = self.ws_manager.get_ticker(sym)
+            if t is not None:
+                tickers[sym] = t
+            else:
+                missing.append(sym.split("/")[0])
+        if missing:
+            try:
+                raw = get_quotes(self.data_client, missing)
+                for sym in symbols:
+                    base = sym.split("/")[0]
+                    if base in raw:
+                        tickers[sym] = raw[base]
+            except Exception as e:
+                logger.warning(f"Sync batch quote fetch failed: {e}")
+        return tickers

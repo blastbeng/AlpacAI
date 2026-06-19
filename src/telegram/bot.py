@@ -636,7 +636,32 @@ class TelegramBot:
             msg += f"💱 Base Currency: {base_currency}\n\n"
             msg += f"💵 Initial Balance:  {summary['initial_balance']:,.6f}\n"
             msg += f"🏦 Current Balance:  {summary['current_balance']:,.6f}\n"
+
+            # Effective balance (cash not tied up in pending buys)
+            eff_bal = summary.get('effective_balance', summary['current_balance'])
+            if eff_bal != summary['current_balance']:
+                msg += f"💳 Available Cash:   {eff_bal:,.6f}  (balance − pending buys)\n"
+            else:
+                msg += f"💳 Available Cash:   {eff_bal:,.6f}\n"
+
             msg += f"📊 Open Positions:   {summary['open_value']:,.6f}\n"
+
+            # Queued orders
+            q_buy_cnt = summary.get('queued_buy_count', 0)
+            q_sell_cnt = summary.get('queued_sell_count', 0)
+            if q_buy_cnt > 0 or q_sell_cnt > 0:
+                msg += "\n<b>⏳ Queued Orders</b>\n"
+                if q_buy_cnt > 0:
+                    q_buy_quote = summary.get('queued_buy_quote_total', 0.0)
+                    msg += f"  🟢 Pending Buys: {q_buy_cnt} order(s), {q_buy_quote:,.6f} {base_currency} committed\n"
+                if q_sell_cnt > 0:
+                    q_sell_base = summary.get('queued_sell_base_total', 0.0)
+                    q_sell_val = summary.get('queued_sell_value', 0.0)
+                    msg += f"  🔴 Pending Sells: {q_sell_cnt} order(s), {q_sell_base:,.6f} base units"
+                    if q_sell_val > 0:
+                        msg += f" (~{q_sell_val:,.6f} {base_currency})"
+                    msg += "\n"
+
             total_wallet = summary['current_balance'] + summary['open_value']
             msg += f"💼 Total Wallet:     {total_wallet:,.6f}\n"
             msg += f"🧾 Fees Paid:        {summary['total_fees']:,.6f}\n"
