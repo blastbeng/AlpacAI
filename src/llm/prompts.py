@@ -373,6 +373,7 @@ def build_stock_selection_prompt(
     trade_pattern_analysis: Optional[Dict[str, Any]] = None,
     symbol_events: Optional[Dict[str, Dict[str, Any]]] = None,
     symbol_trend_scores: Optional[Dict[str, float]] = None,
+    market_breadth: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a prompt to ask the LLM which stocks/ETFs to trade."""
     # Summarize tickers and limits for the prompt

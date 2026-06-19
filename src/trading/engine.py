@@ -2219,6 +2219,7 @@ class TradingEngine:
             trade_pattern_analysis=trade_pattern_analysis,
             symbol_events=symbol_events,
             symbol_trend_scores=symbol_trend_scores,
+            market_breadth=market_breadth,
         )
         if auto_resume_note:
             prompt += "\n" + auto_resume_note
