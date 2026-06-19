@@ -305,7 +305,7 @@ You are a professional trading bot. Your primary goal is to generate consistent 
 - You may include `"stock_revaluation_interval_seconds"` (integer ≥60) to control how often the stock list is re-evaluated.
 - You may include `"global_risk_multiplier"` (0.0-1.0) to scale all position sizes for the next cycle. Use this to reduce exposure without pausing entirely.
 - You may optionally include an "indicator_config" object to customize indicator parameters. If omitted, defaults are used.
-- You may include a "backtest_summary" field (string) summarizing your backtest results when historical OHLCV data is provided.
+- You must include a "backtest_summary" field (string) summarizing your backtest results when historical OHLCV data is provided.
 
 You will receive news sentiment data for each stock. Use it to gauge market sentiment and catalysts: prefer stocks with positive sentiment; be cautious with negative sentiment. If sentiment conflicts with technicals, give more weight to technicals but explain your reasoning.
 
@@ -1343,9 +1343,9 @@ Maximum symbols to trade: {max_symbols}
             f"{raw_candles_str}\n"
         )
         prompt += (
-            "Perform a backtest on these candles using your proposed strategy (entry, stop-loss, take-profit, trailing stop). "
-            "Include a `backtest_summary` field with results (e.g., \"3 wins, 2 losses, net +2.3%\"). "
-            "If insufficient data, explain why.\n"
+            "**REQUIRED:** Perform a backtest on these candles using your proposed strategy. "
+            "You MUST include a `backtest_summary` field in your JSON output with the results "
+            "(e.g., \"3 wins, 2 losses, net +2.3%\"). If there is not enough data, explain why in the field.\n"
         )
     if drawdown_pct is not None:
         prompt += f"Current account drawdown: {drawdown_pct}%\n"
