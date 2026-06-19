@@ -1291,6 +1291,7 @@ class TradingEngine:
                 # Remove any queued orders for this delisted symbol
                 self.queued_orders = [q for q in self.queued_orders if q['symbol'] != symbol]
                 if symbol in self.positions:
+                    await self._cancel_exit_orders(symbol)
                     pos = self.positions.pop(symbol)
                     cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
                     trade = {
@@ -1366,6 +1367,7 @@ class TradingEngine:
                     f"Updating position from {recorded_amount} to {actual_balance}."
                 )
                 if actual_balance == 0.0:
+                    await self._cancel_exit_orders(symbol)
                     del self.positions[symbol]
                     await self._remove_symbol_if_paused(symbol)
                 else:
@@ -6840,6 +6842,9 @@ class TradingEngine:
                     )
 
         elif signal.action == "SELL":
+            # Cancel any native exit orders before selling
+            if symbol in self.positions:
+                await self._cancel_exit_orders(symbol)
             params = signal.strategy_params or {}
             fill_timeout = params.get("order_fill_timeout_seconds", settings.ORDER_FILL_TIMEOUT_SECONDS)
             # Fetch fee rate for this symbol
@@ -8505,6 +8510,24 @@ class TradingEngine:
                             logger.error(f"Failed to cancel timed-out order {order_id}: {e}")
                         # Remove from queue regardless of cancel success
                         self.queued_orders.remove(queued)
+                        # If this was an exit order, cancel its OCO pair
+                        if queued.get("is_exit_order"):
+                            oco_pair_id = queued.get("oco_pair")
+                            if oco_pair_id:
+                                try:
+                                    await asyncio.to_thread(self.trader.cancel_order, oco_pair_id)
+                                    logger.info(f"Cancelled OCO pair {oco_pair_id} for timed-out exit order {order_id}")
+                                except Exception as e:
+                                    logger.warning(f"Failed to cancel OCO order {oco_pair_id}: {e}")
+                                self.queued_orders = [
+                                    q for q in self.queued_orders
+                                    if q.get("order_id") != oco_pair_id
+                                ]
+                            # Clear exit order IDs from position
+                            pos = self.positions.get(queued["symbol"])
+                            if pos:
+                                pos.pop("stop_loss_order_id", None)
+                                pos.pop("take_profit_order_id", None)
                         if self.notifier:
                             stock_name = await self._get_stock_name(queued['symbol'])
                             tf = queued.get('timeframe')
@@ -8689,6 +8712,22 @@ class TradingEngine:
                                 }
                             )
                         self.queued_orders.remove(queued)
+                        if queued.get("is_exit_order"):
+                            oco_pair_id = queued.get("oco_pair")
+                            if oco_pair_id:
+                                try:
+                                    await asyncio.to_thread(self.trader.cancel_order, oco_pair_id)
+                                    logger.info(f"Cancelled OCO pair {oco_pair_id} for {status} exit order {order_id}")
+                                except Exception as e:
+                                    logger.warning(f"Failed to cancel OCO order {oco_pair_id}: {e}")
+                                self.queued_orders = [
+                                    q for q in self.queued_orders
+                                    if q.get("order_id") != oco_pair_id
+                                ]
+                            pos = self.positions.get(queued["symbol"])
+                            if pos:
+                                pos.pop("stop_loss_order_id", None)
+                                pos.pop("take_profit_order_id", None)
 
                     # else: still open / partially_filled / accepted – keep waiting
             except Exception as e:
@@ -8835,6 +8874,21 @@ class TradingEngine:
                 buy_summary["llm_model"] = signal_dict.get('llm_model')
             await self.notifier.send_notification(buy_msg, summary=buy_summary)
 
+        # Place native exit orders for the new/updated position
+        signal_dict = queued.get('signal', {}) or {}
+        if signal_dict:
+            try:
+                # Reconstruct a Signal from the stored dict
+                reconstructed_signal = Signal(**signal_dict)
+                exit_prices = self._compute_exit_order_prices(
+                    entry_price=self.positions[symbol]["price"],
+                    signal=reconstructed_signal,
+                    atr=queued.get('atr'),
+                )
+                await self._place_exit_orders(symbol, reconstructed_signal, exit_prices, queued.get('timeframe'))
+            except Exception as e:
+                logger.error(f"Failed to place exit orders after queued buy fill for {symbol}: {e}")
+
     async def _handle_queued_sell_fill(self, trade_dict: Dict[str, Any], queued: Dict[str, Any], partial: bool = False):
         """Process a queued SELL limit order that has filled on Alpaca.
 
@@ -8904,6 +8958,8 @@ class TradingEngine:
                 self.positions[symbol]["price"] = remaining_cost_basis / remaining_net_base if remaining_net_base > 0 else 0.0
         else:
             # Full fill (non-partial) – original logic
+            # Cancel any remaining exit orders before removing the position
+            await self._cancel_exit_orders(symbol)
             if pos:
                 cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
                 realized_pnl = net_quote - cost_basis
