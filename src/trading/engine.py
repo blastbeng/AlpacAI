@@ -7740,6 +7740,26 @@ class TradingEngine:
             "take_profit_price": tp_price,
         }
 
+    async def _cancel_exit_orders(self, symbol: str):
+        """Cancel any native stop-loss and take-profit orders for a symbol."""
+        pos = self.positions.get(symbol)
+        if not pos:
+            return
+        for order_id_key in ("stop_loss_order_id", "take_profit_order_id"):
+            order_id = pos.pop(order_id_key, None)
+            if order_id:
+                try:
+                    await asyncio.to_thread(self.trader.cancel_order, order_id)
+                    logger.info(f"Cancelled exit order {order_id} for {symbol}")
+                except Exception as e:
+                    logger.warning(f"Failed to cancel exit order {order_id}: {e}")
+                self.queued_orders = [
+                    q for q in self.queued_orders
+                    if q.get("order_id") != order_id
+                ]
+        pos.pop("stop_loss_order_type", None)
+        pos.pop("_native_stop_price", None)
+
     async def _place_exit_orders(
         self,
         symbol: str,
@@ -7751,6 +7771,27 @@ class TradingEngine:
         pos = self.positions.get(symbol)
         if not pos:
             return
+
+        # --- Cancel any existing exit orders for this position ---
+        old_sl_id = pos.get("stop_loss_order_id")
+        old_tp_id = pos.get("take_profit_order_id")
+        for old_id in (old_sl_id, old_tp_id):
+            if old_id:
+                try:
+                    await asyncio.to_thread(self.trader.cancel_order, old_id)
+                    logger.info(f"Cancelled old exit order {old_id} for {symbol}")
+                except Exception as e:
+                    logger.warning(f"Failed to cancel old exit order {old_id}: {e}")
+                # Remove from queued_orders
+                self.queued_orders = [
+                    q for q in self.queued_orders
+                    if q.get("order_id") != old_id
+                ]
+        # Clear the stored IDs so they are not reused
+        pos.pop("stop_loss_order_id", None)
+        pos.pop("take_profit_order_id", None)
+        pos.pop("stop_loss_order_type", None)
+        pos.pop("_native_stop_price", None)
 
         base, quote = symbol.split("/")
         qty = pos["amount"]  # base quantity to sell
@@ -8081,6 +8122,9 @@ class TradingEngine:
             remaining_cost_basis = cost_basis - prorated_cost_basis
             remaining_net_base = net_base - filled_amount
 
+            # Cancel old exit orders because quantity changed
+            await self._cancel_exit_orders(symbol)
+
             if remaining_amount <= 0 or remaining_net_base <= 0:
                 # Position fully closed (shouldn't normally happen with partial, but handle gracefully)
                 self.positions.pop(symbol, None)
@@ -8252,6 +8296,9 @@ class TradingEngine:
             remaining_cost_basis = cost_basis - prorated_cost_basis
             remaining_net_base = net_base - filled_amount
 
+            # Cancel old exit orders because quantity changed
+            await self._cancel_exit_orders(symbol)
+
             if remaining_amount <= 0 or remaining_net_base <= 0:
                 # Position fully closed
                 self.positions.pop(symbol, None)
@@ -8400,6 +8447,9 @@ class TradingEngine:
                     order["hold_time_seconds"] = (order["timestamp"] - pos["timestamp"]) / 1000.0
                 self.trade_history.append(order)
                 await asyncio.to_thread(insert_trade, order)
+
+            # Cancel any remaining exit orders before removing the position
+            await self._cancel_exit_orders(symbol)
 
             # Remove the now-empty position
             self.positions.pop(symbol, None)
@@ -8830,6 +8880,9 @@ class TradingEngine:
             remaining_amount = pos["amount"] - trade_dict['amount']
             remaining_cost_basis = cost_basis - prorated_cost_basis
             remaining_net_base = net_base - trade_dict['amount']
+
+            # Cancel old exit orders because quantity changed
+            await self._cancel_exit_orders(symbol)
 
             if remaining_amount <= 0 or remaining_net_base <= 0:
                 # Position fully closed via partial fills
