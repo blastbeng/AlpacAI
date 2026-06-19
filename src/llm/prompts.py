@@ -945,13 +945,32 @@ Maximum symbols to trade: {max_symbols}
                             dist_str = f" (limit is {dist_pct:.2f}% below current price {current_price:.4f})"
                         else:
                             dist_str = f" (limit is {abs(dist_pct):.2f}% above current price – should be marketable)"
-                prompt += f"  - {side} limit order at {limit_price}{age_str}{dist_str}\n"
+                # --- Partial fill info ---
+                filled_qty = q.get('filled_qty', 0.0)
+                original_amount = q.get('original_amount')
+                partial_str = ""
+                if filled_qty > 0 and original_amount is not None and original_amount > 0:
+                    if side == 'BUY':
+                        # For buys, original_amount is quote amount; filled_qty is base quantity.
+                        # We can show filled base qty and remaining base qty.
+                        remaining_base = original_amount - filled_qty
+                        partial_str = f" (partially filled: {filled_qty:.6f} base filled, {remaining_base:.6f} remaining)"
+                    else:
+                        # For sells, original_amount is base amount; filled_qty is base quantity.
+                        remaining_base = original_amount - filled_qty
+                        partial_str = f" (partially filled: {filled_qty:.6f} base filled, {remaining_base:.6f} remaining)"
+
+                prompt += f"  - {side} limit order at {limit_price}{age_str}{dist_str}{partial_str}\n"
+
             prompt += (
                 "A queued order means the bot has already placed a limit order that is waiting "
                 "for the market price to reach the limit. **Do NOT output a new BUY or SELL signal "
                 "for this symbol while a queued order exists.** The engine will ignore any new signal "
-                "until the queued order fills or is cancelled. If you want to change the order, you must "
-                "first cancel it (not possible via JSON) – instead, output HOLD and explain in reasoning.\n"
+                "until the queued order fills or is cancelled. "
+                "If the order is partially filled, the engine will automatically fill the remaining "
+                "amount when the market price crosses the limit – you do not need to take any action. "
+                "If you want to change the order, you must first cancel it (not possible via JSON) – "
+                "instead, output HOLD and explain in reasoning.\n"
             )
     base_symbol = symbol
     quote_currency = base_currency
