@@ -6471,6 +6471,7 @@ class TradingEngine:
                         'symbol': symbol,
                         'side': 'buy',
                         'amount': amount,
+                        'original_amount': amount,
                         'limit_price': limit_price,
                         'time_in_force': time_in_force,
                         'signal': asdict(signal),
@@ -6480,6 +6481,8 @@ class TradingEngine:
                         'order_book': None,
                         'order_id': order['id'],
                         'queued_at': time.time(),
+                        'filled_qty': 0,
+                        'filled_cost': 0.0,
                     })
                     if self.notifier:
                         await self.notifier.send_notification(
@@ -6756,6 +6759,7 @@ class TradingEngine:
                         'symbol': symbol,
                         'side': 'sell',
                         'amount': gross_amount,
+                        'original_amount': gross_amount,
                         'limit_price': limit_price,
                         'time_in_force': time_in_force,
                         'signal': asdict(signal),
@@ -6766,6 +6770,8 @@ class TradingEngine:
                         'exit_reason': exit_reason,
                         'order_id': order['id'],
                         'queued_at': time.time(),
+                        'filled_qty': 0,
+                        'filled_cost': 0.0,
                     })
                     if self.notifier:
                         await self.notifier.send_notification(
@@ -7850,12 +7856,14 @@ class TradingEngine:
             logger.error(f"Dust sweep failed for {symbol}: {e}")
 
     async def _process_queued_orders(self):
-        """Periodically check queued limit orders on Alpaca and process fills.
+        """Periodically check queued limit orders on Alpaca and process fills,
+        including partial fills.
 
         Instead of re-executing the signal (which would place a duplicate order
         while the original is still open), we poll the actual Alpaca order
-        status. When the order fills, we record the trade and update positions
-        exactly as a normal fill would. We never place a new order here.
+        status. When the order fills (fully or partially), we record the trade
+        and update positions exactly as a normal fill would. We never place a
+        new order here.
         """
         await asyncio.sleep(10)
         while self._running:
@@ -7880,13 +7888,44 @@ class TradingEngine:
                     if isinstance(status, str):
                         status = status.lower()
 
-                    if status == 'filled':
-                        logger.info(f"Queued limit order {order_id} for {queued['symbol']} filled.")
-                        trade_dict = self.trader._order_to_dict(alpaca_order, queued['symbol'])
+                    # Determine how much has been filled since the last check
+                    filled_qty = float(alpaca_order.filled_qty) if alpaca_order.filled_qty else 0.0
+                    filled_avg_price = float(alpaca_order.filled_avg_price) if alpaca_order.filled_avg_price else 0.0
+                    last_filled_qty = queued.get('filled_qty', 0.0)
+                    delta_qty = filled_qty - last_filled_qty
+
+                    if delta_qty > 0:
+                        # A new fill occurred (partial or final)
+                        delta_cost = delta_qty * filled_avg_price
+                        # Build a trade dict for this delta
+                        trade_dict = {
+                            'id': str(alpaca_order.id),
+                            'symbol': queued['symbol'],
+                            'side': queued['side'],
+                            'amount': delta_qty,
+                            'price': filled_avg_price,
+                            'cost': delta_cost,
+                            'fee': {'cost': 0.0, 'currency': 'USD'},
+                            'status': 'closed',
+                            'timestamp': int(time.time() * 1000),
+                        }
+                        # Update tracking fields
+                        queued['filled_qty'] = filled_qty
+                        queued['filled_cost'] = queued.get('filled_cost', 0.0) + delta_cost
+
                         if queued['side'] == 'buy':
+                            # Update remaining quote amount
+                            original_amount = queued.get('original_amount', queued['amount'])
+                            queued['amount'] = original_amount - queued['filled_cost']
                             await self._handle_queued_buy_fill(trade_dict, queued)
                         else:
-                            await self._handle_queued_sell_fill(trade_dict, queued)
+                            # Update remaining base amount
+                            original_amount = queued.get('original_amount', queued['amount'])
+                            queued['amount'] = original_amount - filled_qty
+                            await self._handle_queued_sell_fill(trade_dict, queued, partial=True)
+
+                    if status == 'filled':
+                        logger.info(f"Queued limit order {order_id} for {queued['symbol']} completely filled.")
                         self.queued_orders.remove(queued)
 
                     elif status in ('rejected', 'canceled', 'cancelled', 'expired'):
@@ -8052,8 +8091,12 @@ class TradingEngine:
                 buy_summary["llm_model"] = signal_dict.get('llm_model')
             await self.notifier.send_notification(buy_msg, summary=buy_summary)
 
-    async def _handle_queued_sell_fill(self, trade_dict: Dict[str, Any], queued: Dict[str, Any]):
-        """Process a queued SELL limit order that has filled on Alpaca."""
+    async def _handle_queued_sell_fill(self, trade_dict: Dict[str, Any], queued: Dict[str, Any], partial: bool = False):
+        """Process a queued SELL limit order that has filled on Alpaca.
+
+        When *partial* is True, only a portion of the order has filled; the
+        position is prorated and updated rather than removed.
+        """
         symbol = trade_dict['symbol']
         base, quote = symbol.split("/")
         pos = self.positions.get(symbol)
@@ -8067,13 +8110,6 @@ class TradingEngine:
             trade_dict['fee'] = {'cost': fee_cost, 'currency': fee_currency}
 
         net_quote = trade_dict['cost'] - (fee_cost if fee_currency == quote else 0.0)
-        if pos:
-            cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
-            realized_pnl = net_quote - cost_basis
-        else:
-            realized_pnl = 0.0
-        trade_dict['realized_pnl'] = realized_pnl
-        trade_dict['cost_basis'] = pos.get("cost_basis", 0.0) if pos else 0.0
         exit_reason = queued.get('exit_reason', 'limit_order')
         trade_dict['exit_reason'] = exit_reason
         signal_dict = queued.get('signal', {}) or {}
@@ -8086,18 +8122,61 @@ class TradingEngine:
             trade_dict['hold_time_seconds'] = (trade_dict['timestamp'] - pos["timestamp"]) / 1000.0
         else:
             trade_dict['hold_time_seconds'] = None
-        if realized_pnl < 0:
-            self.last_loss_time[symbol] = time.time()
-            self.cooldown_durations[symbol] = pos.get("cooldown_after_loss_seconds", 0) if pos else 0
-        if pos:
-            pos.pop("_stop_loss_triggered", None)
-            pos.pop("_stop_loss_review_count", None)
-        self.positions.pop(symbol, None)
-        self._strategy_intervals.pop(symbol, None)
-        self._last_strategy_eval.pop(symbol, None)
-        self._last_decisions.pop(symbol, None)
-        self._pending_entries.pop(symbol, None)
-        await self._remove_symbol_if_paused(symbol)
+
+        if partial and pos:
+            # Prorated cost basis for the sold portion
+            cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
+            net_base = pos.get("net_base", pos["amount"])
+            prorated_cost_basis = cost_basis * (trade_dict['amount'] / net_base) if net_base > 0 else 0.0
+            realized_pnl = net_quote - prorated_cost_basis
+            trade_dict['realized_pnl'] = realized_pnl
+            trade_dict['cost_basis'] = prorated_cost_basis
+
+            # Update position
+            remaining_amount = pos["amount"] - trade_dict['amount']
+            remaining_cost_basis = cost_basis - prorated_cost_basis
+            remaining_net_base = net_base - trade_dict['amount']
+
+            if remaining_amount <= 0 or remaining_net_base <= 0:
+                # Position fully closed via partial fills
+                if realized_pnl < 0:
+                    self.last_loss_time[symbol] = time.time()
+                    self.cooldown_durations[symbol] = pos.get("cooldown_after_loss_seconds", 0)
+                pos.pop("_stop_loss_triggered", None)
+                pos.pop("_stop_loss_review_count", None)
+                self.positions.pop(symbol, None)
+                self._strategy_intervals.pop(symbol, None)
+                self._last_strategy_eval.pop(symbol, None)
+                self._last_decisions.pop(symbol, None)
+                self._pending_entries.pop(symbol, None)
+                await self._remove_symbol_if_paused(symbol)
+            else:
+                self.positions[symbol]["amount"] = remaining_amount
+                self.positions[symbol]["cost_basis"] = remaining_cost_basis
+                self.positions[symbol]["net_base"] = remaining_net_base
+                self.positions[symbol]["price"] = remaining_cost_basis / remaining_net_base if remaining_net_base > 0 else 0.0
+        else:
+            # Full fill (non-partial) – original logic
+            if pos:
+                cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
+                realized_pnl = net_quote - cost_basis
+            else:
+                realized_pnl = 0.0
+            trade_dict['realized_pnl'] = realized_pnl
+            trade_dict['cost_basis'] = pos.get("cost_basis", 0.0) if pos else 0.0
+            if realized_pnl < 0:
+                self.last_loss_time[symbol] = time.time()
+                self.cooldown_durations[symbol] = pos.get("cooldown_after_loss_seconds", 0) if pos else 0
+            if pos:
+                pos.pop("_stop_loss_triggered", None)
+                pos.pop("_stop_loss_review_count", None)
+            self.positions.pop(symbol, None)
+            self._strategy_intervals.pop(symbol, None)
+            self._last_strategy_eval.pop(symbol, None)
+            self._last_decisions.pop(symbol, None)
+            self._pending_entries.pop(symbol, None)
+            await self._remove_symbol_if_paused(symbol)
+
         self.trade_history.append(trade_dict)
         self._balance_cache = None
         await asyncio.to_thread(insert_trade, trade_dict)
@@ -8119,9 +8198,10 @@ class TradingEngine:
             stock_name = await self._get_stock_name(symbol)
             tf = queued.get('timeframe') or (pos.get("timeframe") if pos else None)
             display_symbol = self._format_symbol_display(symbol, stock_name, tf)
-            sell_msg = f"🔴 SELL{reason_str} {display_symbol}: {trade_dict['amount']:.6f} @ {trade_dict['price']:.4f}"
+            partial_str = " (partial)" if partial else ""
+            sell_msg = f"🔴 SELL{reason_str}{partial_str} {display_symbol}: {trade_dict['amount']:.6f} @ {trade_dict['price']:.4f}"
             if pos:
-                cb = pos.get("cost_basis", pos["amount"] * pos["price"])
+                cb = trade_dict.get('cost_basis', 0.0) or (pos.get("cost_basis", pos["amount"] * pos["price"]) if pos else 0.0)
                 pnl_pct = (realized_pnl / cb * 100) if cb > 0 else 0.0
                 sell_msg += f" | P&L: {realized_pnl:+.4f} ({pnl_pct:+.2f}%)"
             sell_summary = {
