@@ -7,6 +7,7 @@ import time
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
+from zoneinfo import ZoneInfo
 
 from src.config.settings import settings
 from src.exchanges.fees import get_fee_rate
@@ -2047,26 +2048,7 @@ class TradingEngine:
                         symbol_events[sym] = event
                 except Exception:
                     pass
-        # Current trading session (US stock market)
-        now_utc = datetime.now(timezone.utc)
-        utc_hour = now_utc.hour
-        # Convert UTC to Eastern Time (approximate: ET = UTC - 5 normally, -4 during EDT)
-        # For simplicity, use UTC-5 (EST) year-round; the difference is minor for session detection.
-        et_hour = (utc_hour - 5) % 24
-        weekday = now_utc.weekday()  # 0=Monday, 6=Sunday
-        if weekday >= 5:  # Saturday or Sunday
-            session_label = "Closed (weekend)"
-        elif et_hour < 4:
-            session_label = "Closed (overnight)"
-        elif 4 <= et_hour < 9.5:
-            session_label = "Pre-market"
-        elif 9.5 <= et_hour < 16:
-            session_label = "Regular"
-        elif 16 <= et_hour < 20:
-            session_label = "After-hours"
-        else:
-            session_label = "Closed (overnight)"
-        session_info = {"utc_hour": utc_hour, "session": session_label}
+        session_info = self._get_session_info()
 
         # Market breadth: percentage of candidate stocks with positive 24h change
         positive_count = sum(1 for sym in sample_pairs if (tickers.get(sym, {}).get('percentage') or 0) > 0)
@@ -3941,35 +3923,19 @@ class TradingEngine:
                     full_market_breadth = json.loads(full_breadth_raw)
             except Exception:
                 pass
-            # Current trading session (US stock market)
-            now_utc = datetime.now(timezone.utc)
-            utc_hour = now_utc.hour
-            # Convert UTC to Eastern Time (approximate: ET = UTC - 5 normally, -4 during EDT)
-            # For simplicity, use UTC-5 (EST) year-round; the difference is minor for session detection.
-            et_hour = (utc_hour - 5) % 24
-            weekday = now_utc.weekday()  # 0=Monday, 6=Sunday
-            if weekday >= 5:  # Saturday or Sunday
-                session_label = "Closed (weekend)"
-            elif et_hour < 4:
-                session_label = "Closed (overnight)"
-            elif 4 <= et_hour < 9.5:
-                session_label = "Pre-market"
-            elif 9.5 <= et_hour < 16:
-                session_label = "Regular"
-            elif 16 <= et_hour < 20:
-                session_label = "After-hours"
-            else:
-                session_label = "Closed (overnight)"
-            session_info = {"utc_hour": utc_hour, "session": session_label}
+            session_info = self._get_session_info()
 
             # Compute minutes until market close (4:00 PM ET = 16:00 ET)
-            minutes_to_market_close = None
+            now_et = datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York"))
+            weekday = now_et.weekday()
             if weekday < 5:  # Monday-Friday
-                et_minutes = et_hour * 60
+                et_minutes = now_et.hour * 60 + now_et.minute
                 close_minutes = 16 * 60  # 4:00 PM ET
                 minutes_to_market_close = close_minutes - et_minutes
                 if minutes_to_market_close < 0:
                     minutes_to_market_close = 0  # market already closed
+            else:
+                minutes_to_market_close = None
 
             # Fetch current global risk multiplier so the LLM can adjust position sizing
             global_risk_mult = None
@@ -8426,28 +8392,46 @@ class TradingEngine:
                     return True
         return False
 
+    def _get_session_info(self) -> dict:
+        """Return current US market session info using DST-aware Eastern Time."""
+        now_et = datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York"))
+        weekday = now_et.weekday()
+        hour = now_et.hour + now_et.minute / 60.0
+        if weekday >= 5:
+            session = "Closed (weekend)"
+        elif hour < 4:
+            session = "Closed (overnight)"
+        elif hour < 9.5:
+            session = "Pre-market"
+        elif hour < 16:
+            session = "Regular"
+        elif hour < 20:
+            session = "After-hours"
+        else:
+            session = "Closed (overnight)"
+        return {"utc_hour": datetime.now(timezone.utc).hour, "session": session}
+
     def _is_market_open(self) -> bool:
         """Return True if trading is allowed right now (paper always open, live only regular hours)."""
         if settings.TRADING_MODE == "paper":
             return True
-        now_utc = datetime.now(timezone.utc)
-        # Approximate Eastern Time (UTC-5); minor DST difference is acceptable
-        et_hour = (now_utc.hour - 5) % 24
-        weekday = now_utc.weekday()
+        now_et = datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York"))
+        weekday = now_et.weekday()
         if weekday >= 5:                     # Saturday or Sunday
             return False
-        if et_hour < 9.5 or et_hour >= 16:   # outside 9:30–16:00 ET
+        hour = now_et.hour + now_et.minute / 60.0
+        if hour < 9.5 or hour >= 16.0:       # outside 9:30–16:00 ET
             return False
         return True
 
     def _is_regular_hours(self) -> bool:
         """Return True if current time is within regular US market hours (9:30–16:00 ET)."""
-        now_utc = datetime.now(timezone.utc)
-        et_hour = (now_utc.hour - 5) % 24
-        weekday = now_utc.weekday()
+        now_et = datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York"))
+        weekday = now_et.weekday()
         if weekday >= 5:
             return False
-        if et_hour < 9.5 or et_hour >= 16:
+        hour = now_et.hour + now_et.minute / 60.0
+        if hour < 9.5 or hour >= 16.0:
             return False
         return True
 

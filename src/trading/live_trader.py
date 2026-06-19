@@ -5,6 +5,7 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, GetOrdersRequest
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce, OrderStatus
 from src.config.settings import settings
+from src.utils.retry import retry_on_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class LiveTrader:
     # ------------------------------------------------------------------
     # Order placement
     # ------------------------------------------------------------------
+    @retry_on_rate_limit(max_retries=3, base_delay=1.0)
     def create_market_buy_order(
         self, symbol: str, quote_amount: float, timeout: float = 60.0,
         limit_price: Optional[float] = None, time_in_force: str = "day"
@@ -136,6 +138,7 @@ class LiveTrader:
                 raise RuntimeError(f"Order for {symbol} did not fill within {timeout}s and was cancelled.")
             return self._order_to_dict(filled_order, symbol)
 
+    @retry_on_rate_limit(max_retries=3, base_delay=1.0)
     def create_market_sell_order(
         self, symbol: str, qty: float, timeout: float = 60.0,
         limit_price: Optional[float] = None, time_in_force: str = "day"
