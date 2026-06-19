@@ -90,7 +90,7 @@ class Settings(BaseSettings):
 
     # Maximum number of consecutive "keep paused" LLM decisions before the engine
     # force‑resumes trading with a reduced risk multiplier.
-    PAUSE_MAX_CONSECUTIVE_KEEP: int = 3
+    PAUSE_MAX_CONSECUTIVE_KEEP: int = 2
 
     @field_validator("PAUSE_MAX_CONSECUTIVE_KEEP")
     @classmethod
@@ -101,7 +101,7 @@ class Settings(BaseSettings):
 
     # Global risk multiplier applied when the engine force‑resumes after
     # PAUSE_MAX_CONSECUTIVE_KEEP consecutive "keep paused" decisions.
-    PAUSE_FORCE_RESUME_RISK_MULTIPLIER: float = 0.3
+    PAUSE_FORCE_RESUME_RISK_MULTIPLIER: float = 0.5
 
     @field_validator("PAUSE_FORCE_RESUME_RISK_MULTIPLIER")
     @classmethod

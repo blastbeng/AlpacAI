@@ -12,8 +12,8 @@ def validate_signal(
     price: Optional[float] = None,
     spread_pct: Optional[float] = None,
     timeframe_seconds: Optional[int] = None,
-    min_stop_atr_mult: float = 1.5,
-    min_hold_time_mult: float = 2.0,
+    min_stop_atr_mult: float = 1.0,
+    min_hold_time_mult: float = 1.5,
     global_min_risk_reward_ratio: Optional[float] = None,
 ) -> Signal:
     """

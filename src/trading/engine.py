@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 SYMBOL_REEVALUATION_INTERVAL = 3600  # seconds (60 minutes)
 DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no symbols (10 minutes)
 MIN_SYMBOL_REEVALUATION_INTERVAL = 300  # seconds (5 minutes) – prevents rapid toggling
-MIN_LLM_PAUSE_DURATION = 3600  # seconds (60 min) – LLM cannot resume before this
+MIN_LLM_PAUSE_DURATION = 1800  # seconds (30 min) – LLM cannot resume before this
 MAX_STOP_LOSS_REVIEWS = 10   # force-sell after this many consecutive stop-loss reviews
 MAX_TAKE_PROFIT_REVIEWS = 10   # force-sell after this many consecutive take-profit reviews
 
@@ -4423,8 +4423,8 @@ class TradingEngine:
             signal.llm_model = llm_model
             current_price = ticker['last']
             # Read LLM-configured validator multipliers from Redis
-            min_stop_atr_mult = 1.5
-            min_hold_time_mult = 2.0
+            min_stop_atr_mult = 1.0
+            min_hold_time_mult = 1.5
             global_min_rr = None
             try:
                 raw = await asyncio.to_thread(self.redis.get, "trading:min_stop_loss_atr_mult")
