@@ -6477,6 +6477,7 @@ class TradingEngine:
                         'atr': atr,
                         'spread_pct': spread_pct,
                         'order_book': None,
+                        'order_id': order['id'],
                     })
                     if self.notifier:
                         await self.notifier.send_notification(
@@ -6761,6 +6762,7 @@ class TradingEngine:
                         'spread_pct': spread_pct,
                         'order_book': None,
                         'exit_reason': exit_reason,
+                        'order_id': order['id'],
                     })
                     if self.notifier:
                         await self.notifier.send_notification(
@@ -7845,64 +7847,299 @@ class TradingEngine:
             logger.error(f"Dust sweep failed for {symbol}: {e}")
 
     async def _process_queued_orders(self):
-        """Periodically check queued limit orders and execute if marketable."""
+        """Periodically check queued limit orders on Alpaca and process fills.
+
+        Instead of re-executing the signal (which would place a duplicate order
+        while the original is still open), we poll the actual Alpaca order
+        status. When the order fills, we record the trade and update positions
+        exactly as a normal fill would. We never place a new order here.
+        """
         await asyncio.sleep(10)
         while self._running:
             try:
                 for queued in list(self.queued_orders):
-                    symbol = queued['symbol']
-                    base = symbol.split("/")[0]
-                    limit_price = queued['limit_price']
-                    side = queued['side']
-
-                    # Always fetch the latest quote from REST API to match live_trader.py's marketability check
-                    try:
-                        quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
-                        ticker = quotes.get(base)
-                    except Exception:
-                        continue
-
-                    if ticker is None:
-                        continue
-
-                    bid = ticker.get('bid')
-                    ask = ticker.get('ask')
-
-                    is_marketable = False
-                    if side == 'buy' and ask is not None and ask <= limit_price:
-                        is_marketable = True
-                    elif side == 'sell' and bid is not None and bid >= limit_price:
-                        is_marketable = True
-
-                    if is_marketable:
-                        # Validate if the queued order is still relevant
-                        if side == 'buy' and not any(e['symbol'] == symbol for e in self.current_symbols):
-                            logger.info(f"Queued BUY order for {symbol} cancelled: symbol no longer tracked.")
-                            self.queued_orders.remove(queued)
-                            continue
-                        if side == 'sell' and symbol not in self.positions:
-                            logger.info(f"Queued SELL order for {symbol} cancelled: position no longer open.")
-                            self.queued_orders.remove(queued)
-                            continue
-
-                        logger.info(f"Queued {side} order for {symbol} is now marketable. Executing...")
+                    order_id = queued.get('order_id')
+                    if not order_id:
+                        # Old queued entries without order_id – remove them safely
+                        logger.warning(f"Queued order for {queued['symbol']} missing order_id, removing.")
                         self.queued_orders.remove(queued)
-                        from src.strategies.base import Signal
-                        signal_obj = queued['signal']
-                        if isinstance(signal_obj, dict):
-                            signal_obj = Signal(**signal_obj)
-                        await self._execute_signal(
-                            symbol,
-                            signal_obj,
-                            timeframe=queued.get('timeframe'),
-                            exit_reason=queued.get('exit_reason'),
-                            atr=queued.get('atr'),
-                            spread_pct=queued.get('spread_pct'),
-                            order_book=queued.get('order_book')
+                        continue
+
+                    try:
+                        alpaca_order = await asyncio.to_thread(
+                            self.trader.trading_client.get_order_by_id, order_id
                         )
+                    except Exception as e:
+                        logger.warning(f"Could not fetch order {order_id} for {queued['symbol']}: {e}")
+                        continue
+
+                    status = getattr(alpaca_order.status, 'value', str(alpaca_order.status))
+                    if isinstance(status, str):
+                        status = status.lower()
+
+                    if status == 'filled':
+                        logger.info(f"Queued limit order {order_id} for {queued['symbol']} filled.")
+                        trade_dict = self.trader._order_to_dict(alpaca_order, queued['symbol'])
+                        if queued['side'] == 'buy':
+                            await self._handle_queued_buy_fill(trade_dict, queued)
+                        else:
+                            await self._handle_queued_sell_fill(trade_dict, queued)
+                        self.queued_orders.remove(queued)
+
+                    elif status in ('rejected', 'canceled', 'cancelled', 'expired'):
+                        logger.warning(
+                            f"Queued order {order_id} for {queued['symbol']} ended as {status}, removing."
+                        )
+                        if self.notifier:
+                            stock_name = await self._get_stock_name(queued['symbol'])
+                            tf = queued.get('timeframe')
+                            display = self._format_symbol_display(queued['symbol'], stock_name, tf)
+                            await self.notifier.send_notification(
+                                f"❌ Queued {queued['side']} order for {display} {status}.",
+                                summary={
+                                    "symbol": queued['symbol'],
+                                    "action": "INFO",
+                                    "reason": f"Order {status}",
+                                }
+                            )
+                        self.queued_orders.remove(queued)
+
+                    # else: still open / partially_filled / accepted – keep waiting
             except Exception as e:
                 logger.error(f"Error processing queued orders: {e}", exc_info=True)
             await asyncio.sleep(5)
+
+    async def _handle_queued_buy_fill(self, trade_dict: Dict[str, Any], queued: Dict[str, Any]):
+        """Process a queued BUY limit order that has filled on Alpaca."""
+        symbol = trade_dict['symbol']
+        base, quote = symbol.split("/")
+        fee = trade_dict.get('fee', {})
+        fee_cost = float(fee.get('cost', 0.0) or 0.0)
+        fee_currency = fee.get('currency', '')
+        fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
+        if fee_cost == 0.0:
+            fee_cost = trade_dict['cost'] * fee_rate
+            fee_currency = quote
+            trade_dict['fee'] = {'cost': fee_cost, 'currency': fee_currency}
+
+        cost_basis = trade_dict['cost'] + (fee_cost if fee_currency == quote else 0.0)
+        net_base = trade_dict['amount'] - (fee_cost if fee_currency == base else 0.0)
+
+        signal_dict = queued.get('signal', {}) or {}
+        params = signal_dict.get('strategy_params', {}) or {}
+        sl_pct = params.get("stop_loss_pct")
+        tp_pct = params.get("take_profit_pct")
+        trailing_stop = params.get("trailing_stop", False)
+        trailing_stop_distance_pct = params.get("trailing_stop_distance_pct")
+        timeframe = queued.get('timeframe')
+        atr = queued.get('atr')
+        indicator_config = signal_dict.get('indicator_config')
+
+        if symbol in self.positions:
+            old_cost_basis = self.positions[symbol].get("cost_basis", self.positions[symbol]["amount"] * self.positions[symbol]["price"])
+            old_net_base = self.positions[symbol].get("net_base", self.positions[symbol]["amount"])
+            new_cost_basis = old_cost_basis + cost_basis
+            new_net_base = old_net_base + net_base
+            new_price = new_cost_basis / new_net_base if new_net_base > 0 else 0.0
+            self.positions[symbol]["amount"] = new_net_base
+            self.positions[symbol]["price"] = new_price
+            self.positions[symbol]["cost_basis"] = new_cost_basis
+            self.positions[symbol]["net_base"] = new_net_base
+            if sl_pct:
+                self.positions[symbol]["stop_loss"] = new_price * (1 - sl_pct)
+            if tp_pct:
+                self.positions[symbol]["take_profit"] = new_price * (1 + tp_pct)
+            self.positions[symbol]["trailing_stop"] = trailing_stop
+            self.positions[symbol]["trailing_stop_distance_pct"] = trailing_stop_distance_pct
+            self.positions[symbol]["max_hold_time_seconds"] = params.get("max_hold_time_seconds")
+            self.positions[symbol]["trailing_stop_activation_pct"] = params.get("trailing_stop_activation_pct")
+            self.positions[symbol]["trailing_take_profit"] = params.get("trailing_take_profit", False)
+            self.positions[symbol]["trailing_take_profit_distance_pct"] = params.get("trailing_take_profit_distance_pct")
+            self.positions[symbol]["breakeven_activation_pct"] = params.get("breakeven_activation_pct")
+            self.positions[symbol]["lock_profit_activation_pct"] = params.get("lock_profit_activation_pct")
+            self.positions[symbol]["lock_profit_level_pct"] = params.get("lock_profit_level_pct")
+            partial_levels = params.get("partial_take_profit_levels")
+            if partial_levels:
+                self.positions[symbol]["partial_take_profit_levels"] = partial_levels
+                self.positions[symbol]["partial_tp_levels_triggered"] = []
+                self.positions[symbol]["partial_tp_depth_wait_start"] = {}
+                self.positions[symbol]["partial_take_profit_pct"] = None
+                self.positions[symbol]["partial_take_profit_fraction"] = None
+                self.positions[symbol]["partial_tp_triggered"] = None
+            else:
+                self.positions[symbol]["partial_take_profit_pct"] = params.get("partial_take_profit_pct")
+                self.positions[symbol]["partial_take_profit_fraction"] = params.get("partial_take_profit_fraction")
+                self.positions[symbol]["partial_tp_triggered"] = False
+            self.positions[symbol]["cooldown_after_loss_seconds"] = params.get("cooldown_after_loss_seconds", 0)
+            self.positions[symbol]["news_sentiment_exit_threshold"] = params.get("news_sentiment_exit_threshold")
+            self.positions[symbol]["max_unrealized_loss_pct"] = params.get("max_unrealized_loss_pct")
+            self.positions[symbol]["timeframe"] = timeframe
+            self.positions[symbol]["indicator_config"] = indicator_config
+            self.positions[symbol]["buy_confidence"] = signal_dict.get('confidence', 0.0)
+            self.positions[symbol]["buy_reasoning"] = (signal_dict.get('reasoning', '') or '')[:200]
+        else:
+            entry_price = cost_basis / net_base if net_base > 0 else trade_dict["price"]
+            self.positions[symbol] = {
+                "symbol": symbol,
+                "side": "buy",
+                "amount": net_base,
+                "price": entry_price,
+                "timestamp": trade_dict["timestamp"],
+                "stop_loss": entry_price * (1 - sl_pct) if sl_pct else None,
+                "take_profit": entry_price * (1 + tp_pct) if tp_pct else None,
+                "cost_basis": cost_basis,
+                "net_base": net_base,
+                "buy_confidence": signal_dict.get('confidence', 0.0),
+                "buy_reasoning": (signal_dict.get('reasoning', '') or '')[:200],
+                "trailing_stop": trailing_stop,
+                "trailing_stop_distance_pct": trailing_stop_distance_pct,
+                "max_hold_time_seconds": params.get("max_hold_time_seconds"),
+                "trailing_stop_activation_pct": params.get("trailing_stop_activation_pct"),
+                "trailing_take_profit": params.get("trailing_take_profit", False),
+                "trailing_take_profit_distance_pct": params.get("trailing_take_profit_distance_pct"),
+                "breakeven_activation_pct": params.get("breakeven_activation_pct"),
+                "lock_profit_activation_pct": params.get("lock_profit_activation_pct"),
+                "lock_profit_level_pct": params.get("lock_profit_level_pct"),
+                "partial_take_profit_levels": params.get("partial_take_profit_levels"),
+                "partial_tp_levels_triggered": [],
+                "partial_tp_depth_wait_start": {},
+                "original_amount": net_base,
+                "partial_take_profit_pct": params.get("partial_take_profit_pct") if not params.get("partial_take_profit_levels") else None,
+                "partial_take_profit_fraction": params.get("partial_take_profit_fraction") if not params.get("partial_take_profit_levels") else None,
+                "partial_tp_triggered": False if not params.get("partial_take_profit_levels") else None,
+                "cooldown_after_loss_seconds": params.get("cooldown_after_loss_seconds", 0),
+                "news_sentiment_exit_threshold": params.get("news_sentiment_exit_threshold"),
+                "max_unrealized_loss_pct": params.get("max_unrealized_loss_pct"),
+                "timeframe": timeframe,
+                "indicator_config": indicator_config,
+            }
+
+        custom_interval = params.get("strategy_interval_seconds")
+        if custom_interval is not None:
+            self._strategy_intervals[symbol] = custom_interval
+
+        trade_dict['strategy_type'] = signal_dict.get('strategy_type')
+        trade_dict['timeframe'] = timeframe
+        trade_dict['buy_confidence'] = signal_dict.get('confidence', 0.0)
+        trade_dict['buy_reasoning'] = (signal_dict.get('reasoning', '') or '')[:200]
+        self.trade_history.append(trade_dict)
+        self._balance_cache = None
+        self._cycle_spent += trade_dict['cost']
+        await asyncio.to_thread(insert_trade, trade_dict)
+        await self._save_state()
+        if self.notifier:
+            stock_name = await self._get_stock_name(symbol)
+            display_symbol = self._format_symbol_display(symbol, stock_name, timeframe)
+            buy_msg = f"🟢 BUY {display_symbol}: {trade_dict['amount']:.6f} @ {trade_dict['price']:.4f}"
+            buy_summary = {
+                "symbol": symbol,
+                "action": "BUY",
+                "price": trade_dict["price"],
+                "amount": trade_dict["amount"],
+                "confidence": signal_dict.get('confidence', 0.0),
+                "reason": (signal_dict.get('reasoning', '') or '')[:200],
+                "strategy_type": signal_dict.get('strategy_type'),
+                "indicators": {"atr": atr},
+            }
+            if signal_dict.get('model_type'):
+                buy_summary["model_type"] = signal_dict.get('model_type')
+            if signal_dict.get('llm_provider'):
+                buy_summary["llm_provider"] = signal_dict.get('llm_provider')
+            if signal_dict.get('llm_model'):
+                buy_summary["llm_model"] = signal_dict.get('llm_model')
+            await self.notifier.send_notification(buy_msg, summary=buy_summary)
+
+    async def _handle_queued_sell_fill(self, trade_dict: Dict[str, Any], queued: Dict[str, Any]):
+        """Process a queued SELL limit order that has filled on Alpaca."""
+        symbol = trade_dict['symbol']
+        base, quote = symbol.split("/")
+        pos = self.positions.get(symbol)
+        fee = trade_dict.get('fee', {})
+        fee_cost = float(fee.get('cost', 0.0) or 0.0)
+        fee_currency = fee.get('currency', '')
+        fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
+        if fee_cost == 0.0:
+            fee_cost = trade_dict['cost'] * fee_rate
+            fee_currency = quote
+            trade_dict['fee'] = {'cost': fee_cost, 'currency': fee_currency}
+
+        net_quote = trade_dict['cost'] - (fee_cost if fee_currency == quote else 0.0)
+        if pos:
+            cost_basis = pos.get("cost_basis", pos["amount"] * pos["price"])
+            realized_pnl = net_quote - cost_basis
+        else:
+            realized_pnl = 0.0
+        trade_dict['realized_pnl'] = realized_pnl
+        trade_dict['cost_basis'] = pos.get("cost_basis", 0.0) if pos else 0.0
+        exit_reason = queued.get('exit_reason', 'limit_order')
+        trade_dict['exit_reason'] = exit_reason
+        signal_dict = queued.get('signal', {}) or {}
+        trade_dict['strategy_type'] = signal_dict.get('strategy_type')
+        trade_dict['timeframe'] = queued.get('timeframe')
+        if pos:
+            trade_dict['buy_confidence'] = pos.get("buy_confidence", 0.0)
+            trade_dict['buy_reasoning'] = pos.get("buy_reasoning", "")
+        if pos and "timestamp" in pos:
+            trade_dict['hold_time_seconds'] = (trade_dict['timestamp'] - pos["timestamp"]) / 1000.0
+        else:
+            trade_dict['hold_time_seconds'] = None
+        if realized_pnl < 0:
+            self.last_loss_time[symbol] = time.time()
+            self.cooldown_durations[symbol] = pos.get("cooldown_after_loss_seconds", 0) if pos else 0
+        if pos:
+            pos.pop("_stop_loss_triggered", None)
+            pos.pop("_stop_loss_review_count", None)
+        self.positions.pop(symbol, None)
+        self._strategy_intervals.pop(symbol, None)
+        self._last_strategy_eval.pop(symbol, None)
+        self._last_decisions.pop(symbol, None)
+        self._pending_entries.pop(symbol, None)
+        await self._remove_symbol_if_paused(symbol)
+        self.trade_history.append(trade_dict)
+        self._balance_cache = None
+        await asyncio.to_thread(insert_trade, trade_dict)
+        await self._save_state()
+        if self.notifier:
+            reason_labels = {
+                "manual_sell": "🖐️ Manual",
+                "manual_sell_all": "🖐️ Manual (Sell All)",
+                "stop_loss": "⛔ Stop-Loss",
+                "take_profit": "✅ Take-Profit",
+                "max_hold_time": "⏰ Max Hold Time",
+                "news_sentiment_exit": "📰 News Sentiment",
+                "force_close": "🔻 Force Close",
+                "external_sell": "🔄 External Sell",
+                "delisted": "🗑️ Delisted",
+            }
+            reason_label = reason_labels.get(exit_reason, exit_reason) if exit_reason else None
+            reason_str = f" [{reason_label}]" if reason_label else ""
+            stock_name = await self._get_stock_name(symbol)
+            tf = queued.get('timeframe') or (pos.get("timeframe") if pos else None)
+            display_symbol = self._format_symbol_display(symbol, stock_name, tf)
+            sell_msg = f"🔴 SELL{reason_str} {display_symbol}: {trade_dict['amount']:.6f} @ {trade_dict['price']:.4f}"
+            if pos:
+                cb = pos.get("cost_basis", pos["amount"] * pos["price"])
+                pnl_pct = (realized_pnl / cb * 100) if cb > 0 else 0.0
+                sell_msg += f" | P&L: {realized_pnl:+.4f} ({pnl_pct:+.2f}%)"
+            sell_summary = {
+                "symbol": symbol,
+                "action": "SELL",
+                "price": trade_dict["price"],
+                "amount": trade_dict["amount"],
+                "confidence": signal_dict.get('confidence', 0.0),
+                "reason": (signal_dict.get('reasoning', '') or '')[:200],
+                "exit_reason": exit_reason,
+                "realized_pnl": realized_pnl,
+                "strategy_type": signal_dict.get('strategy_type'),
+                "indicators": {"atr": queued.get('atr')},
+            }
+            if signal_dict.get('model_type'):
+                sell_summary["model_type"] = signal_dict.get('model_type')
+            if signal_dict.get('llm_provider'):
+                sell_summary["llm_provider"] = signal_dict.get('llm_provider')
+            if signal_dict.get('llm_model'):
+                sell_summary["llm_model"] = signal_dict.get('llm_model')
+            await self.notifier.send_notification(sell_msg, summary=sell_summary)
 
     async def _cleanup_orphaned_orders(self):
         """Periodically cancel any open orders that are older than 10 minutes."""
