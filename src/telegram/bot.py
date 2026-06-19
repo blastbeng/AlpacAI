@@ -363,6 +363,19 @@ class TelegramBot:
                 if exit_reason:
                     line += f"   Reason: {exit_reason}\n"
                 line += f"   Status: {status}\n"
+                # Order type
+                order_type = q.get('order_type', 'market')
+                line += f"   Type: {order_type}\n"
+                # Stop price / trail offset
+                stop_price = q.get('stop_price')
+                if stop_price is not None:
+                    line += f"   Stop: ${stop_price:.2f}\n"
+                trail_offset = q.get('trail_offset')
+                if trail_offset is not None:
+                    line += f"   Trail: ${trail_offset:.2f}\n"
+                # Exit order label
+                if q.get('is_exit_order'):
+                    line += f"   🎯 Exit order\n"
 
                 msg += line + "\n"
 

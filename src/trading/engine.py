@@ -7938,6 +7938,34 @@ class TradingEngine:
             pos["stop_loss_order_type"] = sl_ot
         pos["take_profit_order_id"] = tp_order_id
 
+        # Notify user
+        if self.notifier:
+            stock_name = await self._get_stock_name(symbol)
+            display_symbol = self._format_symbol_display(symbol, stock_name, pos.get("timeframe"))
+            msg = f"🛡️ Exit orders placed for {display_symbol}:\n"
+            if sl_order_id:
+                sl_type = sl_ot or "stop"
+                if sl_ot == "trailing_stop":
+                    msg += f"  🛑 Trailing stop: offset ${trail_offset:.2f}\n"
+                elif sl_ot == "stop_limit":
+                    msg += f"  🛑 Stop-limit: stop ${sl_price:.2f}, limit ${signal.stop_loss_limit_price or sl_price:.2f}\n"
+                else:
+                    msg += f"  🛑 Stop: ${sl_price:.2f}\n"
+            if tp_order_id:
+                msg += f"  🎯 Take-profit: limit ${tp_price:.2f}\n"
+            if sl_order_id and tp_order_id:
+                msg += "  (OCO – one cancels the other)"
+            await self.notifier.send_notification(
+                msg,
+                summary={
+                    "symbol": symbol,
+                    "action": "INFO",
+                    "reason": "Exit orders placed",
+                    "stop_loss_order_id": sl_order_id,
+                    "take_profit_order_id": tp_order_id,
+                }
+            )
+
     async def _replace_native_stop_order(
         self,
         symbol: str,
@@ -8024,6 +8052,22 @@ class TradingEngine:
             # Update position
             pos["stop_loss_order_id"] = new_order_id
             logger.info(f"Placed new stop order {new_order_id} for {symbol} at {new_stop_price:.4f}")
+
+            # Notify user
+            if self.notifier:
+                stock_name = await self._get_stock_name(symbol)
+                display_symbol = self._format_symbol_display(symbol, stock_name, pos.get("timeframe"))
+                msg = f"🔄 Stop order updated for {display_symbol}: {old_stop_price:.4f} → {new_stop_price:.4f}"
+                await self.notifier.send_notification(
+                    msg,
+                    summary={
+                        "symbol": symbol,
+                        "action": "INFO",
+                        "reason": "Stop order replaced",
+                        "old_stop_price": old_stop_price,
+                        "new_stop_price": new_stop_price,
+                    }
+                )
         except Exception as e:
             logger.error(f"Failed to place replacement stop order for {symbol}: {e}")
 
@@ -8528,6 +8572,13 @@ class TradingEngine:
                             if pos:
                                 pos.pop("stop_loss_order_id", None)
                                 pos.pop("take_profit_order_id", None)
+                            if self.notifier:
+                                stock_name = await self._get_stock_name(queued["symbol"])
+                                display_symbol = self._format_symbol_display(queued["symbol"], stock_name, queued.get("timeframe"))
+                                await self.notifier.send_notification(
+                                    f"🔗 OCO pair {oco_pair_id} cancelled for {display_symbol} (main order timed out).",
+                                    summary={"symbol": queued["symbol"], "action": "CANCEL", "reason": "OCO pair cancelled due to timeout"}
+                                )
                         if self.notifier:
                             stock_name = await self._get_stock_name(queued['symbol'])
                             tf = queued.get('timeframe')
@@ -8690,6 +8741,18 @@ class TradingEngine:
                             if pos:
                                 pos.pop("stop_loss_order_id", None)
                                 pos.pop("take_profit_order_id", None)
+                            # Notify user
+                            if self.notifier:
+                                stock_name = await self._get_stock_name(queued["symbol"])
+                                display_symbol = self._format_symbol_display(queued["symbol"], stock_name, queued.get("timeframe"))
+                                await self.notifier.send_notification(
+                                    f"🔗 OCO pair {oco_pair_id} cancelled for {display_symbol} (other order filled).",
+                                    summary={
+                                        "symbol": queued["symbol"],
+                                        "action": "CANCEL",
+                                        "reason": "OCO pair cancelled",
+                                    }
+                                )
 
                     if status == 'filled':
                         logger.info(f"Queued limit order {order_id} for {queued['symbol']} completely filled.")
@@ -8728,6 +8791,13 @@ class TradingEngine:
                             if pos:
                                 pos.pop("stop_loss_order_id", None)
                                 pos.pop("take_profit_order_id", None)
+                            if self.notifier:
+                                stock_name = await self._get_stock_name(queued["symbol"])
+                                display_symbol = self._format_symbol_display(queued["symbol"], stock_name, queued.get("timeframe"))
+                                await self.notifier.send_notification(
+                                    f"🔗 OCO pair {oco_pair_id} cancelled for {display_symbol} (main order {status}).",
+                                    summary={"symbol": queued["symbol"], "action": "CANCEL", "reason": f"OCO pair cancelled due to main order {status}"}
+                                )
 
                     # else: still open / partially_filled / accepted – keep waiting
             except Exception as e:
