@@ -7954,6 +7954,89 @@ class TradingEngine:
                             )
                         continue
 
+                    # --- Market fallback: if still not marketable after a short grace period,
+                    # cancel the limit order and re-submit as a market order ---
+                    if time.time() - queued_at > settings.LIMIT_ORDER_MARKET_FALLBACK_SECONDS:
+                        symbol = queued['symbol']
+                        side = queued['side']
+                        limit_price = queued.get('limit_price')
+                        if limit_price is None:
+                            continue  # should not happen, but safety
+
+                        # Fetch current quote
+                        ticker = self.ws_manager.get_ticker(symbol)
+                        if ticker is None:
+                            try:
+                                base = symbol.split("/")[0]
+                                quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
+                                ticker = quotes.get(base)
+                            except Exception:
+                                pass
+                        if ticker is None:
+                            continue  # can't determine marketability, skip
+
+                        ask = ticker.get('ask')
+                        bid = ticker.get('bid')
+                        if ask is None or bid is None:
+                            continue
+
+                        marketable = False
+                        if side == 'buy' and ask and limit_price >= ask:
+                            marketable = True
+                        elif side == 'sell' and bid and limit_price <= bid:
+                            marketable = True
+
+                        if not marketable:
+                            logger.info(
+                                f"Limit order {order_id} for {symbol} still not marketable after "
+                                f"{settings.LIMIT_ORDER_MARKET_FALLBACK_SECONDS}s. "
+                                f"Falling back to market order."
+                            )
+                            # Cancel the limit order
+                            try:
+                                await asyncio.to_thread(self.trader.cancel_order, order_id)
+                            except Exception as e:
+                                logger.error(f"Failed to cancel limit order {order_id} during fallback: {e}")
+                            # Remove from queue
+                            self.queued_orders.remove(queued)
+
+                            # Place a market order for the remaining unfilled amount
+                            remaining_amount = queued.get('amount', 0.0)  # quote for buy, base for sell
+                            if remaining_amount <= 0:
+                                continue
+
+                            try:
+                                if side == 'buy':
+                                    market_order = await asyncio.to_thread(
+                                        self.trader.create_market_buy_order,
+                                        symbol, remaining_amount,
+                                        settings.ORDER_FILL_TIMEOUT_SECONDS,
+                                        limit_price=None,   # force market order
+                                        time_in_force='day'
+                                    )
+                                    # market_order should be filled; process it
+                                    await self._handle_queued_buy_fill(market_order, queued)
+                                else:  # sell
+                                    market_order = await asyncio.to_thread(
+                                        self.trader.create_market_sell_order,
+                                        symbol, remaining_amount,
+                                        settings.ORDER_FILL_TIMEOUT_SECONDS,
+                                        limit_price=None,
+                                        time_in_force='day'
+                                    )
+                                    await self._handle_queued_sell_fill(market_order, queued, partial=False)
+                            except Exception as e:
+                                logger.error(f"Market fallback order failed for {symbol}: {e}")
+                                if self.notifier:
+                                    stock_name = await self._get_stock_name(symbol)
+                                    tf = queued.get('timeframe')
+                                    display = self._format_symbol_display(symbol, stock_name, tf)
+                                    await self.notifier.send_notification(
+                                        f"❌ Market fallback order failed for {display}: {e}",
+                                        summary={"symbol": symbol, "action": "ERROR", "reason": str(e)[:200]}
+                                    )
+                            continue  # order handled, move to next queued item
+
                     try:
                         alpaca_order = await asyncio.to_thread(
                             self.trader.trading_client.get_order_by_id, order_id
