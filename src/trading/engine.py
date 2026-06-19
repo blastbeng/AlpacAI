@@ -3083,7 +3083,10 @@ class TradingEngine:
                 "paused indefinitely. This allows the bot to cautiously seek small profitable "
                 "trades to recover, while limiting downside. You can provide an optional "
                 "`global_risk_multiplier` field in your JSON response (0.0–1.0) to set the "
-                "risk level upon resume. If you omit it, the current multiplier (or 1.0) will be used."
+                "risk level upon resume. If you omit it, the current multiplier (or 1.0) will be used. "
+                "If you are even slightly uncertain, **resume trading** with a very small "
+                "`global_risk_multiplier` (e.g., 0.15–0.25). This lets the bot probe for "
+                "opportunities with minimal risk. Staying paused forever guarantees zero recovery."
             )
 
             prompt = (
@@ -4424,7 +4427,7 @@ class TradingEngine:
             current_price = ticker['last']
             # Read LLM-configured validator multipliers from Redis
             min_stop_atr_mult = 1.0
-            min_hold_time_mult = 1.5
+            min_hold_time_mult = 1.0
             global_min_rr = None
             try:
                 raw = await asyncio.to_thread(self.redis.get, "trading:min_stop_loss_atr_mult")
