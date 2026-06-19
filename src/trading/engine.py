@@ -4104,6 +4104,7 @@ class TradingEngine:
                 max_portfolio_stop_risk_pct=max_port_risk,
                 trade_pattern_analysis=trade_pattern_analysis,
                 symbol_event=symbol_event,
+                queued_orders=self.queued_orders,
             )
             logger.info(f"LLM prompt for {symbol}: {len(prompt)} chars")
             # Build a market snapshot dict for caching (per-symbol)

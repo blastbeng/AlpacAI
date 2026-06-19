@@ -818,6 +818,7 @@ def build_strategy_prompt(
     max_portfolio_stop_risk_pct: Optional[float] = None,
     trade_pattern_analysis: Optional[Dict[str, Any]] = None,
     symbol_event: Optional[Dict[str, Any]] = None,
+    queued_orders: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Build a prompt to generate a trading strategy for a specific stock/ETF."""
     current_price = ticker.get("last") if ticker else None
@@ -910,6 +911,22 @@ Maximum symbols to trade: {max_symbols}
         f"**Important:** The sum of position_size_fraction across all stocks you intend to trade must not exceed 1.0, "
         f"so that you leave enough capital for other stocks. Plan your allocations accordingly.\n"
     )
+    # --- Queued orders for this symbol ---
+    if queued_orders:
+        symbol_queued = [q for q in queued_orders if q.get('symbol') == symbol]
+        if symbol_queued:
+            prompt += "\n**Queued orders for this symbol (already waiting to fill):**\n"
+            for q in symbol_queued:
+                side = q.get('side', '?').upper()
+                limit_price = q.get('limit_price')
+                prompt += f"  - {side} limit order at {limit_price}\n"
+            prompt += (
+                "A queued order means the bot has already placed a limit order that is waiting "
+                "for the market price to reach the limit. **Do NOT output a new BUY or SELL signal "
+                "for this symbol while a queued order exists.** The engine will ignore any new signal "
+                "until the queued order fills or is cancelled. If you want to change the order, you must "
+                "first cancel it (not possible via JSON) – instead, output HOLD and explain in reasoning.\n"
+            )
     base_symbol = symbol
     quote_currency = base_currency
     if min_order_amount is not None or min_order_cost is not None:
