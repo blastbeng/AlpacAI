@@ -376,7 +376,7 @@
                 <h2>⏳ Queued Orders</h2>
                 <div class="table-wrapper">
                     <table id="queued-orders-table">
-                        <thead><tr><th>Symbol</th><th>Side</th><th>Amount</th><th>Limit Price</th></tr></thead>
+                        <thead><tr><th>Symbol</th><th>Side</th><th>Amount</th><th>Limit</th><th>Type</th><th>Stop</th><th>Trail</th><th>Exit</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -576,12 +576,16 @@
                     row.insertCell().textContent = q.symbol;
                     row.insertCell().textContent = q.side?.toUpperCase();
                     row.insertCell().textContent = q.amount?.toFixed(6);
-                    row.insertCell().textContent = q.limit_price?.toFixed(4);
+                    row.insertCell().textContent = q.limit_price != null ? q.limit_price.toFixed(4) : '—';
+                    row.insertCell().textContent = q.order_type || 'market';
+                    row.insertCell().textContent = q.stop_price != null ? q.stop_price.toFixed(2) : '—';
+                    row.insertCell().textContent = q.trail_offset != null ? q.trail_offset.toFixed(2) : '—';
+                    row.insertCell().textContent = q.is_exit_order ? '🎯' : '';
                 });
             } else {
                 const row = queuedBody.insertRow();
                 const cell = row.insertCell();
-                cell.colSpan = 4;
+                cell.colSpan = 8;
                 cell.textContent = '📭 No queued orders';
                 cell.style.textAlign = 'center';
                 cell.style.color = 'var(--text-secondary)';
