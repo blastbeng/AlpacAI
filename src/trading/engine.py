@@ -60,9 +60,9 @@ from src.database import load_trading_state, save_trading_state, insert_trade, g
 
 logger = logging.getLogger(__name__)
 
-SYMBOL_REEVALUATION_INTERVAL = 3600  # seconds (30 minutes)
+SYMBOL_REEVALUATION_INTERVAL = 1800  # seconds (30 minutes)
 DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no symbols (10 minutes)
-MIN_SYMBOL_REEVALUATION_INTERVAL = 300  # seconds (5 minutes) – prevents rapid toggling
+MIN_SYMBOL_REEVALUATION_INTERVAL = 180  # seconds (3 minutes) – prevents rapid toggling
 MIN_LLM_PAUSE_DURATION = 1800  # seconds (30 min) – LLM cannot resume before this
 MAX_STOP_LOSS_REVIEWS = 10   # force-sell after this many consecutive stop-loss reviews
 MAX_TAKE_PROFIT_REVIEWS = 10   # force-sell after this many consecutive take-profit reviews

@@ -76,7 +76,7 @@ class Settings(BaseSettings):
 
     # Maximum number of candidates sent to the LLM for stock selection.
     # The engine pre‑ranks candidates by a composite score and keeps only the top N.
-    LLM_STOCK_SELECTION_TOP_N: int = 20
+    LLM_STOCK_SELECTION_TOP_N: int = 30
 
     # ETFs that are always included in the candidate pool (if tradable),
     # regardless of volume or composite score.
