@@ -5551,7 +5551,9 @@ class TradingEngine:
                 current_price = ticker['last']
 
                 # Trailing stop update (only if enabled)
-                if pos.get("trailing_stop") and pos.get("trailing_stop_distance_pct"):
+                # Skip if a native trailing-stop order is already handling it
+                if (pos.get("trailing_stop") and pos.get("trailing_stop_distance_pct")
+                        and pos.get("stop_loss_order_type") != "trailing_stop"):
                     # Check activation threshold
                     activation_pct = pos.get("trailing_stop_activation_pct")
                     if activation_pct is not None:
@@ -5611,6 +5613,28 @@ class TradingEngine:
                         if new_stop > pos["stop_loss"]:
                             pos["stop_loss"] = new_stop
                             logger.info(f"Lock-profit activated for {symbol}: new stop {new_stop:.4f} (guaranteed +{lock_level:.2%})")
+
+                # --- Update native stop order if stop price changed ---
+                if (pos.get("stop_loss_order_id")
+                        and pos.get("stop_loss_order_type") in ("stop", "stop_limit")):
+                    # Compare current stop_loss with the order's original stop price
+                    original_stop = pos.get("_native_stop_price")
+                    if original_stop is None:
+                        # First time – store the current stop_loss as the baseline
+                        pos["_native_stop_price"] = pos["stop_loss"]
+                    else:
+                        # Check if stop_loss has moved by more than a tick
+                        tick = 0.01 if pos["stop_loss"] >= 1.0 else 0.0001
+                        if abs(pos["stop_loss"] - original_stop) > tick * 0.5:
+                            logger.info(
+                                f"Stop price changed for {symbol}: {original_stop:.4f} -> {pos['stop_loss']:.4f}. "
+                                f"Replacing native stop order."
+                            )
+                            await self._replace_native_stop_order(
+                                symbol, pos, original_stop, pos["stop_loss"]
+                            )
+                            # Update the stored baseline
+                            pos["_native_stop_price"] = pos["stop_loss"]
 
                 # --- Partial take-profit (scalping) ---
                 partial_levels = pos.get("partial_take_profit_levels")
@@ -7845,7 +7869,99 @@ class TradingEngine:
 
         # Store order IDs in position for risk management
         pos["stop_loss_order_id"] = sl_order_id
+        # Store order type for risk management decisions
+        if sl_ot:
+            pos["stop_loss_order_type"] = sl_ot
         pos["take_profit_order_id"] = tp_order_id
+
+    async def _replace_native_stop_order(
+        self,
+        symbol: str,
+        pos: Dict[str, Any],
+        old_stop_price: float,
+        new_stop_price: float,
+    ):
+        """Cancel the existing native stop order and place a new one with the updated stop price."""
+        old_order_id = pos.get("stop_loss_order_id")
+        if not old_order_id:
+            return
+
+        # Cancel the old order
+        try:
+            await asyncio.to_thread(self.trader.cancel_order, old_order_id)
+            logger.info(f"Cancelled old stop order {old_order_id} for {symbol}")
+        except Exception as e:
+            logger.warning(f"Failed to cancel old stop order {old_order_id}: {e}")
+            # Continue anyway – the old order may still be open, but we'll place a new one.
+            # The OCO logic will eventually cancel the old one if the new one fills.
+
+        # Remove the old queued entry
+        self.queued_orders = [
+            q for q in self.queued_orders
+            if q.get("order_id") != old_order_id
+        ]
+
+        # Place a new stop order
+        qty = pos["amount"]
+        sl_ot = pos.get("stop_loss_order_type", "stop")
+        new_order_id = None
+        try:
+            if sl_ot == "stop":
+                order = await asyncio.to_thread(
+                    self.trader.create_stop_sell_order,
+                    symbol, qty, new_stop_price,
+                    time_in_force="gtc", timeout=60.0
+                )
+            else:  # stop_limit
+                # For stop_limit, we need a limit price. Use the original limit price
+                # from the old queued entry, or fall back to the new stop price.
+                old_queued = next(
+                    (q for q in self.queued_orders if q.get("order_id") == old_order_id),
+                    None
+                )
+                limit_price = old_queued.get("limit_price") if old_queued else new_stop_price
+                order = await asyncio.to_thread(
+                    self.trader.create_stop_limit_sell_order,
+                    symbol, qty, new_stop_price, limit_price,
+                    time_in_force="gtc", timeout=60.0
+                )
+            new_order_id = order["id"]
+            # Add to queued_orders
+            self.queued_orders.append({
+                "symbol": symbol,
+                "side": "sell",
+                "amount": qty,
+                "original_amount": qty,
+                "limit_price": order.get("limit_price"),
+                "stop_price": order.get("stop_price"),
+                "trail_offset": order.get("trail_offset"),
+                "order_type": sl_ot,
+                "time_in_force": "gtc",
+                "signal": {},  # no original signal for replacement
+                "timeframe": pos.get("timeframe"),
+                "atr": None,
+                "spread_pct": None,
+                "order_book": None,
+                "exit_reason": "stop_loss",
+                "order_id": new_order_id,
+                "queued_at": time.time(),
+                "filled_qty": 0,
+                "filled_cost": 0.0,
+                "is_exit_order": True,
+                "oco_pair": pos.get("take_profit_order_id"),  # maintain OCO link
+            })
+            # Update OCO link on the take-profit order if it exists
+            tp_order_id = pos.get("take_profit_order_id")
+            if tp_order_id:
+                for q in self.queued_orders:
+                    if q.get("order_id") == tp_order_id:
+                        q["oco_pair"] = new_order_id
+                        break
+            # Update position
+            pos["stop_loss_order_id"] = new_order_id
+            logger.info(f"Placed new stop order {new_order_id} for {symbol} at {new_stop_price:.4f}")
+        except Exception as e:
+            logger.error(f"Failed to place replacement stop order for {symbol}: {e}")
 
     async def _execute_partial_tp_single(
         self,
