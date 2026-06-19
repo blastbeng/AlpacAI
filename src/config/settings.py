@@ -308,7 +308,7 @@ class Settings(BaseSettings):
 
     # Enforce the LLM's minimum profit per trade check.
     # Set to False to allow trades with very small expected profit.
-    ENFORCE_MIN_PROFIT_PER_TRADE: bool = True
+    ENFORCE_MIN_PROFIT_PER_TRADE: bool = False
 
     # Order fill timeout (seconds) – used when LLM does not specify one
     ORDER_FILL_TIMEOUT_SECONDS: float = 60.0

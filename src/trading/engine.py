@@ -60,7 +60,7 @@ from src.database import load_trading_state, save_trading_state, insert_trade, g
 
 logger = logging.getLogger(__name__)
 
-SYMBOL_REEVALUATION_INTERVAL = 3600  # seconds (60 minutes)
+SYMBOL_REEVALUATION_INTERVAL = 1800  # seconds (30 minutes)
 DEFAULT_STRATEGY_INTERVAL = 600   # fallback when no timeframe or no symbols (10 minutes)
 MIN_SYMBOL_REEVALUATION_INTERVAL = 300  # seconds (5 minutes) – prevents rapid toggling
 MIN_LLM_PAUSE_DURATION = 1800  # seconds (30 min) – LLM cannot resume before this
@@ -7517,7 +7517,7 @@ class TradingEngine:
             if abs(macd - macd_signal) < 0.0001 * abs(macd) if macd else 0:
                 complexity += 1
 
-        return "mind" if complexity >= 2 else "actuator"
+        return "mind" if complexity >= 1 else "actuator"
 
     def _compute_prompt_complexity(
         self,
