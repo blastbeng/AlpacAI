@@ -1441,7 +1441,11 @@ You are trading spot only (no shorting). Only output SELL if you currently hold 
     )
     prompt += (
         "\n**Output ONLY the raw JSON object as specified.**\n\n"
-        "Return a JSON object as specified. "
+        "Return a JSON object with these **required** fields:\n"
+        "- `action`: one of BUY, SELL, HOLD\n"
+        "- `confidence`: a float between 0.0 and 1.0\n"
+        "- `reasoning`: a string explaining **why** you chose this action and this confidence level. "
+        "Include the key factors (indicators, sentiment, order book, market regime, etc.) that led to your decision.\n"
         "You may include `\"portfolio_risk_adjustment_factor\"` (0.1–1.0) in the strategy parameters "
         "to vote on the overall portfolio risk for this cycle.\n"
     )
