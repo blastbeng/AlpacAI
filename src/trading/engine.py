@@ -5980,7 +5980,7 @@ class TradingEngine:
                                 )
                         else:
                             # Already waiting for LLM; do nothing (avoid re-triggering)
-                            logger.info(
+                            logger.debug(
                                 f"Stop-loss still triggered for {symbol}, waiting for LLM response "
                                 f"(review {review_count}/{max_sl_reviews})."
                             )
@@ -6032,7 +6032,7 @@ class TradingEngine:
                             )
                     else:
                         # Already waiting for LLM; do nothing
-                        logger.info(
+                        logger.debug(
                             f"Take-profit still triggered for {symbol}, waiting for LLM response "
                             f"(review {review_count}/{max_tp_reviews})."
                         )
