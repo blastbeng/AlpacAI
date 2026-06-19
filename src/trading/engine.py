@@ -8142,17 +8142,26 @@ class TradingEngine:
             await self.notifier.send_notification(sell_msg, summary=sell_summary)
 
     async def _cleanup_orphaned_orders(self):
-        """Periodically cancel any open orders that are older than 10 minutes."""
+        """Periodically cancel any open orders that are older than 10 minutes,
+        but never cancel orders that are still being tracked as queued."""
         await asyncio.sleep(120)  # initial delay
         while self._running:
             try:
                 open_orders = await asyncio.to_thread(self.trader.get_open_orders)
                 now = time.time()
+                # Build a set of order IDs that are currently queued (waiting for fill)
+                queued_ids = {q.get('order_id') for q in self.queued_orders if q.get('order_id')}
                 for order in open_orders:
+                    order_id = order.get('id')
+                    if order_id in queued_ids:
+                        continue   # this order is being monitored by _process_queued_orders
                     created_at = order.get('timestamp', 0) / 1000.0  # ms to seconds
                     if now - created_at > 600:  # 10 minutes
-                        logger.warning(f"Cancelling orphaned order {order['id']} for {order['symbol']} (open for {now - created_at:.0f}s).")
-                        await asyncio.to_thread(self.trader.cancel_order, order['id'])
+                        logger.warning(
+                            f"Cancelling orphaned order {order_id} for {order['symbol']} "
+                            f"(open for {now - created_at:.0f}s)."
+                        )
+                        await asyncio.to_thread(self.trader.cancel_order, order_id)
             except Exception as e:
                 logger.error(f"Orphaned order cleanup error: {e}", exc_info=True)
             await asyncio.sleep(300)  # every 5 minutes
