@@ -8688,6 +8688,62 @@ class TradingEngine:
                     if isinstance(status, str):
                         status = status.lower()
 
+                    # --- For stop/stop_limit exit orders, cancel OCO pair as soon as stop price is reached ---
+                    if (queued.get("is_exit_order")
+                            and queued.get("order_type") in ("stop", "stop_limit")
+                            and queued.get("side") == "sell"
+                            and queued.get("oco_pair") is not None):
+                        stop_price = queued.get("stop_price")
+                        if stop_price is not None:
+                            # Fetch current price
+                            ticker = self.ws_manager.get_ticker(queued["symbol"])
+                            if ticker is None:
+                                try:
+                                    base = queued["symbol"].split("/")[0]
+                                    quotes = await asyncio.to_thread(get_quotes, self.data_client, [base])
+                                    ticker = quotes.get(base)
+                                except Exception:
+                                    pass
+                            if ticker and ticker.get("last") is not None:
+                                current_price = ticker["last"]
+                                if current_price <= stop_price:
+                                    # Stop triggered – cancel OCO pair immediately
+                                    oco_pair_id = queued["oco_pair"]
+                                    try:
+                                        await asyncio.to_thread(self.trader.cancel_order, oco_pair_id)
+                                        logger.info(
+                                            f"Stop triggered for {queued['symbol']} at {current_price:.4f}, "
+                                            f"cancelled OCO pair {oco_pair_id}"
+                                        )
+                                    except Exception as e:
+                                        logger.warning(f"Failed to cancel OCO order {oco_pair_id}: {e}")
+                                    # Remove the cancelled take-profit from queued_orders
+                                    self.queued_orders = [
+                                        q for q in self.queued_orders
+                                        if q.get("order_id") != oco_pair_id
+                                    ]
+                                    # Clear OCO reference so we don't try again
+                                    queued["oco_pair"] = None
+                                    # Clear take-profit order ID from position
+                                    pos = self.positions.get(queued["symbol"])
+                                    if pos:
+                                        pos.pop("take_profit_order_id", None)
+                                    # Notify user
+                                    if self.notifier:
+                                        stock_name = await self._get_stock_name(queued["symbol"])
+                                        display_symbol = self._format_symbol_display(
+                                            queued["symbol"], stock_name, queued.get("timeframe")
+                                        )
+                                        await self.notifier.send_notification(
+                                            f"🛑 Stop triggered for {display_symbol} at {current_price:.4f}, "
+                                            f"take‑profit order cancelled.",
+                                            summary={
+                                                "symbol": queued["symbol"],
+                                                "action": "CANCEL",
+                                                "reason": "Stop triggered, OCO pair cancelled",
+                                            }
+                                        )
+
                     # Determine how much has been filled since the last check
                     filled_qty = float(alpaca_order.filled_qty) if alpaca_order.filled_qty else 0.0
                     filled_avg_price = float(alpaca_order.filled_avg_price) if alpaca_order.filled_avg_price else 0.0
