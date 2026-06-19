@@ -301,6 +301,44 @@ class TelegramBot:
             pnl_sign = "+" if pnl >= 0 else ""
             pnl_pct_sign = "+" if pnl_pct >= 0 else ""
             line += f"   Unrealized P&L: {pnl_sign}${pnl:,.2f} ({pnl_pct_sign}{pnl_pct:.2f}%)"
+                # Entry order type
+                entry_order_type = pos.get('entry_order_type')
+                if entry_order_type:
+                    line += f"\n   📝 Entry Type: {entry_order_type}"
+                # Trailing stop details
+                if pos.get('trailing_stop'):
+                    ts_dist = pos.get('trailing_stop_distance_pct')
+                    ts_act = pos.get('trailing_stop_activation_pct')
+                    line += f"\n   🚶 Trailing Stop: enabled"
+                    if ts_dist is not None:
+                        line += f" (distance: {ts_dist*100:.2f}%)"
+                    if ts_act is not None:
+                        line += f" [activates at +{ts_act*100:.2f}%]"
+                # Max hold time remaining
+                max_hold = pos.get('max_hold_time_seconds')
+                if max_hold is not None and max_hold > 0:
+                    entry_ts = pos.get('timestamp', 0) / 1000.0
+                    elapsed = time.time() - entry_ts if entry_ts > 0 else 0
+                    remaining = max(0, max_hold - elapsed)
+                    if remaining > 0:
+                        line += f"\n   ⏰ Max Hold: {remaining/60:.0f} min remaining"
+                    else:
+                        line += f"\n   ⏰ Max Hold: EXPIRED"
+                # Native stop order info
+                sl_order_id = pos.get('stop_loss_order_id')
+                if sl_order_id:
+                    sl_ot = pos.get('stop_loss_order_type', 'stop')
+                    sl_price = pos.get('stop_loss')
+                    line += f"\n   🛑 Native Stop: {sl_ot}"
+                    if sl_price is not None:
+                        line += f" @ ${sl_price:.4f}"
+                # Native take-profit order info
+                tp_order_id = pos.get('take_profit_order_id')
+                if tp_order_id:
+                    tp_price = pos.get('take_profit')
+                    line += f"\n   🎯 Native TP: limit"
+                    if tp_price is not None:
+                        line += f" @ ${tp_price:.4f}"
 
             msg += line + "\n\n"
 

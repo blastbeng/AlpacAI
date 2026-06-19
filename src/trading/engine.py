@@ -6745,6 +6745,7 @@ class TradingEngine:
                         self._strategy_intervals[symbol] = custom_interval
                     self.positions[symbol]["timeframe"] = timeframe
                     self.positions[symbol]["indicator_config"] = signal.indicator_config
+                    self.positions[symbol]["entry_order_type"] = order_type
                     self.positions[symbol]["buy_confidence"] = signal.confidence
                     self.positions[symbol]["buy_reasoning"] = (signal.reasoning or "")[:200]
                 else:
@@ -6782,6 +6783,7 @@ class TradingEngine:
                         "max_unrealized_loss_pct": params.get("max_unrealized_loss_pct"),
                         "timeframe": timeframe,
                         "indicator_config": signal.indicator_config,
+                        "entry_order_type": order_type,
                     }
                     custom_interval = params.get("strategy_interval_seconds")
                     if custom_interval is not None:
@@ -8926,6 +8928,7 @@ class TradingEngine:
             self.positions[symbol]["max_unrealized_loss_pct"] = params.get("max_unrealized_loss_pct")
             self.positions[symbol]["timeframe"] = timeframe
             self.positions[symbol]["indicator_config"] = indicator_config
+            self.positions[symbol]["entry_order_type"] = queued.get('order_type', 'market')
             self.positions[symbol]["buy_confidence"] = signal_dict.get('confidence', 0.0)
             self.positions[symbol]["buy_reasoning"] = (signal_dict.get('reasoning', '') or '')[:200]
         else:
@@ -8963,6 +8966,7 @@ class TradingEngine:
                 "max_unrealized_loss_pct": params.get("max_unrealized_loss_pct"),
                 "timeframe": timeframe,
                 "indicator_config": indicator_config,
+                "entry_order_type": queued.get('order_type', 'market'),
             }
 
         custom_interval = params.get("strategy_interval_seconds")
