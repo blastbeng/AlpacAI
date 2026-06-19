@@ -839,7 +839,7 @@ class TradingEngine:
     async def _backfill_new_symbol(self, symbol: str, timeframe: str):
         """Immediately backfill 30 days of OHLCV data for a newly selected symbol (assigned timeframe only)."""
         now_ms = int(time.time() * 1000)
-        start_ms = now_ms - 30 * 24 * 60 * 60 * 1000
+        start_ms = now_ms - settings.OHLCV_RETENTION_DAYS * 24 * 60 * 60 * 1000
         logger.debug(f"Starting immediate backfill for newly selected symbol {symbol} ({timeframe})")
         try:
             await self._backfill_ohlcv(symbol, timeframe, start_ms, now_ms)
@@ -864,7 +864,7 @@ class TradingEngine:
                 else:
                     logger.info("Starting market data download cycle...")
                     now_ms = int(time.time() * 1000)
-                    start_ms = now_ms - 30 * 24 * 60 * 60 * 1000  # 30 days ago
+                    start_ms = now_ms - settings.OHLCV_RETENTION_DAYS * 24 * 60 * 60 * 1000
                     for symbol_entry in self.current_symbols:
                         symbol = symbol_entry["symbol"]
                         tf = symbol_entry["timeframe"]
@@ -877,8 +877,8 @@ class TradingEngine:
                         # Configurable delay between stocks to avoid rate limits
                         await asyncio.sleep(settings.OHLCV_DOWNLOAD_SYMBOL_DELAY_SECONDS)
                     logger.info("Market data download cycle complete.")
-                    # Clean up old OHLCV data (older than 30 days)
-                    await asyncio.to_thread(cleanup_old_ohlcv, 30)
+                    # Clean up old OHLCV data (older than retention period)
+                    await asyncio.to_thread(cleanup_old_ohlcv, settings.OHLCV_RETENTION_DAYS)
             except Exception as e:
                 logger.error(f"Market data download loop error: {e}", exc_info=True)
             finally:
@@ -1944,7 +1944,7 @@ class TradingEngine:
         # Fetch historical OHLCV from database for longer-term trend analysis (up to 30 days)
         historical_ohlcv_summary = {}
         if settings.OHLCV_TIMEFRAMES:
-            since_ms = int(time.time() * 1000) - 30 * 24 * 60 * 60 * 1000
+            since_ms = int(time.time() * 1000) - settings.OHLCV_RETENTION_DAYS * 24 * 60 * 60 * 1000
 
             async def _fetch_historical_summary(sym):
                 sym_summary = {}

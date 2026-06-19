@@ -136,6 +136,16 @@ class Settings(BaseSettings):
             raise ValueError("OHLCV_TIMEFRAMES must be a list of strings")
         return v
 
+    # Number of days of OHLCV data to retain and use for backtest / LLM analysis
+    OHLCV_RETENTION_DAYS: int = 90
+
+    @field_validator("OHLCV_RETENTION_DAYS")
+    @classmethod
+    def validate_ohlcv_retention_days(cls, v: int) -> int:
+        if v < 7:
+            raise ValueError("OHLCV_RETENTION_DAYS must be at least 7")
+        return v
+
 
 
 
