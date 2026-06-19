@@ -73,6 +73,18 @@ class Settings(BaseSettings):
     # (fetches tickers/OHLCV for this many top-volume symbols)
     SYMBOL_SELECTION_CANDIDATE_LIMIT: int = 200
     SYMBOL_SELECTION_MIN_SENTIMENT: float = -1.0   # -1.0 = disabled
+
+    # Maximum number of candidates sent to the LLM for stock selection.
+    # The engine pre‑ranks candidates by a composite score and keeps only the top N.
+    LLM_STOCK_SELECTION_TOP_N: int = 20
+
+    # ETFs that are always included in the candidate pool (if tradable),
+    # regardless of volume or composite score.
+    ALWAYS_INCLUDE_ETFS: list[str] = ["SPY", "QQQ", "IWM", "DIA", "XLF", "XLK", "XLE", "XLV", "XLI", "XLP", "XLY", "XLB", "XLRE", "XLU", "XLC", "SMH", "XBI", "XRT", "XHB", "XME", "XOP", "XSD", "XSW", "XTL", "XAR", "XHE", "XHS", "XIT", "XNTK", "XPH", "XRO", "XSW", "XTL", "XWEB"]
+
+    # Minimum composite score for a symbol to be used in the volume‑based fallback.
+    # Symbols below this score are skipped even if they have high volume.
+    FALLBACK_MIN_COMPOSITE_SCORE: float = 0.2
     FALLBACK_MIN_24H_VOLUME: float = 0.0
     EXCLUDED_SYMBOLS: list[str] = []
 

@@ -2068,6 +2068,48 @@ class TradingEngine:
 
         perf = self._compute_performance_metrics()
         trade_pattern_analysis = self._compute_trade_pattern_analysis()
+
+        # --- Composite opportunity score (scalping + trend + sentiment) ---
+        composite_scores: Dict[str, float] = {}
+        for sym in sample_pairs:
+            scalping = symbol_scores.get(sym, 0.0)
+            trend = symbol_trend_scores.get(sym, 0.0)
+            # Normalise sentiment compound to 0-1 (assuming range -1..1)
+            base_sym = sym.split("/")[0] if "/" in sym else sym
+            sent = news_sentiment.get(base_sym, {}).get("avg_compound", 0.0) if news_sentiment else 0.0
+            sentiment_score = (sent + 1.0) / 2.0  # map -1..1 to 0..1
+            composite = 0.4 * scalping + 0.4 * trend + 0.2 * sentiment_score
+            composite_scores[sym] = round(composite, 3)
+
+        # Build a shortlist for the LLM: top N by composite score,
+        # plus any currently held symbols and historically best symbols.
+        top_n = settings.LLM_STOCK_SELECTION_TOP_N
+        sorted_by_composite = sorted(sample_pairs, key=lambda s: composite_scores.get(s, 0), reverse=True)
+        shortlist = sorted_by_composite[:top_n]
+
+        # Always include currently held symbols (they must be managed)
+        for entry in self.current_symbols:
+            sym = entry["symbol"]
+            if sym in sample_pairs and sym not in shortlist:
+                shortlist.append(sym)
+
+        # Always include historically best symbols (from trade pattern analysis)
+        if trade_pattern_analysis:
+            best_syms = [item["symbol"] for item in trade_pattern_analysis.get("best_symbols", [])]
+            for sym in best_syms:
+                if sym in sample_pairs and sym not in shortlist:
+                    shortlist.append(sym)
+
+        # Always include the configured ETFs
+        for etf in settings.ALWAYS_INCLUDE_ETFS:
+            pair = f"{etf}/USD"
+            if pair in sample_pairs and pair not in shortlist:
+                shortlist.append(pair)
+
+        # Replace sample_pairs with the curated shortlist for all subsequent steps
+        sample_pairs = shortlist
+        logger.info(f"Curated LLM candidate list: {len(sample_pairs)} symbols")
+
         # --- Detect upcoming corporate events from news ---
         symbol_events: Dict[str, Dict[str, Any]] = {}
         if settings.NEWS_ENABLED and detect_upcoming_events is not None:
@@ -2747,14 +2789,16 @@ class TradingEngine:
             except json.JSONDecodeError:
                 logger.error("Failed to parse symbol selection response.")
 
-        # Fallback: if LLM returned no symbols AND did NOT explicitly pause, pick top-volume affordable symbols
+        # Fallback: if LLM returned no symbols AND did NOT explicitly pause, pick top affordable symbols by composite score
         if not self.current_symbols and pause_trading is not True:
-            logger.warning("LLM returned no symbols without pausing – using volume-based fallback.")
-            # Sort sample_pairs by 24h volume descending
-            sorted_pairs = sorted(sample_pairs, key=_volume, reverse=True)
+            logger.warning("LLM returned no symbols without pausing – using composite-score-based fallback.")
+            # Sort sample_pairs by composite score (already computed above)
+            sorted_pairs = sorted(sample_pairs, key=lambda s: composite_scores.get(s, 0), reverse=True)
             fallback_symbols: List[Dict[str, str]] = []
             default_tf = settings.OHLCV_TIMEFRAMES[0] if settings.OHLCV_TIMEFRAMES else "1h"
             for sym in sorted_pairs:
+                if composite_scores.get(sym, 0) < settings.FALLBACK_MIN_COMPOSITE_SCORE:
+                    continue
                 # Apply minimum 24h volume filter if configured
                 if settings.FALLBACK_MIN_24H_VOLUME > 0:
                     vol = _volume(sym)
@@ -2903,6 +2947,14 @@ class TradingEngine:
                     "llm_model": llm_model,
                 }
             )
+
+        # If no symbols were selected, shorten the re‑evaluation interval to retry sooner.
+        if not self.current_symbols:
+            self._symbol_reevaluation_interval = max(MIN_SYMBOL_REEVALUATION_INTERVAL, 600)  # 10 minutes
+            logger.info(f"No symbols selected – next re‑evaluation in {self._symbol_reevaluation_interval}s")
+        else:
+            # Restore the default (or LLM‑defined) interval
+            self._symbol_reevaluation_interval = SYMBOL_REEVALUATION_INTERVAL
 
         await asyncio.to_thread(self.redis.set, last_key, now)
 

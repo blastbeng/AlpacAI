@@ -270,6 +270,7 @@ Key principles:
 - You may include `"max_portfolio_exposure_pct"` (0.0-1.0) and `"max_portfolio_stop_risk_pct"` (0.0-1.0) in your stock selection JSON to define the maximum portfolio exposure and total stop-loss risk you are willing to accept. The engine will use these thresholds to guide position sizing in the strategy step.
 - You may include `"min_risk_reward_ratio"` (a positive number, e.g., 1.5) in your stock selection JSON to define a global minimum reward:risk ratio for all trades in this cycle. The validator will reject any trade where `take_profit_pct / stop_loss_pct` is below this value, unless you explicitly override it with a different value in the strategy step.
 - If the daily realized P&L is deeply negative or market conditions are poor, you may select 0 stocks in the stock selection step. This will pause trading until the next evaluation cycle. When you do this, always set a meaningful `pause_duration_seconds` (≥ 1800) to avoid an immediate re‑pause.
+- If no high‑confidence setups exist but market conditions are not extremely hostile (e.g., breadth > 30%, VIX < 35), you may still select 1–2 stocks with **small position sizes** (`position_size_fraction` ≤ 0.2) and **tight stops** to probe the market. This can capture unexpected moves and keep the bot engaged. Prefer stocks with scalping scores > 0.5 and positive sentiment. Do NOT pause completely just because the perfect setup is absent – a small, cautious trade is often better than idling.
 - **Required parameter for every BUY/SELL:**
   - `"cooldown_after_loss_seconds"`: a non-negative integer (0 or more). If the trade results in a loss, the bot will avoid this stock for this many seconds before considering it again. Set 0 to allow immediate re-entry.
 - **Optional parameters:**
@@ -651,6 +652,15 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "sector": "Technolo
         )
     if vix is not None:
         prompt += f"\nCBOE Volatility Index (VIX): {vix:.2f}\n"
+    # --- Market regime summary ---
+    regime_label = "neutral"
+    if market_breadth and vix is not None:
+        breadth_pct = market_breadth.get("positive_pct", 50)
+        if breadth_pct > 60 and vix < 20:
+            regime_label = "RISK-ON (broad market strength, low fear)"
+        elif breadth_pct < 40 or vix > 30:
+            regime_label = "RISK-OFF (broad market weakness, elevated fear)"
+    prompt += f"\n**Market Regime: {regime_label}**\n"
     if sector_etf_data:
         prompt += "\n## Sector ETF Performance\n"
         prompt += "Current price and daily change for key sector ETFs:\n"
