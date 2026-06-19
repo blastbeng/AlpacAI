@@ -72,7 +72,10 @@ def parse_llm_response(response_text: str) -> Signal:
             "max_spread_pct", "min_depth_at_take_profit", "max_slippage_pct",
             "max_unrealized_loss_pct", "min_confidence", "news_sentiment_exit_threshold",
             "strategy_interval_seconds", "limit_price", "time_in_force",
-            "order_type", "stop_price", "trail_offset"
+            "order_type", "stop_price", "trail_offset",
+            # --- Exit order types ---
+            "stop_loss_order_type", "stop_loss_stop_price", "stop_loss_limit_price", "stop_loss_trail_offset",
+            "take_profit_order_type", "take_profit_limit_price",
         ]
         for k in known_params:
             if k in data:
@@ -123,6 +126,43 @@ def parse_llm_response(response_text: str) -> Signal:
             except (TypeError, ValueError):
                 trail_offset = None
 
+        # --- Exit order types ---
+        stop_loss_order_type = params.get("stop_loss_order_type")
+        if stop_loss_order_type not in ("market", "stop", "stop_limit", "trailing_stop", None):
+            stop_loss_order_type = None
+
+        stop_loss_stop_price = params.get("stop_loss_stop_price")
+        if stop_loss_stop_price is not None:
+            try:
+                stop_loss_stop_price = float(stop_loss_stop_price)
+            except (TypeError, ValueError):
+                stop_loss_stop_price = None
+
+        stop_loss_limit_price = params.get("stop_loss_limit_price")
+        if stop_loss_limit_price is not None:
+            try:
+                stop_loss_limit_price = float(stop_loss_limit_price)
+            except (TypeError, ValueError):
+                stop_loss_limit_price = None
+
+        stop_loss_trail_offset = params.get("stop_loss_trail_offset")
+        if stop_loss_trail_offset is not None:
+            try:
+                stop_loss_trail_offset = float(stop_loss_trail_offset)
+            except (TypeError, ValueError):
+                stop_loss_trail_offset = None
+
+        take_profit_order_type = params.get("take_profit_order_type")
+        if take_profit_order_type not in ("limit", "market", None):
+            take_profit_order_type = None
+
+        take_profit_limit_price = params.get("take_profit_limit_price")
+        if take_profit_limit_price is not None:
+            try:
+                take_profit_limit_price = float(take_profit_limit_price)
+            except (TypeError, ValueError):
+                take_profit_limit_price = None
+
         reason = data.get("reason", "")
 
         # --- entry condition ---
@@ -169,6 +209,13 @@ def parse_llm_response(response_text: str) -> Signal:
             order_type=order_type,
             stop_price=stop_price,
             trail_offset=trail_offset,
+            # --- Exit order types ---
+            stop_loss_order_type=stop_loss_order_type,
+            stop_loss_stop_price=stop_loss_stop_price,
+            stop_loss_limit_price=stop_loss_limit_price,
+            stop_loss_trail_offset=stop_loss_trail_offset,
+            take_profit_order_type=take_profit_order_type,
+            take_profit_limit_price=take_profit_limit_price,
         )
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         raise ValueError(f"Failed to parse LLM response as valid JSON: {e}") from e

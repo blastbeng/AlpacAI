@@ -251,6 +251,33 @@ def validate_signal(
                 if to is None or not isinstance(to, (int, float)) or to <= 0:
                     return Signal(action="HOLD", confidence=0.0, reasoning="Missing or invalid trail_offset for order_type=trailing_stop")
 
+        # --- Exit order type validation ---
+        stop_loss_ot = params.get("stop_loss_order_type")
+        if stop_loss_ot is not None:
+            if stop_loss_ot not in ("market", "stop", "stop_limit", "trailing_stop"):
+                return Signal(action="HOLD", confidence=0.0, reasoning=f"Invalid stop_loss_order_type: {stop_loss_ot}")
+            if stop_loss_ot in ("stop", "stop_limit"):
+                sp = params.get("stop_loss_stop_price")
+                if sp is None or not isinstance(sp, (int, float)) or sp <= 0:
+                    return Signal(action="HOLD", confidence=0.0, reasoning="Missing or invalid stop_loss_stop_price for stop_loss_order_type")
+            if stop_loss_ot == "stop_limit":
+                lp = params.get("stop_loss_limit_price")
+                if lp is None or not isinstance(lp, (int, float)) or lp <= 0:
+                    return Signal(action="HOLD", confidence=0.0, reasoning="Missing or invalid stop_loss_limit_price for stop_loss_order_type=stop_limit")
+            if stop_loss_ot == "trailing_stop":
+                to = params.get("stop_loss_trail_offset")
+                if to is None or not isinstance(to, (int, float)) or to <= 0:
+                    return Signal(action="HOLD", confidence=0.0, reasoning="Missing or invalid stop_loss_trail_offset for stop_loss_order_type=trailing_stop")
+
+        take_profit_ot = params.get("take_profit_order_type")
+        if take_profit_ot is not None:
+            if take_profit_ot not in ("limit", "market"):
+                return Signal(action="HOLD", confidence=0.0, reasoning=f"Invalid take_profit_order_type: {take_profit_ot}")
+            if take_profit_ot == "limit":
+                lp = params.get("take_profit_limit_price")
+                if lp is None or not isinstance(lp, (int, float)) or lp <= 0:
+                    return Signal(action="HOLD", confidence=0.0, reasoning="Missing or invalid take_profit_limit_price for take_profit_order_type=limit")
+
         # Logical consistency checks (no hardcoded values)
         if sl is not None and tp <= sl:
             return Signal(action="HOLD", confidence=0.0, reasoning="take_profit_pct must be greater than stop_loss_pct")

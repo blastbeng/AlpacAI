@@ -349,6 +349,19 @@ For BUY orders, you may use any type. For SELL orders, you may use market, limit
 
 If you omit `order_type`, the engine will default to `"market"` for market orders, or `"limit"` if a `limit_price` is provided (backward compatible).
 
+**Exit Order Types (optional, for stop-loss and take-profit after a BUY):**
+You may specify the order type the engine should use for the stop-loss and take-profit exits. If you omit these, the engine will use its default behaviour (monitoring prices and placing market orders when triggered).
+- `"stop_loss_order_type"`: "market", "stop", "stop_limit", or "trailing_stop". Default: "stop" (a stop order at the stop-loss price).
+  - If "stop", requires `"stop_loss_stop_price"` (the trigger price). If omitted, the engine uses the computed stop-loss price.
+  - If "stop_limit", requires `"stop_loss_stop_price"` and `"stop_loss_limit_price"`.
+  - If "trailing_stop", requires `"stop_loss_trail_offset"` (in dollars).
+  - If "market", the stop-loss will be a market order (not recommended – it would sell immediately).
+- `"take_profit_order_type"`: "limit" (default) or "market".
+  - If "limit", requires `"take_profit_limit_price"` (the limit price). If omitted, the engine uses the computed take-profit price.
+  - If "market", the take-profit will be a market order when the price reaches the take-profit level (the engine will still monitor and place a market sell).
+
+When you provide these, the engine will place the stop-loss and take-profit orders immediately after the BUY fills, and they will act as OCO (one cancels the other when filled). The risk management loop will still handle trailing stop updates, partial take-profits, max hold time, etc.
+
 Required parameters must be provided for every BUY/SELL. If omitted, the trade is skipped. Optional parameters use standard behavior when omitted.
 """
 
