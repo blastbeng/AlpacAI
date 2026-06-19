@@ -6557,11 +6557,12 @@ class TradingEngine:
                 time_in_force = params.get("time_in_force", "day")
                 need_limit = True  # force limit order path
                 # Validate that the limit price is within a reasonable distance from the market
-                if ticker and ticker.get('ask'):
+                if ticker and ticker.get('ask') and settings.LIMIT_PRICE_MAX_DISTANCE_PCT > 0:
                     ask = ticker['ask']
-                    if limit_price < ask * 0.99:   # more than 1% below ask
+                    max_distance = settings.LIMIT_PRICE_MAX_DISTANCE_PCT
+                    if limit_price < ask * (1 - max_distance):
                         logger.warning(
-                            f"LLM limit_price {limit_price} for {symbol} is >1% below ask {ask}. "
+                            f"LLM limit_price {limit_price} for {symbol} is >{max_distance*100:.0f}% below ask {ask}. "
                             f"Rejecting BUY to avoid indefinite queuing."
                         )
                         if self.notifier:
@@ -6948,6 +6949,23 @@ class TradingEngine:
                         summary={"symbol": symbol, "action": "SKIP", "reason": "Invalid limit price"}
                     )
                 return
+
+            if limit_price is not None and settings.LIMIT_PRICE_MAX_DISTANCE_PCT > 0:
+                # For a sell, the limit must not be too far above the bid
+                if ticker and ticker.get('bid'):
+                    bid = ticker['bid']
+                    max_distance = settings.LIMIT_PRICE_MAX_DISTANCE_PCT
+                    if limit_price > bid * (1 + max_distance):
+                        logger.warning(
+                            f"LLM limit_price {limit_price} for SELL {symbol} is >{max_distance*100:.0f}% above bid {bid}. "
+                            f"Rejecting SELL to avoid indefinite queuing."
+                        )
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                f"⚠️ Skipping SELL {display_symbol}: limit price {limit_price} too far above bid {bid}.",
+                                summary={"symbol": symbol, "action": "SKIP", "reason": "Limit price too far from market"}
+                            )
+                        return
 
             # Use a longer timeout for paper market orders to tolerate Alpaca fill delays
             if settings.ALPACA_PAPER and limit_price is None:

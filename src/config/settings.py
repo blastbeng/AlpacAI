@@ -332,6 +332,20 @@ class Settings(BaseSettings):
             raise ValueError("LIMIT_ORDER_MARKET_FALLBACK_SECONDS must be positive")
         return v
 
+    # Maximum allowed distance of a limit price from the current best bid/ask,
+    # expressed as a fraction (e.g., 0.05 = 5%). Orders with a limit price
+    # further away than this are rejected to avoid indefinite queuing.
+    # Set to a higher value (e.g., 0.10) for paper trading if you want to allow
+    # wider limit orders. Set to 0.0 to disable the check entirely.
+    LIMIT_PRICE_MAX_DISTANCE_PCT: float = 0.05
+
+    @field_validator("LIMIT_PRICE_MAX_DISTANCE_PCT")
+    @classmethod
+    def validate_limit_price_max_distance(cls, v: float) -> float:
+        if v < 0.0:
+            raise ValueError("LIMIT_PRICE_MAX_DISTANCE_PCT must be >= 0")
+        return v
+
     # Maximum time (seconds) a queued limit order is allowed to stay open.
     # After this timeout the engine will cancel the order and free the capital.
     QUEUED_ORDER_TIMEOUT_SECONDS: float = 300.0   # 5 minutes
