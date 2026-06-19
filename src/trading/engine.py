@@ -513,10 +513,10 @@ class TradingEngine:
             except Exception:
                 pass  # fallback to no summary
 
+            base = f"📰 (sentiment: {compound:+.2f}[{sentiment_label}], {total} articles)"
             if summary:
-                return f"📰 {sentiment_label} ({compound:+.2f}, {total} articles) – {summary}"
-            else:
-                return f"📰 {sentiment_label} ({compound:+.2f}, {total} articles)"
+                return f"{base} – {summary}"
+            return base
         except Exception:
             pass
         return ""
@@ -4561,7 +4561,8 @@ class TradingEngine:
                     ind_parts.append(f"Pivot={pivot_points['pivot']:.4f} R1={pivot_points['r1']:.4f} S1={pivot_points['s1']:.4f}")
                 indicator_str = " | ".join(ind_parts) if ind_parts else "No indicators (insufficient OHLCV data)"
                 sentiment_str = await self._get_sentiment_str(symbol)
-                msg = f"{emoji} {display_symbol}: {validated.action} (confidence: {validated.confidence:.2f}) – {validated.reasoning}"
+                reasoning_str = f" – {validated.reasoning}" if validated.reasoning else ""
+                msg = f"{emoji} {display_symbol}: {validated.action} (confidence: {validated.confidence:.2f}){reasoning_str}"
                 if sentiment_str:
                     msg += f"\n{sentiment_str}"
                 if getattr(validated, 'backtest_summary', None):
