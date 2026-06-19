@@ -301,6 +301,24 @@ class TelegramBot:
                 limit_price = q.get('limit_price')
                 queued_at = q.get('queued_at', 0)
                 ts = datetime.fromtimestamp(queued_at).strftime('%Y-%m-%d %H:%M:%S') if queued_at else "?"
+                exit_reason = q.get('exit_reason')  # for sells
+
+                # --- Fetch current price and sector ---
+                current_price = None
+                try:
+                    ticker = self.engine.ws_manager.get_ticker(sym)
+                    if ticker is None:
+                        from src.exchanges.market_data import get_quotes
+                        quotes = await asyncio.to_thread(get_quotes, self.engine.data_client, [sym])
+                        ticker = quotes.get(sym)
+                    current_price = ticker.get('last') if ticker else None
+                except Exception:
+                    pass
+                sector = None
+                for entry in self.engine.current_symbols:
+                    if entry['symbol'] == sym:
+                        sector = entry.get('sector')
+                        break
 
                 # Status
                 if filled_qty > 0 and filled_qty < original_amount:
@@ -308,14 +326,23 @@ class TelegramBot:
                 else:
                     status = "⏳ Waiting"
 
-                line = f"<b>#{idx}</b> {side_emoji} <b>{side_label}</b> <code>{q_display}</code>\n"
+                line = f"<b>#Q{idx}</b> {side_emoji} <b>{side_label}</b> <code>{q_display}</code>\n"
+                if sector:
+                    line += f"   🏭 Sector: {sector}\n"
                 if q_tf:
                     line += f"   ⏱️ {q_tf}\n"
                 line += f"   🕒 Queued: {ts}\n"
                 line += f"   Amount: {original_amount:.6f}"
                 if limit_price is not None:
-                    line += f"  Limit: {limit_price:.4f}"
+                    line += f"  Limit: ${limit_price:.2f}"
+                if current_price is not None:
+                    line += f"  Current: ${current_price:.2f}"
+                    if limit_price is not None and current_price > 0:
+                        diff_pct = (current_price - limit_price) / limit_price * 100
+                        line += f"  ({diff_pct:+.2f}%)"
                 line += "\n"
+                if exit_reason:
+                    line += f"   Reason: {exit_reason}\n"
                 line += f"   Status: {status}\n"
 
                 msg += line + "\n"
