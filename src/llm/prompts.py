@@ -565,6 +565,13 @@ Example: {{"stocks": [{{"symbol": "AAPL", "timeframe": "1h", "sector": "Technolo
                 prompt += f"  {sym}: {', '.join(parts)}\n"
     if ohlcv_summary:
         prompt += f"\nMulti-timeframe OHLCV summary (price change %, high, low, volume):\n{json.dumps(ohlcv_summary, indent=2)}\n"
+    else:
+        prompt += (
+            "\n**Note:** No OHLCV data is available for any candidate symbol. "
+            "You must base your selection entirely on ticker data (price, 24h change, volume), "
+            "news sentiment, scalping scores, and other provided metrics. "
+            "Do not pause trading solely due to missing OHLCV if other indicators suggest strong opportunities.\n"
+        )
     if correlation_matrix:
         # Trim to only include symbols that appear in the candidate list
         trimmed = {}

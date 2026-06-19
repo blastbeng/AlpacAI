@@ -1625,6 +1625,22 @@ class TradingEngine:
         raw_quotes = await asyncio.to_thread(get_quotes, self.data_client, plain_sample)
         tickers = {pair: raw_quotes.get(pair.split("/")[0], {}) for pair in sample_pairs}
 
+        # Filter out symbols with no valid last price
+        valid_sample_pairs = [
+            sym for sym in sample_pairs
+            if tickers.get(sym, {}).get('last') is not None and tickers[sym]['last'] > 0
+        ]
+        if not valid_sample_pairs:
+            logger.warning("No symbols with valid price data. Idling until next evaluation.")
+            await asyncio.to_thread(self.redis.set, last_key, now)
+            if self.notifier:
+                await self.notifier.send_notification(
+                    "⚠️ No symbols with valid price data. Bot will idle.",
+                    summary={"action": "HOLD", "reason": "No valid price data"}
+                )
+            return
+        sample_pairs = valid_sample_pairs
+
         # --- Sector ETF quotes for market context ---
         sector_etf_data: Dict[str, Dict[str, Any]] = {}
         if settings.SECTOR_ETFS:
@@ -1832,10 +1848,24 @@ class TradingEngine:
                         data = await asyncio.to_thread(
                             get_multi_timeframe_bars, self.data_client, sym.split("/")[0], settings.OHLCV_TIMEFRAMES, limit=50
                         )
-                        return sym, data
                     except Exception as e:
                         logger.warning(f"OHLCV fetch failed for {sym}: {e}")
-                        return sym, {}
+                        data = {}
+                    # Fallback to database for any empty timeframes
+                    for tf in settings.OHLCV_TIMEFRAMES:
+                        if tf not in data or not data[tf]:
+                            try:
+                                db_candles = await asyncio.to_thread(
+                                    get_ohlcv, sym, tf, limit=50
+                                )
+                                if db_candles:
+                                    data[tf] = [
+                                        [c["timestamp"], c["open"], c["high"], c["low"], c["close"], c["volume"]]
+                                        for c in db_candles
+                                    ]
+                            except Exception as e:
+                                logger.debug(f"DB fallback for {sym} {tf} failed: {e}")
+                    return sym, data
             tasks = [fetch_ohlcv_for_symbol(sym) for sym in sorted_by_vol]
             results = await asyncio.gather(*tasks)
             ohlcv_data = dict(results)
@@ -2717,9 +2747,9 @@ class TradingEngine:
             except json.JSONDecodeError:
                 logger.error("Failed to parse symbol selection response.")
 
-        # Fallback: if LLM returned no symbols, pick top-volume affordable symbols
-        if not self.current_symbols:
-            logger.warning("LLM returned no symbols – using volume-based fallback.")
+        # Fallback: if LLM returned no symbols AND did NOT explicitly pause, pick top-volume affordable symbols
+        if not self.current_symbols and pause_trading is not True:
+            logger.warning("LLM returned no symbols without pausing – using volume-based fallback.")
             # Sort sample_pairs by 24h volume descending
             sorted_pairs = sorted(sample_pairs, key=_volume, reverse=True)
             fallback_symbols: List[Dict[str, str]] = []
