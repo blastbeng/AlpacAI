@@ -6918,20 +6918,73 @@ class TradingEngine:
             if settings.ALPACA_PAPER and limit_price is None:
                 fill_timeout = max(fill_timeout, 120.0)
 
+            # --- Determine order type for SELL ---
+            order_type = signal.order_type
+            if order_type not in ("market", "limit", "stop", "stop_limit", "trailing_stop"):
+                # Fallback: limit if limit_price provided, else market
+                if limit_price is not None:
+                    order_type = "limit"
+                else:
+                    order_type = "market"
+
             try:
-                order = await asyncio.to_thread(
-                    self.trader.create_market_sell_order, symbol, gross_amount, fill_timeout, limit_price, time_in_force
-                )
+                if order_type == "market":
+                    order = await asyncio.to_thread(
+                        self.trader.create_market_sell_order, symbol, gross_amount, fill_timeout,
+                        limit_price=None, time_in_force='day'
+                    )
+                elif order_type == "limit":
+                    order = await asyncio.to_thread(
+                        self.trader.create_market_sell_order, symbol, gross_amount, fill_timeout,
+                        limit_price=limit_price, time_in_force=time_in_force
+                    )
+                elif order_type == "stop":
+                    stop_price = signal.stop_price
+                    if stop_price is None or stop_price <= 0:
+                        raise ValueError("Missing or invalid stop_price for stop order")
+                    order = await asyncio.to_thread(
+                        self.trader.create_stop_sell_order, symbol, gross_amount, stop_price,
+                        time_in_force=time_in_force, timeout=fill_timeout
+                    )
+                elif order_type == "stop_limit":
+                    stop_price = signal.stop_price
+                    limit_price_sl = limit_price  # LLM-provided limit_price for stop_limit
+                    if stop_price is None or stop_price <= 0:
+                        raise ValueError("Missing or invalid stop_price for stop_limit order")
+                    if limit_price_sl is None or limit_price_sl <= 0:
+                        raise ValueError("Missing or invalid limit_price for stop_limit order")
+                    order = await asyncio.to_thread(
+                        self.trader.create_stop_limit_sell_order, symbol, gross_amount,
+                        stop_price, limit_price_sl,
+                        time_in_force=time_in_force, timeout=fill_timeout
+                    )
+                elif order_type == "trailing_stop":
+                    trail_offset = signal.trail_offset
+                    if trail_offset is None or trail_offset <= 0:
+                        raise ValueError("Missing or invalid trail_offset for trailing_stop order")
+                    order = await asyncio.to_thread(
+                        self.trader.create_trailing_stop_sell_order, symbol, gross_amount,
+                        trail_offset,
+                        time_in_force=time_in_force, timeout=fill_timeout
+                    )
+                else:
+                    raise ValueError(f"Unknown order_type: {order_type}")
                 if order.get('status') == 'open':
-                    order_type = "limit" if limit_price is not None else "market"
+                    order_type_str = "limit" if limit_price is not None else "market"
+                    # Override with actual order_type if explicitly set
+                    if signal.order_type in ("market", "limit", "stop", "stop_limit", "trailing_stop"):
+                        order_type_str = signal.order_type
                     price_str = f" at {limit_price}" if limit_price is not None else ""
-                    logger.info(f"SELL {order_type} order for {symbol} queued{price_str}")
+                    logger.info(f"SELL {order_type_str} order for {symbol} queued{price_str}")
                     self.queued_orders.append({
                         'symbol': symbol,
                         'side': 'sell',
                         'amount': gross_amount,
                         'original_amount': gross_amount,
-                        'limit_price': limit_price,
+                        'limit_price': limit_price if order_type in ("limit", "stop_limit") else None,
+                        'stop_price': signal.stop_price if order_type in ("stop", "stop_limit") else None,
+                        'trail_offset': signal.trail_offset if order_type == "trailing_stop" else None,
+                        'order_type': order_type_str,
                         'time_in_force': time_in_force,
                         'signal': asdict(signal),
                         'timeframe': timeframe,
@@ -6946,7 +6999,7 @@ class TradingEngine:
                     })
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"⏳ SELL {order_type} order for {display_symbol} queued{price_str}",
+                            f"⏳ SELL {order_type_str} order for {display_symbol} queued{price_str}",
                             summary={"symbol": symbol, "action": "QUEUE", "reason": "Order not yet filled"}
                         )
                     return
