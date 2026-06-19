@@ -53,28 +53,6 @@ class LiveTrader:
     ) -> Dict[str, Any]:
         base = symbol.split("/")[0]
 
-        # Alpaca Paper Trading limit order queuing logic
-        if settings.ALPACA_PAPER and limit_price is not None:
-            try:
-                quote = self.trading_client.get_latest_quote(base)
-                ask_price = float(quote.ask_price)
-                if ask_price > limit_price:
-                    logger.info(f"Paper buy limit order for {symbol} at {limit_price} queued (ask: {ask_price}).")
-                    return {
-                        'id': f'queued_{base}_{int(time.time()*1000)}',
-                        'symbol': symbol,
-                        'side': 'buy',
-                        'amount': 0.0,
-                        'price': 0.0,
-                        'cost': 0.0,
-                        'fee': {'cost': 0.0, 'currency': 'USD'},
-                        'status': 'queued',
-                        'limit_price': limit_price,
-                        'timestamp': int(time.time() * 1000),
-                    }
-            except Exception as e:
-                logger.warning(f"Could not fetch quote for paper buy limit queuing check: {e}")
-
         asset = self.trading_client.get_asset(base)
         if not asset.fractionable:
             # Non-fractionable asset: must use integer qty
@@ -131,52 +109,38 @@ class LiveTrader:
                     time_in_force=TimeInForce.DAY,
                 )
         order = self.trading_client.submit_order(order_data)
-        filled_order = self._wait_for_order_fill(order.id, base, timeout)
-        if filled_order is None:
-            if settings.ALPACA_PAPER and limit_price is not None:
-                logger.info(f"Paper buy limit order for {symbol} timed out, queuing locally.")
-                return {
-                    'id': f'queued_{base}_{int(time.time()*1000)}',
-                    'symbol': symbol,
-                    'side': 'buy',
-                    'amount': 0.0,
-                    'price': 0.0,
-                    'cost': 0.0,
-                    'fee': {'cost': 0.0, 'currency': 'USD'},
-                    'status': 'queued',
-                    'limit_price': limit_price,
-                    'timestamp': int(time.time() * 1000),
-                }
-            raise RuntimeError(f"Order for {symbol} did not fill within {timeout}s and was cancelled.")
-        return self._order_to_dict(filled_order, symbol)
+
+        if limit_price is not None:
+            # Limit order – check if it is immediately marketable
+            try:
+                quote = self.trading_client.get_latest_quote(base)
+                ask_price = float(quote.ask_price)
+                marketable = limit_price >= ask_price
+            except Exception as e:
+                logger.warning(f"Could not fetch quote for buy limit marketability check: {e}")
+                marketable = False
+
+            if marketable:
+                # Marketable limit order – wait briefly for fill
+                filled_order = self._wait_for_order_fill(order.id, base, 10.0, cancel_on_timeout=False)
+                if filled_order is not None:
+                    return self._order_to_dict(filled_order, symbol)
+
+            # Not marketable or didn't fill in the short window – return as open
+            open_order = self.trading_client.get_order_by_id(order.id)
+            return self._order_to_dict(open_order, symbol)
+        else:
+            # Market order – wait with full timeout, cancel on timeout
+            filled_order = self._wait_for_order_fill(order.id, base, timeout)
+            if filled_order is None:
+                raise RuntimeError(f"Order for {symbol} did not fill within {timeout}s and was cancelled.")
+            return self._order_to_dict(filled_order, symbol)
 
     def create_market_sell_order(
         self, symbol: str, qty: float, timeout: float = 60.0,
         limit_price: Optional[float] = None, time_in_force: str = "day"
     ) -> Dict[str, Any]:
         base = symbol.split("/")[0]
-
-        # Alpaca Paper Trading limit order queuing logic
-        if settings.ALPACA_PAPER and limit_price is not None:
-            try:
-                quote = self.trading_client.get_latest_quote(base)
-                bid_price = float(quote.bid_price)
-                if bid_price < limit_price:
-                    logger.info(f"Paper sell limit order for {symbol} at {limit_price} queued (bid: {bid_price}).")
-                    return {
-                        'id': f'queued_{base}_{int(time.time()*1000)}',
-                        'symbol': symbol,
-                        'side': 'sell',
-                        'amount': 0.0,
-                        'price': 0.0,
-                        'cost': 0.0,
-                        'fee': {'cost': 0.0, 'currency': 'USD'},
-                        'status': 'queued',
-                        'limit_price': limit_price,
-                        'timestamp': int(time.time() * 1000),
-                    }
-            except Exception as e:
-                logger.warning(f"Could not fetch quote for paper sell limit queuing check: {e}")
 
         if limit_price is not None:
             if limit_price <= 0:
@@ -198,24 +162,32 @@ class LiveTrader:
                 time_in_force=TimeInForce.DAY,
             )
         order = self.trading_client.submit_order(order_data)
-        filled_order = self._wait_for_order_fill(order.id, base, timeout)
-        if filled_order is None:
-            if settings.ALPACA_PAPER and limit_price is not None:
-                logger.info(f"Paper sell limit order for {symbol} timed out, queuing locally.")
-                return {
-                    'id': f'queued_{base}_{int(time.time()*1000)}',
-                    'symbol': symbol,
-                    'side': 'sell',
-                    'amount': 0.0,
-                    'price': 0.0,
-                    'cost': 0.0,
-                    'fee': {'cost': 0.0, 'currency': 'USD'},
-                    'status': 'queued',
-                    'limit_price': limit_price,
-                    'timestamp': int(time.time() * 1000),
-                }
-            raise RuntimeError(f"Order for {symbol} did not fill within {timeout}s and was cancelled.")
-        return self._order_to_dict(filled_order, symbol)
+
+        if limit_price is not None:
+            # Limit order – check if it is immediately marketable
+            try:
+                quote = self.trading_client.get_latest_quote(base)
+                bid_price = float(quote.bid_price)
+                marketable = limit_price <= bid_price
+            except Exception as e:
+                logger.warning(f"Could not fetch quote for sell limit marketability check: {e}")
+                marketable = False
+
+            if marketable:
+                # Marketable limit order – wait briefly for fill
+                filled_order = self._wait_for_order_fill(order.id, base, 10.0, cancel_on_timeout=False)
+                if filled_order is not None:
+                    return self._order_to_dict(filled_order, symbol)
+
+            # Not marketable or didn't fill in the short window – return as open
+            open_order = self.trading_client.get_order_by_id(order.id)
+            return self._order_to_dict(open_order, symbol)
+        else:
+            # Market order – wait with full timeout, cancel on timeout
+            filled_order = self._wait_for_order_fill(order.id, base, timeout)
+            if filled_order is None:
+                raise RuntimeError(f"Order for {symbol} did not fill within {timeout}s and was cancelled.")
+            return self._order_to_dict(filled_order, symbol)
 
     # ------------------------------------------------------------------
     # Order management
@@ -246,9 +218,11 @@ class LiveTrader:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-    def _wait_for_order_fill(self, order_id: str, symbol: str, timeout: float) -> Any:
+    def _wait_for_order_fill(self, order_id: str, symbol: str, timeout: float, cancel_on_timeout: bool = True) -> Any:
         """Poll Alpaca until the order is filled, rejected, or cancelled.
-        If the timeout expires, cancel the order to avoid orphans."""
+        If the timeout expires and *cancel_on_timeout* is True, cancel the
+        order to avoid orphans.  If *cancel_on_timeout* is False, simply
+        return None and leave the order open on Alpaca."""
         start = time.time()
         while time.time() - start < timeout:
             order = self.trading_client.get_order_by_id(order_id)
@@ -264,12 +238,13 @@ class LiveTrader:
         if order.status == OrderStatus.FILLED:
             return order
 
-        # Cancel to avoid leaving an orphan order on Alpaca
-        try:
-            self.trading_client.cancel_order_by_id(order_id)
-            logger.warning(f"Order {order_id} for {symbol} cancelled after {timeout}s timeout.")
-        except Exception as e:
-            logger.error(f"Failed to cancel order {order_id}: {e}")
+        if cancel_on_timeout:
+            # Cancel to avoid leaving an orphan order on Alpaca
+            try:
+                self.trading_client.cancel_order_by_id(order_id)
+                logger.warning(f"Order {order_id} for {symbol} cancelled after {timeout}s timeout.")
+            except Exception as e:
+                logger.error(f"Failed to cancel order {order_id}: {e}")
 
         return None
 
@@ -278,7 +253,8 @@ class LiveTrader:
         qty = float(order.filled_qty) if order.filled_qty else 0.0
         price = float(order.filled_avg_price) if order.filled_avg_price else 0.0
         cost = qty * price
-        return {
+        status = 'closed' if order.status == OrderStatus.FILLED else 'open'
+        result = {
             'id': str(order.id),
             'symbol': symbol,          # original pair (e.g., "AAPL/USD")
             'side': 'buy' if order.side == OrderSide.BUY else 'sell',
@@ -286,6 +262,10 @@ class LiveTrader:
             'price': price,
             'cost': cost,
             'fee': {'cost': 0.0, 'currency': 'USD'},
-            'status': 'closed',
+            'status': status,
             'timestamp': int(order.created_at.timestamp() * 1000) if order.created_at else int(time.time() * 1000),
         }
+        # Include limit price if the order has one
+        if hasattr(order, 'limit_price') and order.limit_price is not None:
+            result['limit_price'] = float(order.limit_price)
+        return result
