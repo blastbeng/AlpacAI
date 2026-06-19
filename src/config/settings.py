@@ -295,6 +295,17 @@ class Settings(BaseSettings):
             raise ValueError("ORDER_FILL_TIMEOUT_SECONDS must be positive")
         return v
 
+    # Maximum time (seconds) a queued limit order is allowed to stay open.
+    # After this timeout the engine will cancel the order and free the capital.
+    QUEUED_ORDER_TIMEOUT_SECONDS: float = 300.0   # 5 minutes
+
+    @field_validator("QUEUED_ORDER_TIMEOUT_SECONDS")
+    @classmethod
+    def validate_queued_order_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("QUEUED_ORDER_TIMEOUT_SECONDS must be positive")
+        return v
+
     # Redis
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379

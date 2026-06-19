@@ -6475,6 +6475,20 @@ class TradingEngine:
                 limit_price = llm_limit_price
                 time_in_force = params.get("time_in_force", "day")
                 need_limit = True  # force limit order path
+                # Validate that the limit price is within a reasonable distance from the market
+                if ticker and ticker.get('ask'):
+                    ask = ticker['ask']
+                    if limit_price < ask * 0.99:   # more than 1% below ask
+                        logger.warning(
+                            f"LLM limit_price {limit_price} for {symbol} is >1% below ask {ask}. "
+                            f"Rejecting BUY to avoid indefinite queuing."
+                        )
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                f"⚠️ Skipping BUY {display_symbol}: limit price {limit_price} too far below ask {ask}.",
+                                summary={"symbol": symbol, "action": "SKIP", "reason": "Limit price too far from market"}
+                            )
+                        return
             elif need_limit:
                 limit_price = self._default_limit_price(symbol, "BUY", ticker, order_book)
                 time_in_force = params.get("time_in_force", "day")
@@ -7911,6 +7925,33 @@ class TradingEngine:
                         # Old queued entries without order_id – remove them safely
                         logger.warning(f"Queued order for {queued['symbol']} missing order_id, removing.")
                         self.queued_orders.remove(queued)
+                        continue
+
+                    # --- Timeout check: cancel stale queued limit orders ---
+                    queued_at = queued.get('queued_at', 0)
+                    if time.time() - queued_at > settings.QUEUED_ORDER_TIMEOUT_SECONDS:
+                        logger.warning(
+                            f"Queued order {order_id} for {queued['symbol']} timed out "
+                            f"after {settings.QUEUED_ORDER_TIMEOUT_SECONDS}s. Cancelling."
+                        )
+                        try:
+                            await asyncio.to_thread(self.trader.cancel_order, order_id)
+                        except Exception as e:
+                            logger.error(f"Failed to cancel timed-out order {order_id}: {e}")
+                        # Remove from queue regardless of cancel success
+                        self.queued_orders.remove(queued)
+                        if self.notifier:
+                            stock_name = await self._get_stock_name(queued['symbol'])
+                            tf = queued.get('timeframe')
+                            display = self._format_symbol_display(queued['symbol'], stock_name, tf)
+                            await self.notifier.send_notification(
+                                f"⏰ Queued {queued['side']} order for {display} timed out and was cancelled.",
+                                summary={
+                                    "symbol": queued['symbol'],
+                                    "action": "CANCEL",
+                                    "reason": "Queued order timeout",
+                                }
+                            )
                         continue
 
                     try:
