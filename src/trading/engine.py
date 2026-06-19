@@ -1434,6 +1434,17 @@ class TradingEngine:
                 )
                 pos["_force_close"] = True
 
+        # Discard positions with zero amount or zero price (corrupted state)
+        for symbol in list(self.positions.keys()):
+            pos = self.positions[symbol]
+            amount = pos.get("amount", 0)
+            price = pos.get("price", 0)
+            if amount <= 0 or price <= 0:
+                logger.warning(
+                    f"Position for {symbol} has invalid amount={amount} or price={price}. Removing it."
+                )
+                del self.positions[symbol]
+
         self.trade_history = state.get("trade_history", [])
         self.queued_orders = state.get("queued_orders", [])
         for q in self.queued_orders:
@@ -5331,6 +5342,9 @@ class TradingEngine:
         open_trades = []
         pos_tickers = self._get_all_position_tickers_sync()
         for symbol, pos in self.positions.items():
+            # Skip invalid positions (zero amount or zero price)
+            if pos.get("amount", 0) <= 0 or pos.get("price", 0) <= 0:
+                continue
             try:
                 t = pos_tickers.get(symbol)
                 current_price = t['last'] if t and t.get('last') else pos['price']
