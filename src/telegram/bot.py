@@ -230,11 +230,13 @@ class TelegramBot:
             await update.message.reply_text("⚠️ Could not retrieve open trades.", reply_markup=self.keyboard)
             return
 
-        if not open_trades:
-            await update.message.reply_text("📈 No open trades.", reply_markup=self.keyboard)
+        queued_orders = self.engine.queued_orders
+
+        if not open_trades and not queued_orders:
+            await update.message.reply_text("📈 No open trades or queued orders.", reply_markup=self.keyboard)
             return
 
-        msg = "<b>📈 Open Trades</b>\n\n"
+        msg = "<b>📈 Open Trades</b>\n\n" if open_trades else ""
         for idx, t in enumerate(open_trades, start=1):
             sym = t['symbol']
             trade_tf = t.get('timeframe')
@@ -282,6 +284,41 @@ class TelegramBot:
             line += f"   Unrealized P&L: {pnl_sign}{pnl:.4f} ({pnl_pct_sign}{pnl_pct:.2f}%)"
 
             msg += line + "\n\n"
+
+        # --- Queued Orders ---
+        if queued_orders:
+            msg += "\n<b>⏳ Queued Orders</b>\n\n"
+            for idx, q in enumerate(queued_orders, start=1):
+                sym = q['symbol']
+                side = q['side']
+                side_emoji = "🟢" if side == "buy" else "🔴"
+                side_label = "BUY" if side == "buy" else "SELL"
+                q_tf = q.get('timeframe')
+                q_name = await self.engine._get_stock_name(sym)
+                q_display = self.engine._format_symbol_display(sym, q_name, q_tf)
+                original_amount = q.get('original_amount', q['amount'])
+                filled_qty = q.get('filled_qty', 0.0)
+                limit_price = q.get('limit_price')
+                queued_at = q.get('queued_at', 0)
+                ts = datetime.fromtimestamp(queued_at).strftime('%Y-%m-%d %H:%M:%S') if queued_at else "?"
+
+                # Status
+                if filled_qty > 0 and filled_qty < original_amount:
+                    status = f"⏳ Partially filled ({filled_qty:.6f}/{original_amount:.6f})"
+                else:
+                    status = "⏳ Waiting"
+
+                line = f"<b>#{idx}</b> {side_emoji} <b>{side_label}</b> <code>{q_display}</code>\n"
+                if q_tf:
+                    line += f"   ⏱️ {q_tf}\n"
+                line += f"   🕒 Queued: {ts}\n"
+                line += f"   Amount: {original_amount:.6f}"
+                if limit_price is not None:
+                    line += f"  Limit: {limit_price:.4f}"
+                line += "\n"
+                line += f"   Status: {status}\n"
+
+                msg += line + "\n"
 
         await update.message.reply_text(msg, parse_mode='HTML', reply_markup=self.keyboard)
 
