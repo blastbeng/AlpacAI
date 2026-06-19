@@ -3678,10 +3678,10 @@ class TradingEngine:
             # Extract raw candles for the assigned timeframe (from multi-timeframe data)
             raw_candles = multi_tf_raw_candles.get(assigned_tf)
 
-            # Fetch historical OHLCV from DB for backtest analysis (last 30 days)
+            # Fetch historical OHLCV from DB for backtest analysis (retention period)
             historical_ohlcv = None
             try:
-                since_ms = int(time.time() * 1000) - 30 * 24 * 60 * 60 * 1000
+                since_ms = int(time.time() * 1000) - settings.OHLCV_RETENTION_DAYS * 24 * 60 * 60 * 1000
                 db_candles = await asyncio.to_thread(
                     get_ohlcv, symbol, assigned_tf, since_ms=since_ms, limit=500
                 )
