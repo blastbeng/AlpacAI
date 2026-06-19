@@ -132,10 +132,14 @@ class LiveTrader:
             open_order = self.trading_client.get_order_by_id(order.id)
             return self._order_to_dict(open_order, symbol)
         else:
-            # Market order – wait with full timeout, cancel on timeout
-            filled_order = self._wait_for_order_fill(order.id, base, timeout)
+            # Market order – wait with full timeout; don't cancel so the engine
+            # can queue it for monitoring if it hasn't filled yet.
+            filled_order = self._wait_for_order_fill(order.id, base, timeout, cancel_on_timeout=False)
             if filled_order is None:
-                raise RuntimeError(f"Order for {symbol} did not fill within {timeout}s and was cancelled.")
+                # Order didn't fill in time but is still open on Alpaca –
+                # return it as open so the engine can queue it.
+                open_order = self.trading_client.get_order_by_id(order.id)
+                return self._order_to_dict(open_order, symbol)
             return self._order_to_dict(filled_order, symbol)
 
     @retry_on_rate_limit(max_retries=3, base_delay=1.0)
@@ -186,10 +190,14 @@ class LiveTrader:
             open_order = self.trading_client.get_order_by_id(order.id)
             return self._order_to_dict(open_order, symbol)
         else:
-            # Market order – wait with full timeout, cancel on timeout
-            filled_order = self._wait_for_order_fill(order.id, base, timeout)
+            # Market order – wait with full timeout; don't cancel so the engine
+            # can queue it for monitoring if it hasn't filled yet.
+            filled_order = self._wait_for_order_fill(order.id, base, timeout, cancel_on_timeout=False)
             if filled_order is None:
-                raise RuntimeError(f"Order for {symbol} did not fill within {timeout}s and was cancelled.")
+                # Order didn't fill in time but is still open on Alpaca –
+                # return it as open so the engine can queue it.
+                open_order = self.trading_client.get_order_by_id(order.id)
+                return self._order_to_dict(open_order, symbol)
             return self._order_to_dict(filled_order, symbol)
 
     # ------------------------------------------------------------------

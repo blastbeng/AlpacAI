@@ -6432,7 +6432,11 @@ class TradingEngine:
             except Exception as e:
                 logger.warning(f"Could not verify/adjust min order size for {symbol}: {e}")
 
-            need_limit = settings.ALPACA_PAPER and not self._is_regular_hours()
+            need_limit = (
+                settings.ALPACA_PAPER
+                and not settings.PAPER_MARKET_ORDERS_ALWAYS
+                and not self._is_regular_hours()
+            )
             limit_price = None
             time_in_force = "day"
             # If LLM provided a limit_price, use it even during regular hours
@@ -6478,12 +6482,18 @@ class TradingEngine:
                     )
                 return
 
+            # Use a longer timeout for paper market orders to tolerate Alpaca fill delays
+            if settings.ALPACA_PAPER and limit_price is None:
+                fill_timeout = max(fill_timeout, 120.0)
+
             try:
                 order = await asyncio.to_thread(
                     self.trader.create_market_buy_order, symbol, amount, fill_timeout, limit_price, time_in_force
                 )
                 if order.get('status') == 'open':
-                    logger.info(f"BUY limit order for {symbol} queued at {limit_price}")
+                    order_type = "limit" if limit_price is not None else "market"
+                    price_str = f" at {limit_price}" if limit_price is not None else ""
+                    logger.info(f"BUY {order_type} order for {symbol} queued{price_str}")
                     self.queued_orders.append({
                         'symbol': symbol,
                         'side': 'buy',
@@ -6503,8 +6513,8 @@ class TradingEngine:
                     })
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"⏳ BUY limit order for {display_symbol} queued at {limit_price}",
-                            summary={"symbol": symbol, "action": "QUEUE", "reason": "Limit price not marketable"}
+                            f"⏳ BUY {order_type} order for {display_symbol} queued{price_str}",
+                            summary={"symbol": symbol, "action": "QUEUE", "reason": "Order not yet filled"}
                         )
                     return
                 logger.info(f"BUY {symbol}: {order}")
@@ -6740,7 +6750,11 @@ class TradingEngine:
             except Exception as e:
                 logger.warning(f"Could not verify min sell size for {symbol}: {e}")
 
-            need_limit = settings.ALPACA_PAPER and not self._is_regular_hours()
+            need_limit = (
+                settings.ALPACA_PAPER
+                and not settings.PAPER_MARKET_ORDERS_ALWAYS
+                and not self._is_regular_hours()
+            )
             limit_price = None
             time_in_force = "day"
             if need_limit:
@@ -6766,12 +6780,18 @@ class TradingEngine:
                     )
                 return
 
+            # Use a longer timeout for paper market orders to tolerate Alpaca fill delays
+            if settings.ALPACA_PAPER and limit_price is None:
+                fill_timeout = max(fill_timeout, 120.0)
+
             try:
                 order = await asyncio.to_thread(
                     self.trader.create_market_sell_order, symbol, gross_amount, fill_timeout, limit_price, time_in_force
                 )
                 if order.get('status') == 'open':
-                    logger.info(f"SELL limit order for {symbol} queued at {limit_price}")
+                    order_type = "limit" if limit_price is not None else "market"
+                    price_str = f" at {limit_price}" if limit_price is not None else ""
+                    logger.info(f"SELL {order_type} order for {symbol} queued{price_str}")
                     self.queued_orders.append({
                         'symbol': symbol,
                         'side': 'sell',
@@ -6792,8 +6812,8 @@ class TradingEngine:
                     })
                     if self.notifier:
                         await self.notifier.send_notification(
-                            f"⏳ SELL limit order for {display_symbol} queued at {limit_price}",
-                            summary={"symbol": symbol, "action": "QUEUE", "reason": "Limit price not marketable"}
+                            f"⏳ SELL {order_type} order for {display_symbol} queued{price_str}",
+                            summary={"symbol": symbol, "action": "QUEUE", "reason": "Order not yet filled"}
                         )
                     return
                 logger.info(f"SELL {symbol}: {order}")
@@ -7922,12 +7942,10 @@ class TradingEngine:
 
                     # --- Market fallback: if still not marketable after a short grace period,
                     # cancel the limit order and re-submit as a market order ---
-                    if time.time() - queued_at > settings.LIMIT_ORDER_MARKET_FALLBACK_SECONDS:
+                    if time.time() - queued_at > settings.LIMIT_ORDER_MARKET_FALLBACK_SECONDS and queued.get('limit_price') is not None:
                         symbol = queued['symbol']
                         side = queued['side']
                         limit_price = queued.get('limit_price')
-                        if limit_price is None:
-                            continue  # should not happen, but safety
 
                         # Fetch current quote
                         ticker = self.ws_manager.get_ticker(symbol)
