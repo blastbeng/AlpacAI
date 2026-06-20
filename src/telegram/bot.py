@@ -224,7 +224,7 @@ class TelegramBot:
 
         if paused:
             try:
-                pause_status = await asyncio.to_thread(self.engine.get_pause_status)
+                pause_status = await self.engine.get_pause_status()
             except Exception:
                 pause_status = {}
             pause_reason = pause_status.get("reason", "")

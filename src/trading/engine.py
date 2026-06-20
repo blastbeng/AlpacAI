@@ -299,17 +299,21 @@ class TradingEngine:
             logger.warning(f"Failed to fetch sentiment for {base}: {e}")
             return None
 
-    async def _get_clock(self) -> Optional[Any]:
-        """Fetch the current market clock from Alpaca.
+    async def _get_clock(self, ttl: float = 30.0) -> Optional[Any]:
+        """Fetch the current market clock from Alpaca, cached for `ttl` seconds.
 
-        Always calls the API; uses the last successful response as a fallback
-        only when the API call fails.
+        All internal callers (_is_market_open, _market_clock_monitor,
+        get_pause_status) share this cache to avoid exceeding Alpaca's
+        rate limit.  The cache is refreshed at most every `ttl` seconds.
         """
+        now = time.time()
+        if self._clock_cache is not None and (now - self._clock_cache_time) < ttl:
+            return self._clock_cache
+
         try:
             clock = await asyncio.to_thread(self.exchange.get_clock)
-            # Store for fallback on future errors
             self._clock_cache = clock
-            self._clock_cache_time = time.time()
+            self._clock_cache_time = now
             return clock
         except Exception as e:
             logger.warning(f"Failed to fetch Alpaca clock: {e}")
@@ -5567,7 +5571,7 @@ class TradingEngine:
         """Return performance summary grouped by symbol and timeframe from trade_history table."""
         return get_performance()
 
-    def get_pause_status(self) -> Dict[str, Any]:
+    async def get_pause_status(self) -> Dict[str, Any]:
         """Return the current trading pause status, reason, remaining duration, and a formatted countdown."""
         paused_raw = self.redis.get("trading:paused")
         is_paused = paused_raw is not None and paused_raw == "1"
@@ -5585,10 +5589,7 @@ class TradingEngine:
             alpaca_time_str = None
             if source == "market_closed":
                 # Fetch the current clock to compute a live countdown and current Alpaca time
-                try:
-                    clock = self.exchange.get_clock()
-                except Exception:
-                    clock = None
+                clock = await self._get_clock()
 
                 alpaca_time_str = None
                 if clock is not None:
