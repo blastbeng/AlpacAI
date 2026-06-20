@@ -154,6 +154,8 @@ async def pause():
 @app.post("/api/resume")
 async def resume():
     engine = get_engine()
+    if not await engine._is_market_open():
+        raise HTTPException(status_code=400, detail="Cannot resume: market is currently closed")
     redis = engine.redis
     keys = [
         "trading:paused",

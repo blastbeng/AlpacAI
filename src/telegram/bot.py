@@ -135,6 +135,13 @@ class TelegramBot:
     async def cmd_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
             return
+        # Refuse to resume if the market is currently closed
+        if not await self.engine._is_market_open():
+            await update.message.reply_text(
+                "⏸️ Cannot resume: market is currently closed.",
+                reply_markup=self.keyboard
+            )
+            return
         # Delete all pause-related keys
         keys = [
             "trading:paused",
