@@ -154,6 +154,10 @@ class TradingEngine:
         self._balance_cache_time: float = 0.0
         self._sentiment_cache: Dict[str, tuple] = {}  # symbol -> (timestamp, sentiment_dict)
         self.queued_orders: List[Dict[str, Any]] = []
+        # Force immediate LLM evaluation when an entry signal is detected
+        self._force_eval: Dict[str, bool] = {}
+        # Per‑symbol state for crossover detection (stores last known indicator values)
+        self._entry_signal_state: Dict[str, Dict[str, Any]] = {}
 
     async def _initialize_clients(self):
         """Create Alpaca clients and load persisted state (non‑blocking)."""
@@ -1505,6 +1509,7 @@ class TradingEngine:
         self._background_tasks.append(asyncio.create_task(self._check_pending_entries()))
         self._background_tasks.append(asyncio.create_task(self._cleanup_orphaned_orders()))
         self._background_tasks.append(asyncio.create_task(self._process_queued_orders()))
+        self._background_tasks.append(asyncio.create_task(self._monitor_entry_signals_loop()))
 
         while self._running:
             try:
@@ -4279,6 +4284,8 @@ class TradingEngine:
                 logger.info(f"Skipping LLM for {symbol}: market unchanged, no strong signals.")
                 # Update snapshot but no LLM call – assume HOLD
                 self._update_last_eval_snapshot(symbol, current_price, rsi, macd_hist)
+                # Clear any force‑eval flag for this symbol
+                self._force_eval.pop(symbol, None)
                 return
 
             strategy_model_type = self._choose_model_tier(
@@ -4327,6 +4334,8 @@ class TradingEngine:
                 logger.info(f"LLM call completed for {symbol} (provider={llm_provider}, model={llm_model})")
                 # Update snapshot after a real LLM call
                 self._update_last_eval_snapshot(symbol, current_price, rsi, macd_hist)
+                # Clear any force‑eval flag for this symbol
+                self._force_eval.pop(symbol, None)
             except asyncio.TimeoutError:
                 logger.warning(f"LLM strategy call timed out for {symbol}.")
                 # If a critical decision is pending, force a SELL immediately to protect capital.
@@ -7238,6 +7247,9 @@ class TradingEngine:
         is_critical: bool,
     ) -> bool:
         """Return True if it’s safe to skip the LLM call and just HOLD."""
+        # If a force evaluation was requested (entry signal detected), never skip
+        if self._force_eval.get(symbol, False):
+            return False
         # Never skip critical situations (max hold, stop-loss, take-profit triggered)
         if is_critical:
             return False
@@ -7325,6 +7337,80 @@ class TradingEngine:
         # Have an open position – skip if price far from stop/tp and indicators calm
         # (the risk management loop will handle stop/tp)
         return True
+
+    async def _monitor_entry_signals_loop(self):
+        """Periodically check tracked symbols for favourable entry conditions.
+        When a condition is met, force an immediate LLM evaluation."""
+        await asyncio.sleep(10)  # initial delay
+        while self._running:
+            try:
+                for entry in self.current_symbols:
+                    symbol = entry["symbol"]
+                    tf = entry["timeframe"]
+                    # Avoid re‑triggering too often – enforce a cooldown of at least
+                    # the normal strategy interval.
+                    last_eval = self._last_strategy_eval.get(symbol, 0)
+                    interval = self._strategy_intervals.get(symbol, self._timeframe_to_seconds(tf))
+                    if time.time() - last_eval < interval:
+                        continue
+
+                    if await self._detect_entry_signal(symbol, tf):
+                        logger.info(f"Entry signal detected for {symbol}, forcing LLM evaluation.")
+                        self._force_eval[symbol] = True
+                        # Clear last evaluation timestamp so the main loop picks it up immediately
+                        self._last_strategy_eval.pop(symbol, None)
+            except Exception as e:
+                logger.error(f"Entry signal monitor error: {e}", exc_info=True)
+            await asyncio.sleep(5)  # check every 5 seconds
+
+    async def _detect_entry_signal(self, symbol: str, timeframe: str) -> bool:
+        """Return True if a favourable entry condition is detected for the symbol.
+        Uses recent OHLCV data from the database and compares with previous state."""
+        # Fetch recent candles from DB (last 50)
+        db_candles = await asyncio.to_thread(
+            get_ohlcv, symbol, timeframe, limit=50
+        )
+        if len(db_candles) < 26:
+            return False
+
+        closes = [c["close"] for c in db_candles]
+        rsi = compute_rsi(closes)
+        macd_val, macd_signal, macd_hist = compute_macd(closes)
+
+        # Retrieve previous state for this symbol
+        prev = self._entry_signal_state.get(symbol, {})
+        prev_rsi = prev.get("rsi")
+        prev_macd_hist = prev.get("macd_hist")
+
+        # Store current values for next cycle
+        self._entry_signal_state[symbol] = {
+            "rsi": rsi,
+            "macd_hist": macd_hist,
+        }
+
+        # --- Define entry signal conditions ---
+        # 1. RSI oversold (use LLM‑defined threshold if available, else default 30)
+        rsi_oversold = 30.0
+        try:
+            raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_rsi_oversold")
+            if raw:
+                rsi_oversold = float(raw)
+        except Exception:
+            pass
+        if rsi is not None and rsi < rsi_oversold:
+            return True
+
+        # 2. MACD histogram bullish crossover (was negative, now positive)
+        if (prev_macd_hist is not None and macd_hist is not None
+                and prev_macd_hist <= 0 and macd_hist > 0):
+            return True
+
+        # 3. RSI leaving oversold (was oversold, now above threshold) – momentum shift
+        if (prev_rsi is not None and rsi is not None
+                and prev_rsi < rsi_oversold and rsi >= rsi_oversold):
+            return True
+
+        return False
 
     async def _check_pending_entries(self):
         """Periodically check pending entry conditions and execute if met."""
