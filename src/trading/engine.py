@@ -133,6 +133,10 @@ class TradingEngine:
         self._full_breadth_running = False
         self._last_unhealthy_log = 0.0
 
+        # Market-closed periodic notification tracking
+        self._last_market_closed_notify_time: float = 0.0
+        self._market_opening_soon_notified: bool = False
+
         # Performance metrics cache – avoids recomputing on every symbol evaluation
         self._perf_cache: Optional[Dict[str, Any]] = None
         self._perf_cache_trade_count: int = -1
@@ -571,6 +575,61 @@ class TradingEngine:
                                 f"⏸️ {reason}",
                                 summary={"action": "PAUSE", "reason": reason}
                             )
+
+                # --- Periodic countdown updates while market is closed ---
+                # Only send updates if we are currently paused due to market_closed
+                source_raw = await asyncio.to_thread(self.redis.get, "trading:pause_source")
+                source = source_raw.decode() if isinstance(source_raw, bytes) else (source_raw or "")
+                if source == "market_closed":
+                    now_ts = time.time()
+                    # Recompute remaining seconds from the live clock (or fallback)
+                    if clock is not None:
+                        remaining_seconds = (clock.next_open - clock.timestamp).total_seconds()
+                    else:
+                        # Fallback to stored next_open
+                        next_open_raw = await asyncio.to_thread(self.redis.get, "trading:market_next_open")
+                        if next_open_raw:
+                            next_open_str = next_open_raw.decode() if isinstance(next_open_raw, bytes) else next_open_raw
+                            next_open_dt = datetime.fromisoformat(next_open_str)
+                            remaining_seconds = (next_open_dt - datetime.now(timezone.utc)).total_seconds()
+                        else:
+                            remaining_seconds = 0
+
+                    # Periodic update every 30 minutes (1800 seconds)
+                    if now_ts - self._last_market_closed_notify_time >= 1800:
+                        if remaining_seconds > 0:
+                            hours = int(remaining_seconds // 3600)
+                            minutes = int((remaining_seconds % 3600) // 60)
+                            if hours > 0:
+                                countdown_str = f"{hours}h {minutes}m"
+                            elif minutes > 0:
+                                seconds = int(remaining_seconds % 60)
+                                countdown_str = f"{minutes}m {seconds}s"
+                            else:
+                                countdown_str = f"{int(remaining_seconds)}s"
+                            next_open_et = clock.next_open.astimezone(ZoneInfo("America/New_York")) if clock else None
+                            next_open_str = next_open_et.strftime('%H:%M %d/%m/%Y') if next_open_et else "?"
+                            update_msg = (
+                                f"⏸️ Market still closed. Reopens in {countdown_str} "
+                                f"(at {next_open_str})"
+                            )
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    update_msg,
+                                    summary={"action": "PAUSE", "reason": update_msg}
+                                )
+                        self._last_market_closed_notify_time = now_ts
+
+                    # "Opening soon" alert when less than 5 minutes remain
+                    if 0 < remaining_seconds <= 300 and not self._market_opening_soon_notified:
+                        minutes_left = int(remaining_seconds // 60)
+                        soon_msg = f"⏰ Market opens in {minutes_left} minute(s) – trading will resume automatically."
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                soon_msg,
+                                summary={"action": "INFO", "reason": "Market opening soon"}
+                            )
+                        self._market_opening_soon_notified = True
                 else:
                     # Market open – resume if paused due to market_closed (atomic)
                     lua_resume = """
@@ -596,6 +655,9 @@ class TradingEngine:
                                 "▶️ Market opened, trading resumed.",
                                 summary={"action": "RESUME", "reason": "Market opened"}
                             )
+
+                    # Reset the "opening soon" notification flag
+                    self._market_opening_soon_notified = False
             except Exception as e:
                 logger.error(f"Market clock monitor error: {e}", exc_info=True)
             await asyncio.sleep(30)  # check every 30 seconds
