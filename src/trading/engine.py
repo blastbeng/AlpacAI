@@ -296,17 +296,22 @@ class TradingEngine:
             return None
 
     async def _get_clock(self) -> Optional[Any]:
-        """Fetch the current market clock from Alpaca, cached for 60 seconds."""
-        now = time.time()
-        if self._clock_cache is not None and (now - self._clock_cache_time) < 60:
-            return self._clock_cache
+        """Fetch the current market clock from Alpaca.
+
+        Always calls the API; uses the last successful response as a fallback
+        only when the API call fails.
+        """
         try:
             clock = await asyncio.to_thread(self.exchange.get_clock)
+            # Store for fallback on future errors
             self._clock_cache = clock
-            self._clock_cache_time = now
+            self._clock_cache_time = time.time()
             return clock
         except Exception as e:
             logger.warning(f"Failed to fetch Alpaca clock: {e}")
+            if self._clock_cache is not None:
+                logger.warning("Using cached clock as fallback.")
+                return self._clock_cache
             return None
 
     async def stop(self):
@@ -5513,27 +5518,51 @@ class TradingEngine:
 
         if is_paused:
             if source == "market_closed":
-                next_open_raw = self.redis.get("trading:market_next_open")
-                if next_open_raw:
-                    try:
-                        next_open_str = next_open_raw.decode() if isinstance(next_open_raw, bytes) else next_open_raw
-                        next_open_dt = datetime.fromisoformat(next_open_str)
-                        now_utc = datetime.now(timezone.utc)
-                        remaining = (next_open_dt - now_utc).total_seconds()
-                        if remaining > 0:
-                            remaining_seconds = int(remaining)
-                            if remaining_seconds > 3600:
-                                hours = remaining_seconds // 3600
-                                minutes = (remaining_seconds % 3600) // 60
-                                countdown_str = f"{hours}h {minutes}m"
-                            elif remaining_seconds > 60:
-                                minutes = remaining_seconds // 60
-                                seconds = remaining_seconds % 60
-                                countdown_str = f"{minutes}m {seconds}s"
-                            else:
-                                countdown_str = f"{remaining_seconds}s"
-                    except Exception:
-                        pass
+                # Fetch the current clock to compute a live countdown
+                try:
+                    clock = self.exchange.get_clock()
+                except Exception:
+                    clock = None
+
+                if clock is not None and not clock.is_open:
+                    now_utc = datetime.now(timezone.utc)
+                    next_open = clock.next_open
+                    remaining = (next_open - now_utc).total_seconds()
+                    if remaining > 0:
+                        remaining_seconds = int(remaining)
+                        if remaining_seconds > 3600:
+                            hours = remaining_seconds // 3600
+                            minutes = (remaining_seconds % 3600) // 60
+                            countdown_str = f"{hours}h {minutes}m"
+                        elif remaining_seconds > 60:
+                            minutes = remaining_seconds // 60
+                            seconds = remaining_seconds % 60
+                            countdown_str = f"{minutes}m {seconds}s"
+                        else:
+                            countdown_str = f"{remaining_seconds}s"
+                else:
+                    # Fallback to the stored next_open if the clock is unavailable
+                    next_open_raw = self.redis.get("trading:market_next_open")
+                    if next_open_raw:
+                        try:
+                            next_open_str = next_open_raw.decode() if isinstance(next_open_raw, bytes) else next_open_raw
+                            next_open_dt = datetime.fromisoformat(next_open_str)
+                            now_utc = datetime.now(timezone.utc)
+                            remaining = (next_open_dt - now_utc).total_seconds()
+                            if remaining > 0:
+                                remaining_seconds = int(remaining)
+                                if remaining_seconds > 3600:
+                                    hours = remaining_seconds // 3600
+                                    minutes = (remaining_seconds % 3600) // 60
+                                    countdown_str = f"{hours}h {minutes}m"
+                                elif remaining_seconds > 60:
+                                    minutes = remaining_seconds // 60
+                                    seconds = remaining_seconds % 60
+                                    countdown_str = f"{minutes}m {seconds}s"
+                                else:
+                                    countdown_str = f"{remaining_seconds}s"
+                        except Exception:
+                            pass
             else:
                 # LLM or manual pause with duration
                 pause_start_raw = self.redis.get("trading:pause_start")
