@@ -7360,6 +7360,7 @@ class TradingEngine:
                     if await self._detect_entry_signal(symbol, tf):
                         logger.info(f"Entry signal detected for {symbol}, forcing LLM evaluation.")
                         self._force_eval[symbol] = True
+                        self._force_eval_time[symbol] = time.time()
                         # Clear last evaluation timestamp so the main loop picks it up immediately
                         self._last_strategy_eval.pop(symbol, None)
             except Exception as e:
