@@ -3424,6 +3424,11 @@ class TradingEngine:
         stock_name = await self._get_stock_name(symbol)
         display_symbol = self._format_symbol_display(symbol, stock_name, assigned_tf)
 
+        # If the market is closed, do not generate any signals (save LLM costs).
+        if not await self._is_market_open():
+            logger.info(f"Skipping {display_symbol}: market closed.")
+            return
+
         # --- Maximum symbol tenure (per-symbol, set by LLM) ---
         max_tenure_hours = symbol_entry.get('max_tenure_hours')
         if max_tenure_hours is not None and max_tenure_hours > 0 and 'entry_time' in symbol_entry:
