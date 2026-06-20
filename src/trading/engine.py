@@ -658,6 +658,9 @@ class TradingEngine:
 
                     # Reset the "opening soon" notification flag
                     self._market_opening_soon_notified = False
+                    # Reset the periodic countdown timer so the first update
+                    # after the next market close is not skipped due to a stale timestamp.
+                    self._last_market_closed_notify_time = 0.0
             except Exception as e:
                 logger.error(f"Market clock monitor error: {e}", exc_info=True)
             await asyncio.sleep(30)  # check every 30 seconds
