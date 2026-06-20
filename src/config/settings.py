@@ -116,6 +116,10 @@ class Settings(BaseSettings):
     # Maximum number of consecutive dust sweep reviews before force-selling
     MAX_DUST_SWEEP_REVIEWS: int = 10
 
+    # Minimum seconds between forced LLM evaluations triggered by the entry signal monitor.
+    # Keeps the bot responsive without spamming the LLM.
+    ENTRY_SIGNAL_COOLDOWN_SECONDS: int = 30
+
     # Minimum entry condition timeout as a multiple of the candle timeframe.
     # e.g., 2.0 means the timeout must be at least 2 × the candle period.
     ENTRY_CONDITION_MIN_TIMEOUT_MULT: float = 2.0

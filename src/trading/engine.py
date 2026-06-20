@@ -156,6 +156,8 @@ class TradingEngine:
         self.queued_orders: List[Dict[str, Any]] = []
         # Force immediate LLM evaluation when an entry signal is detected
         self._force_eval: Dict[str, bool] = {}
+        # Track when we last forced an LLM evaluation per symbol (for entry signal cooldown)
+        self._force_eval_time: Dict[str, float] = {}
         # Per‑symbol state for crossover detection (stores last known indicator values)
         self._entry_signal_state: Dict[str, Dict[str, Any]] = {}
 
@@ -7349,9 +7351,10 @@ class TradingEngine:
                     tf = entry["timeframe"]
                     # Avoid re‑triggering too often – enforce a cooldown of at least
                     # the normal strategy interval.
-                    last_eval = self._last_strategy_eval.get(symbol, 0)
-                    interval = self._strategy_intervals.get(symbol, self._timeframe_to_seconds(tf))
-                    if time.time() - last_eval < interval:
+                    # Use a short, dedicated cooldown so the bot reacts quickly to new signals
+                    cooldown = getattr(settings, 'ENTRY_SIGNAL_COOLDOWN_SECONDS', 30)
+                    last_forced = self._force_eval_time.get(symbol, 0)
+                    if time.time() - last_forced < cooldown:
                         continue
 
                     if await self._detect_entry_signal(symbol, tf):
@@ -7547,6 +7550,14 @@ class TradingEngine:
             # Previous close was below or inside cloud, current close above cloud top
             if prev_close <= cloud_top and current_close > cloud_top:
                 return True
+
+        # 13. MACD histogram positive (bullish momentum) – no previous state needed
+        if macd_hist is not None and macd_hist > 0:
+            return True
+
+        # 14. Price above VWAP (bullish) – no previous state needed
+        if current_close is not None and vwap is not None and current_close > vwap:
+            return True
 
         return False
 
