@@ -5582,6 +5582,7 @@ class TradingEngine:
         countdown_str = None
 
         if is_paused:
+            alpaca_time_str = None
             if source == "market_closed":
                 # Fetch the current clock to compute a live countdown and current Alpaca time
                 try:
