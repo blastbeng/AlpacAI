@@ -5205,7 +5205,15 @@ class TradingEngine:
                                 )
                             return  # do NOT execute now
 
-                        timeout = validated.entry_condition.get("timeout_seconds", 300)
+                        timeout = validated.entry_condition.get("timeout_seconds", 600)
+                        # Enforce a minimum based on the candle timeframe
+                        min_timeout = max(300, int(settings.ENTRY_CONDITION_MIN_TIMEOUT_MULT * tf_seconds))
+                        if timeout < min_timeout:
+                            logger.info(
+                                f"Entry condition timeout for {symbol} too short ({timeout}s), "
+                                f"clamping to minimum {min_timeout}s (timeframe={assigned_tf})"
+                            )
+                            timeout = min_timeout
                         deadline = time.time() + timeout
                         # Store for background checking – do NOT block the main loop
                         self._pending_entries[symbol] = {

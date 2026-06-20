@@ -116,6 +116,17 @@ class Settings(BaseSettings):
     # Maximum number of consecutive dust sweep reviews before force-selling
     MAX_DUST_SWEEP_REVIEWS: int = 10
 
+    # Minimum entry condition timeout as a multiple of the candle timeframe.
+    # e.g., 2.0 means the timeout must be at least 2 × the candle period.
+    ENTRY_CONDITION_MIN_TIMEOUT_MULT: float = 2.0
+
+    @field_validator("ENTRY_CONDITION_MIN_TIMEOUT_MULT")
+    @classmethod
+    def validate_entry_condition_min_timeout_mult(cls, v: float) -> float:
+        if v < 1.0:
+            raise ValueError("ENTRY_CONDITION_MIN_TIMEOUT_MULT must be >= 1.0")
+        return v
+
     # OHLCV timeframes for multi-timeframe analysis
     OHLCV_TIMEFRAMES: list[str] = ["5m", "15m", "1h", "4h"]
 

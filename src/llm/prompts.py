@@ -1477,6 +1477,10 @@ You are trading spot only (no shorting). Only output SELL if you currently hold 
         "- `\"indicator_combo\"`: wait until ALL listed indicator conditions are met.\n"
         "  Example: {\"type\": \"indicator_combo\", \"conditions\": [ {\"indicator\": \"rsi\", \"threshold\": 30, \"direction\": \"below\"}, {\"indicator\": \"macd_hist\", \"threshold\": 0, \"direction\": \"above\"} ], \"timeout_seconds\": 600}\n"
         "If a timeout expires without the condition being met, the trade is skipped entirely.\n"
+        "**Important:** The engine enforces a minimum timeout of 300 seconds or "
+        f"{settings.ENTRY_CONDITION_MIN_TIMEOUT_MULT}× the candle timeframe, whichever is larger. "
+        "Set `timeout_seconds` to at least this value, and prefer longer timeouts for higher timeframes "
+        "(e.g., 900–1800 s for 1h candles).\n"
     )
     prompt += (
         "\n**Output ONLY the raw JSON object as specified.**\n\n"
