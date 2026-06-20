@@ -6269,11 +6269,6 @@ class TradingEngine:
             # Desired amount based on fraction of total available quote balance
             desired_amount = quote_balance * position_fraction
 
-            # Apply extended hours position size multiplier if set
-            if ext_pos_mult is not None:
-                desired_amount *= ext_pos_mult
-                logger.info(f"Applied extended hours position size multiplier {ext_pos_mult}: desired_amount={desired_amount:.2f}")
-
             # Fetch all position tickers once for risk calculations
             pos_tickers = await self._get_all_position_tickers()
 
