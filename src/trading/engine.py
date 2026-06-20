@@ -5570,7 +5570,7 @@ class TradingEngine:
     def get_pause_status(self) -> Dict[str, Any]:
         """Return the current trading pause status, reason, remaining duration, and a formatted countdown."""
         paused_raw = self.redis.get("trading:paused")
-        is_paused = paused_raw is not None and paused_raw == b"1"
+        is_paused = paused_raw is not None and paused_raw == "1"
 
         reason_raw = self.redis.get("trading:pause_reason")
         reason = reason_raw.decode() if isinstance(reason_raw, bytes) else (reason_raw or "")
