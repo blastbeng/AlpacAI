@@ -27,9 +27,6 @@ class Settings(BaseSettings):
     # Trading mode
     TRADING_MODE: str = "paper"   # "paper" or "live"
 
-    # Allow market orders at any time in paper mode (bypass extended-hours limit enforcement)
-    PAPER_MARKET_ORDERS_ALWAYS: bool = False
-
     # Risk management check interval (seconds) – stop-loss/take-profit checks
     RISK_CHECK_INTERVAL_SECONDS: int = 15
 

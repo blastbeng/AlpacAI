@@ -6587,11 +6587,7 @@ class TradingEngine:
             except Exception as e:
                 logger.warning(f"Could not verify/adjust min order size for {symbol}: {e}")
 
-            need_limit = (
-                settings.ALPACA_PAPER
-                and not settings.PAPER_MARKET_ORDERS_ALWAYS
-                and not self._is_regular_hours()
-            )
+            need_limit = not self._is_regular_hours()
             limit_price = None
             time_in_force = "day"
             # If LLM provided a limit_price, use it even during regular hours
@@ -6644,10 +6640,6 @@ class TradingEngine:
                         summary={"symbol": symbol, "action": "SKIP", "reason": "Invalid limit price"}
                     )
                 return
-
-            # Use a longer timeout for paper market orders to tolerate Alpaca fill delays
-            if settings.ALPACA_PAPER and limit_price is None:
-                fill_timeout = max(fill_timeout, 120.0)
 
             # --- Determine order type ---
             order_type = signal.order_type
@@ -6976,15 +6968,17 @@ class TradingEngine:
             except Exception as e:
                 logger.warning(f"Could not verify min sell size for {symbol}: {e}")
 
-            need_limit = (
-                settings.ALPACA_PAPER
-                and not settings.PAPER_MARKET_ORDERS_ALWAYS
-                and not self._is_regular_hours()
-            )
+            need_limit = not self._is_regular_hours()
             limit_price = None
             time_in_force = "day"
-            if need_limit:
-                limit_price = params.get("limit_price") or self._default_limit_price(symbol, "SELL", ticker, order_book)
+            # If LLM provided a limit_price, use it even during regular hours
+            llm_limit_price = params.get("limit_price")
+            if llm_limit_price is not None and llm_limit_price > 0:
+                limit_price = llm_limit_price
+                time_in_force = params.get("time_in_force", "day")
+                need_limit = True  # force limit order path
+            elif need_limit:
+                limit_price = self._default_limit_price(symbol, "SELL", ticker, order_book)
                 time_in_force = params.get("time_in_force", "day")
                 if limit_price is None:
                     logger.error(f"Cannot place limit order for {symbol}: no limit price available.")
@@ -7029,10 +7023,6 @@ class TradingEngine:
                                 summary={"symbol": symbol, "action": "SKIP", "reason": "Limit price too far from market"}
                             )
                         return
-
-            # Use a longer timeout for paper market orders to tolerate Alpaca fill delays
-            if settings.ALPACA_PAPER and limit_price is None:
-                fill_timeout = max(fill_timeout, 120.0)
 
             # --- Determine order type for SELL ---
             order_type = signal.order_type
@@ -8401,7 +8391,7 @@ class TradingEngine:
 
         fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
 
-        need_limit = settings.ALPACA_PAPER and not self._is_regular_hours()
+        need_limit = not self._is_regular_hours()
         limit_price = None
         time_in_force = "day"
         if need_limit:
@@ -8565,7 +8555,7 @@ class TradingEngine:
 
         fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
 
-        need_limit = settings.ALPACA_PAPER and not self._is_regular_hours()
+        need_limit = not self._is_regular_hours()
         limit_price = None
         time_in_force = "day"
         if need_limit:
@@ -8735,7 +8725,7 @@ class TradingEngine:
             logger.info(f"Dust sweep: notional {balance * price:.4f} below min cost {min_cost}, cannot sell.")
             return
 
-        need_limit = settings.ALPACA_PAPER and not self._is_regular_hours()
+        need_limit = not self._is_regular_hours()
         limit_price = None
         time_in_force = "day"
         if need_limit:
@@ -9499,15 +9489,13 @@ class TradingEngine:
         return {"utc_hour": datetime.now(timezone.utc).hour, "session": session}
 
     def _is_market_open(self) -> bool:
-        """Return True if trading is allowed right now (paper always open, live only regular hours)."""
-        if settings.TRADING_MODE == "paper":
-            return True
+        """Return True only during regular US market hours (Mon–Fri 9:30–16:00 ET)."""
         now_et = datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York"))
         weekday = now_et.weekday()
-        if weekday >= 5:                     # Saturday or Sunday
+        if weekday >= 5:
             return False
         hour = now_et.hour + now_et.minute / 60.0
-        if hour < 9.5 or hour >= 16.0:       # outside 9:30–16:00 ET
+        if hour < 9.5 or hour >= 16.0:
             return False
         return True
 
