@@ -524,33 +524,42 @@ class TradingEngine:
                 paused = await asyncio.to_thread(self.redis.get, "trading:paused")
 
                 if not is_open:
-                    # Market closed – pause if not already paused
-                    if not paused:
-                        # Format reason message
-                        now_et = clock.timestamp.astimezone(ZoneInfo("America/New_York"))
-                        next_open_et = clock.next_open.astimezone(ZoneInfo("America/New_York"))
-                        remaining_seconds = (clock.next_open - clock.timestamp).total_seconds()
-                        if remaining_seconds > 3600:
-                            hours = int(remaining_seconds // 3600)
-                            minutes = int((remaining_seconds % 3600) // 60)
-                            countdown_str = f"{hours}h {minutes}m"
-                        elif remaining_seconds > 60:
-                            minutes = int(remaining_seconds // 60)
-                            seconds = int(remaining_seconds % 60)
-                            countdown_str = f"{minutes}m {seconds}s"
-                        else:
-                            countdown_str = f"{int(remaining_seconds)}s"
-                        reason = (
-                            f"Market is currently closed, current ALPACA TIME "
-                            f"{now_et.strftime('%H:%M %d/%m/%Y')}, "
-                            f"reopens in {countdown_str} "
-                            f"(at {next_open_et.strftime('%H:%M %d/%m/%Y')})"
-                        )
-                        # Pause with source "market_closed"
-                        await asyncio.to_thread(self.redis.set, "trading:paused", "1")
-                        await asyncio.to_thread(self.redis.set, "trading:pause_source", "market_closed")
-                        await asyncio.to_thread(self.redis.set, "trading:pause_reason", reason)
-                        await asyncio.to_thread(self.redis.set, "trading:market_next_open", clock.next_open.isoformat())
+                    # Market closed – pause if not already paused (atomic)
+                    now_et = clock.timestamp.astimezone(ZoneInfo("America/New_York"))
+                    next_open_et = clock.next_open.astimezone(ZoneInfo("America/New_York"))
+                    remaining_seconds = (clock.next_open - clock.timestamp).total_seconds()
+                    if remaining_seconds > 3600:
+                        hours = int(remaining_seconds // 3600)
+                        minutes = int((remaining_seconds % 3600) // 60)
+                        countdown_str = f"{hours}h {minutes}m"
+                    elif remaining_seconds > 60:
+                        minutes = int(remaining_seconds // 60)
+                        seconds = int(remaining_seconds % 60)
+                        countdown_str = f"{minutes}m {seconds}s"
+                    else:
+                        countdown_str = f"{int(remaining_seconds)}s"
+                    reason = (
+                        f"Market is currently closed, current ALPACA TIME "
+                        f"{now_et.strftime('%H:%M %d/%m/%Y')}, "
+                        f"reopens in {countdown_str} "
+                        f"(at {next_open_et.strftime('%H:%M %d/%m/%Y')})"
+                    )
+                    # Atomic pause: only set keys if not already paused
+                    lua_pause = """
+                        if redis.call("EXISTS", "trading:paused") == 0 then
+                            redis.call("SET", "trading:paused", "1")
+                            redis.call("SET", "trading:pause_source", "market_closed")
+                            redis.call("SET", "trading:pause_reason", ARGV[1])
+                            redis.call("SET", "trading:market_next_open", ARGV[2])
+                            return 1
+                        else
+                            return 0
+                        end
+                    """
+                    was_set = await asyncio.to_thread(
+                        self.redis.eval, lua_pause, 0, reason, clock.next_open.isoformat()
+                    )
+                    if was_set == 1:
                         logger.info(f"Market closed, pausing trading. Reason: {reason}")
                         if self.notifier:
                             await self.notifier.send_notification(
@@ -558,29 +567,30 @@ class TradingEngine:
                                 summary={"action": "PAUSE", "reason": reason}
                             )
                 else:
-                    # Market open – resume if paused due to market_closed
-                    if paused:
-                        source = await asyncio.to_thread(self.redis.get, "trading:pause_source")
-                        if source and (source.decode() if isinstance(source, bytes) else source) == "market_closed":
-                            # Resume
-                            pause_keys = [
-                                "trading:paused",
-                                "trading:pause_source",
-                                "trading:pause_start",
-                                "trading:pause_duration",
-                                "trading:pause_reason",
-                                "trading:llm_pause_time",
-                                "trading:market_next_open",
-                            ]
-                            for key in pause_keys:
-                                await asyncio.to_thread(self.redis.delete, key)
-                            logger.info("Market opened, resuming trading.")
-                            self._reeval_trigger.set()
-                            if self.notifier:
-                                await self.notifier.send_notification(
-                                    "▶️ Market opened, trading resumed.",
-                                    summary={"action": "RESUME", "reason": "Market opened"}
-                                )
+                    # Market open – resume if paused due to market_closed (atomic)
+                    lua_resume = """
+                        if redis.call("GET", "trading:pause_source") == "market_closed" then
+                            redis.call("DEL", "trading:paused")
+                            redis.call("DEL", "trading:pause_source")
+                            redis.call("DEL", "trading:pause_start")
+                            redis.call("DEL", "trading:pause_duration")
+                            redis.call("DEL", "trading:pause_reason")
+                            redis.call("DEL", "trading:llm_pause_time")
+                            redis.call("DEL", "trading:market_next_open")
+                            return 1
+                        else
+                            return 0
+                        end
+                    """
+                    was_resumed = await asyncio.to_thread(self.redis.eval, lua_resume, 0)
+                    if was_resumed == 1:
+                        logger.info("Market opened, resuming trading.")
+                        self._reeval_trigger.set()
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                "▶️ Market opened, trading resumed.",
+                                summary={"action": "RESUME", "reason": "Market opened"}
+                            )
             except Exception as e:
                 logger.error(f"Market clock monitor error: {e}", exc_info=True)
             await asyncio.sleep(30)  # check every 30 seconds

@@ -666,6 +666,13 @@ class TelegramBot:
             await update.message.reply_text("📈 No open trades to sell.", reply_markup=self.keyboard)
             return
 
+        if not await self.engine._is_market_open():
+            await update.message.reply_text(
+                "⏸️ Cannot sell: market is currently closed.",
+                reply_markup=self.keyboard
+            )
+            return
+
         if context.args:
             # Sell a specific trade by its displayed ID
             try:

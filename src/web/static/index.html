@@ -1016,7 +1016,13 @@
             fetch('/api/pause', { method: 'POST' }).then(() => alert('Trading paused.'));
         });
         document.getElementById('btn-resume').addEventListener('click', () => {
-            fetch('/api/resume', { method: 'POST' }).then(() => alert('Trading resumed.'));
+            fetch('/api/resume', { method: 'POST' })
+                .then(res => {
+                    if (res.ok) return res.json();
+                    else return res.json().then(err => { throw new Error(err.detail || 'Resume failed'); });
+                })
+                .then(() => alert('Trading resumed.'))
+                .catch(err => alert('Error: ' + err.message));
         });
         document.getElementById('btn-sell-all').addEventListener('click', () => {
             if (confirm('Sell all open positions?')) {

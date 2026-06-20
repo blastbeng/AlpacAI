@@ -172,6 +172,8 @@ async def resume():
 @app.post("/api/sell")
 async def sell(symbol: str = None):
     engine = get_engine()
+    if not await engine._is_market_open():
+        raise HTTPException(status_code=400, detail="Cannot sell: market is currently closed")
     if symbol:
         asyncio.create_task(engine.sell_position(symbol))
         return {"status": f"selling {symbol}"}
