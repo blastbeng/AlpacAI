@@ -233,6 +233,9 @@ class TelegramBot:
                 msg += f"<b>⏸️ Reason:</b> {pause_reason}\n"
             if countdown:
                 msg += f"<b>⏱️ Resumes in:</b> {countdown}\n"
+            alpaca_time = pause_status.get("alpaca_time_str", "")
+            if alpaca_time:
+                msg += f"<b>🕒 Alpaca Time:</b> {alpaca_time}\n"
 
         queued_count = len(self.engine.queued_orders)
         if queued_count > 0:

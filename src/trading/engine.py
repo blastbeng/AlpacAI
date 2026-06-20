@@ -584,7 +584,7 @@ class TradingEngine:
                     now_ts = time.time()
                     # Recompute remaining seconds from the live clock (or fallback)
                     if clock is not None:
-                        remaining_seconds = (clock.next_open - clock.timestamp).total_seconds()
+                        remaining_seconds = (clock.next_open - datetime.now(timezone.utc)).total_seconds()
                     else:
                         # Fallback to stored next_open
                         next_open_raw = await asyncio.to_thread(self.redis.get, "trading:market_next_open")
@@ -5583,28 +5583,38 @@ class TradingEngine:
 
         if is_paused:
             if source == "market_closed":
-                # Fetch the current clock to compute a live countdown
+                # Fetch the current clock to compute a live countdown and current Alpaca time
                 try:
                     clock = self.exchange.get_clock()
                 except Exception:
                     clock = None
 
-                if clock is not None and not clock.is_open:
-                    now_utc = datetime.now(timezone.utc)
-                    next_open = clock.next_open
-                    remaining = (next_open - now_utc).total_seconds()
-                    if remaining > 0:
-                        remaining_seconds = int(remaining)
-                        if remaining_seconds > 3600:
-                            hours = remaining_seconds // 3600
-                            minutes = (remaining_seconds % 3600) // 60
-                            countdown_str = f"{hours}h {minutes}m"
-                        elif remaining_seconds > 60:
-                            minutes = remaining_seconds // 60
-                            seconds = remaining_seconds % 60
-                            countdown_str = f"{minutes}m {seconds}s"
-                        else:
-                            countdown_str = f"{remaining_seconds}s"
+                alpaca_time_str = None
+                if clock is not None:
+                    alpaca_time_str = clock.timestamp.astimezone(ZoneInfo("America/New_York")).strftime('%H:%M %d/%m/%Y')
+                    if not clock.is_open:
+                        now_utc = datetime.now(timezone.utc)
+                        next_open = clock.next_open
+                        remaining = (next_open - now_utc).total_seconds()
+                        if remaining > 0:
+                            remaining_seconds = int(remaining)
+                            if remaining_seconds > 3600:
+                                hours = remaining_seconds // 3600
+                                minutes = (remaining_seconds % 3600) // 60
+                                countdown_str = f"{hours}h {minutes}m"
+                            elif remaining_seconds > 60:
+                                minutes = remaining_seconds // 60
+                                seconds = remaining_seconds % 60
+                                countdown_str = f"{minutes}m {seconds}s"
+                            else:
+                                countdown_str = f"{remaining_seconds}s"
+                            # Build a fresh, dynamic reason string
+                            next_open_et = next_open.astimezone(ZoneInfo("America/New_York"))
+                            reason = (
+                                f"Market closed. Alpaca time: {alpaca_time_str}. "
+                                f"Reopens in {countdown_str} "
+                                f"(at {next_open_et.strftime('%H:%M %d/%m/%Y')})"
+                            )
                 else:
                     # Fallback to the stored next_open if the clock is unavailable
                     next_open_raw = self.redis.get("trading:market_next_open")
@@ -5626,6 +5636,7 @@ class TradingEngine:
                                     countdown_str = f"{minutes}m {seconds}s"
                                 else:
                                     countdown_str = f"{remaining_seconds}s"
+                                reason = f"Market closed (Alpaca clock unavailable). Reopens in {countdown_str}"
                         except Exception:
                             pass
             else:
@@ -5659,6 +5670,7 @@ class TradingEngine:
             "remaining_seconds": remaining_seconds,
             "countdown_str": countdown_str,
             "source": source,
+            "alpaca_time_str": alpaca_time_str if is_paused and source == "market_closed" else None,
         }
 
     def get_risk_metrics(self) -> Dict[str, Any]:
