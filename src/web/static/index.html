@@ -453,11 +453,20 @@
             // Trading status badge
             const tradingDot = document.getElementById('trading-dot');
             const tradingText = document.getElementById('trading-status-text');
+            const pauseInfo = data.pause_info;
             if (data.paused) {
                 tradingDot.className = 'status-dot';
                 tradingDot.style.background = '#f85149';
                 tradingDot.style.boxShadow = '0 0 8px #f85149';
-                tradingText.textContent = 'Trading: Paused';
+                let statusStr = 'Trading: Paused';
+                if (pauseInfo && pauseInfo.countdown_str) {
+                    statusStr += ` (resumes in ${pauseInfo.countdown_str})`;
+                } else if (pauseInfo && pauseInfo.reason) {
+                    // show a short reason if no countdown
+                    const shortReason = pauseInfo.reason.length > 40 ? pauseInfo.reason.substring(0, 40) + '…' : pauseInfo.reason;
+                    statusStr += ` (${shortReason})`;
+                }
+                tradingText.textContent = statusStr;
             } else {
                 tradingDot.className = 'status-dot';
                 tradingDot.style.background = '#3fb950';

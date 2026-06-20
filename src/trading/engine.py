@@ -529,15 +529,28 @@ class TradingEngine:
                         # Format reason message
                         now_et = clock.timestamp.astimezone(ZoneInfo("America/New_York"))
                         next_open_et = clock.next_open.astimezone(ZoneInfo("America/New_York"))
+                        remaining_seconds = (clock.next_open - clock.timestamp).total_seconds()
+                        if remaining_seconds > 3600:
+                            hours = int(remaining_seconds // 3600)
+                            minutes = int((remaining_seconds % 3600) // 60)
+                            countdown_str = f"{hours}h {minutes}m"
+                        elif remaining_seconds > 60:
+                            minutes = int(remaining_seconds // 60)
+                            seconds = int(remaining_seconds % 60)
+                            countdown_str = f"{minutes}m {seconds}s"
+                        else:
+                            countdown_str = f"{int(remaining_seconds)}s"
                         reason = (
                             f"Market is currently closed, current ALPACA TIME "
                             f"{now_et.strftime('%H:%M %d/%m/%Y')}, "
-                            f"reopens at {next_open_et.strftime('%H:%M %d/%m/%Y')}"
+                            f"reopens in {countdown_str} "
+                            f"(at {next_open_et.strftime('%H:%M %d/%m/%Y')})"
                         )
                         # Pause with source "market_closed"
                         await asyncio.to_thread(self.redis.set, "trading:paused", "1")
                         await asyncio.to_thread(self.redis.set, "trading:pause_source", "market_closed")
                         await asyncio.to_thread(self.redis.set, "trading:pause_reason", reason)
+                        await asyncio.to_thread(self.redis.set, "trading:market_next_open", clock.next_open.isoformat())
                         logger.info(f"Market closed, pausing trading. Reason: {reason}")
                         if self.notifier:
                             await self.notifier.send_notification(
@@ -557,6 +570,7 @@ class TradingEngine:
                                 "trading:pause_duration",
                                 "trading:pause_reason",
                                 "trading:llm_pause_time",
+                                "trading:market_next_open",
                             ]
                             for key in pause_keys:
                                 await asyncio.to_thread(self.redis.delete, key)
@@ -5482,7 +5496,7 @@ class TradingEngine:
         return get_performance()
 
     def get_pause_status(self) -> Dict[str, Any]:
-        """Return the current trading pause status, reason, and remaining duration."""
+        """Return the current trading pause status, reason, remaining duration, and a formatted countdown."""
         paused_raw = self.redis.get("trading:paused")
         is_paused = paused_raw is not None and paused_raw == b"1"
 
@@ -5493,23 +5507,61 @@ class TradingEngine:
         source = source_raw.decode() if isinstance(source_raw, bytes) else (source_raw or "")
 
         remaining_seconds = None
+        countdown_str = None
+
         if is_paused:
-            pause_start_raw = self.redis.get("trading:pause_start")
-            pause_duration_raw = self.redis.get("trading:pause_duration")
-            if pause_start_raw and pause_duration_raw:
-                try:
-                    pause_start = float(pause_start_raw)
-                    pause_duration = int(pause_duration_raw)
-                    elapsed = time.time() - pause_start
-                    remaining = pause_duration - elapsed
-                    remaining_seconds = max(0, remaining) if remaining > 0 else None
-                except (ValueError, TypeError):
-                    pass
+            if source == "market_closed":
+                next_open_raw = self.redis.get("trading:market_next_open")
+                if next_open_raw:
+                    try:
+                        next_open_str = next_open_raw.decode() if isinstance(next_open_raw, bytes) else next_open_raw
+                        next_open_dt = datetime.fromisoformat(next_open_str)
+                        now_utc = datetime.now(timezone.utc)
+                        remaining = (next_open_dt - now_utc).total_seconds()
+                        if remaining > 0:
+                            remaining_seconds = int(remaining)
+                            if remaining_seconds > 3600:
+                                hours = remaining_seconds // 3600
+                                minutes = (remaining_seconds % 3600) // 60
+                                countdown_str = f"{hours}h {minutes}m"
+                            elif remaining_seconds > 60:
+                                minutes = remaining_seconds // 60
+                                seconds = remaining_seconds % 60
+                                countdown_str = f"{minutes}m {seconds}s"
+                            else:
+                                countdown_str = f"{remaining_seconds}s"
+                    except Exception:
+                        pass
+            else:
+                # LLM or manual pause with duration
+                pause_start_raw = self.redis.get("trading:pause_start")
+                pause_duration_raw = self.redis.get("trading:pause_duration")
+                if pause_start_raw and pause_duration_raw:
+                    try:
+                        pause_start = float(pause_start_raw)
+                        pause_duration = int(pause_duration_raw)
+                        elapsed = time.time() - pause_start
+                        remaining = pause_duration - elapsed
+                        if remaining > 0:
+                            remaining_seconds = int(remaining)
+                            if remaining_seconds > 3600:
+                                hours = remaining_seconds // 3600
+                                minutes = (remaining_seconds % 3600) // 60
+                                countdown_str = f"{hours}h {minutes}m"
+                            elif remaining_seconds > 60:
+                                minutes = remaining_seconds // 60
+                                seconds = remaining_seconds % 60
+                                countdown_str = f"{minutes}m {seconds}s"
+                            else:
+                                countdown_str = f"{remaining_seconds}s"
+                    except (ValueError, TypeError):
+                        pass
 
         return {
             "is_paused": is_paused,
             "reason": reason,
             "remaining_seconds": remaining_seconds,
+            "countdown_str": countdown_str,
             "source": source,
         }
 

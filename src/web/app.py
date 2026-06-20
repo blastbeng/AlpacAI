@@ -377,6 +377,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     balances = await run_in_threadpool(engine.trader.fetch_balance)
                     profit_summary = await run_in_threadpool(engine.get_profit_summary)
+                    pause_info = await asyncio.to_thread(engine.get_pause_status)
                     payload = {
                         "current_symbols": current_symbols,
                         "positions": positions,
@@ -385,6 +386,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "profit": profit_summary,
                         "performance": perf,
                         "paused": await asyncio.to_thread(redis.get, "trading:paused") == "1",
+                        "pause_info": pause_info,
                         "queued_orders": engine.queued_orders,
                     }
                     _ws_payload_cache = payload

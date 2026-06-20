@@ -215,6 +215,18 @@ class TelegramBot:
         status_text = "⏸️ Paused" if paused else "▶️ Active"
         msg += f"\n<b>⚙️ Trading:</b> {status_text}\n"
 
+        if paused:
+            try:
+                pause_status = await asyncio.to_thread(self.engine.get_pause_status)
+            except Exception:
+                pause_status = {}
+            pause_reason = pause_status.get("reason", "")
+            countdown = pause_status.get("countdown_str", "")
+            if pause_reason:
+                msg += f"<b>⏸️ Reason:</b> {pause_reason}\n"
+            if countdown:
+                msg += f"<b>⏱️ Resumes in:</b> {countdown}\n"
+
         queued_count = len(self.engine.queued_orders)
         if queued_count > 0:
             msg += f"\n<b>⏳ Queued Orders:</b> {queued_count}\n"
