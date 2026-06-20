@@ -551,12 +551,7 @@ class TradingEngine:
                         countdown_str = f"{minutes}m {seconds}s"
                     else:
                         countdown_str = f"{int(remaining_seconds)}s"
-                    reason = (
-                        f"Market is currently closed, current ALPACA TIME "
-                        f"{now_et.strftime('%H:%M %d/%m/%Y')}, "
-                        f"reopens in {countdown_str} "
-                        f"(at {next_open_et.strftime('%H:%M %d/%m/%Y')})"
-                    )
+                    reason = "Market closed"
                     # Atomic pause: only set keys if not already paused
                     lua_pause = """
                         if redis.call("EXISTS", "trading:paused") == 0 then
@@ -5610,13 +5605,6 @@ class TradingEngine:
                                 countdown_str = f"{minutes}m {seconds}s"
                             else:
                                 countdown_str = f"{remaining_seconds}s"
-                            # Build a fresh, dynamic reason string
-                            next_open_et = next_open.astimezone(ZoneInfo("America/New_York"))
-                            reason = (
-                                f"Market closed. Alpaca time: {alpaca_time_str}. "
-                                f"Reopens in {countdown_str} "
-                                f"(at {next_open_et.strftime('%H:%M %d/%m/%Y')})"
-                            )
                 else:
                     # Fallback to the stored next_open if the clock is unavailable
                     next_open_raw = self.redis.get("trading:market_next_open")
@@ -5638,7 +5626,7 @@ class TradingEngine:
                                     countdown_str = f"{minutes}m {seconds}s"
                                 else:
                                     countdown_str = f"{remaining_seconds}s"
-                                reason = f"Market closed (Alpaca clock unavailable). Reopens in {countdown_str}"
+                                reason = "Market closed"
                         except Exception:
                             pass
             else:
