@@ -7366,49 +7366,187 @@ class TradingEngine:
     async def _detect_entry_signal(self, symbol: str, timeframe: str) -> bool:
         """Return True if a favourable entry condition is detected for the symbol.
         Uses recent OHLCV data from the database and compares with previous state."""
-        # Fetch recent candles from DB (last 50)
         db_candles = await asyncio.to_thread(
             get_ohlcv, symbol, timeframe, limit=50
         )
         if len(db_candles) < 26:
             return False
 
+        # Convert list of dicts to list of lists for compute_all_indicators
+        raw_candles = [
+            [c["timestamp"], c["open"], c["high"], c["low"], c["close"], c["volume"]]
+            for c in db_candles
+        ]
+        ind = compute_all_indicators(raw_candles)
+        if not ind:
+            return False
+
         closes = [c["close"] for c in db_candles]
-        rsi = compute_rsi(closes)
-        macd_val, macd_signal, macd_hist = compute_macd(closes)
+        volumes = [c["volume"] for c in db_candles]
 
-        # Retrieve previous state for this symbol
+        # Retrieve previous state
         prev = self._entry_signal_state.get(symbol, {})
-        prev_rsi = prev.get("rsi")
-        prev_macd_hist = prev.get("macd_hist")
 
-        # Store current values for next cycle
-        self._entry_signal_state[symbol] = {
+        # Current values
+        rsi = ind.get("rsi")
+        macd_hist = ind.get("macd_hist")
+        macd_val = ind.get("macd")
+        macd_signal = ind.get("macd_signal")
+        stoch_k = ind.get("stochastic_k")
+        adx = ind.get("adx")
+        plus_di = ind.get("plus_di")
+        minus_di = ind.get("minus_di")
+        bb_upper = ind.get("bb_upper")
+        bb_lower = ind.get("bb_lower")
+        bb_middle = ind.get("bb_middle")
+        ema_9 = ind.get("ema_9")
+        ema_21 = ind.get("ema_21")
+        vwap = ind.get("vwap")
+        parabolic_sar = ind.get("parabolic_sar")
+        ichimoku = ind.get("ichimoku")
+        current_close = closes[-1] if closes else None
+
+        # Volume EMA for spike detection
+        volume_ema = prev.get("volume_ema")
+        if volume_ema is None:
+            volume_ema = sum(volumes[-20:]) / min(20, len(volumes)) if volumes else 0.0
+        else:
+            alpha = 0.2
+            volume_ema = alpha * volumes[-1] + (1 - alpha) * volume_ema if volumes else volume_ema
+
+        # Store current state for next cycle
+        new_state = {
             "rsi": rsi,
             "macd_hist": macd_hist,
+            "macd_val": macd_val,
+            "macd_signal": macd_signal,
+            "stoch_k": stoch_k,
+            "adx": adx,
+            "plus_di": plus_di,
+            "minus_di": minus_di,
+            "bb_upper": bb_upper,
+            "bb_lower": bb_lower,
+            "bb_middle": bb_middle,
+            "ema_9": ema_9,
+            "ema_21": ema_21,
+            "vwap": vwap,
+            "parabolic_sar": parabolic_sar,
+            "ichimoku_cloud_top": ichimoku["cloud_top"] if ichimoku else None,
+            "ichimoku_cloud_bottom": ichimoku["cloud_bottom"] if ichimoku else None,
+            "close": current_close,
+            "volume_ema": volume_ema,
         }
+        self._entry_signal_state[symbol] = new_state
 
-        # --- Define entry signal conditions ---
-        # 1. RSI oversold (use LLM‑defined threshold if available, else default 30)
+        # --- Read LLM-defined thresholds from Redis (fallback to defaults) ---
         rsi_oversold = 30.0
+        rsi_overbought = 70.0
+        adx_moderate = 25.0
+        bb_squeeze_width = 0.02
         try:
             raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_rsi_oversold")
             if raw:
                 rsi_oversold = float(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:skip_eval_rsi_overbought")
+            if raw:
+                rsi_overbought = float(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:regime_adx_moderate")
+            if raw:
+                adx_moderate = float(raw)
+            raw = await asyncio.to_thread(self.redis.get, "trading:regime_bb_squeeze_width")
+            if raw:
+                bb_squeeze_width = float(raw)
         except Exception:
             pass
+
+        # --- Condition checks ---
+        # 1. RSI oversold
         if rsi is not None and rsi < rsi_oversold:
             return True
 
         # 2. MACD histogram bullish crossover (was negative, now positive)
+        prev_macd_hist = prev.get("macd_hist")
         if (prev_macd_hist is not None and macd_hist is not None
                 and prev_macd_hist <= 0 and macd_hist > 0):
             return True
 
-        # 3. RSI leaving oversold (was oversold, now above threshold) – momentum shift
+        # 3. RSI leaving oversold (momentum shift)
+        prev_rsi = prev.get("rsi")
         if (prev_rsi is not None and rsi is not None
                 and prev_rsi < rsi_oversold and rsi >= rsi_oversold):
             return True
+
+        # 4. MACD line crossing above signal line (bullish crossover)
+        prev_macd_val = prev.get("macd_val")
+        prev_macd_signal = prev.get("macd_signal")
+        if (prev_macd_val is not None and prev_macd_signal is not None
+                and macd_val is not None and macd_signal is not None
+                and prev_macd_val <= prev_macd_signal and macd_val > macd_signal):
+            return True
+
+        # 5. Stochastic %K crossing above 20 (leaving oversold)
+        prev_stoch_k = prev.get("stoch_k")
+        if (prev_stoch_k is not None and stoch_k is not None
+                and prev_stoch_k <= 20 and stoch_k > 20):
+            return True
+
+        # 6. ADX rising above moderate threshold and +DI > -DI (trend start)
+        prev_adx = prev.get("adx")
+        if (adx is not None and plus_di is not None and minus_di is not None
+                and plus_di > minus_di
+                and prev_adx is not None and prev_adx <= adx_moderate and adx > adx_moderate):
+            return True
+
+        # 7. Bollinger Band squeeze breakout
+        prev_bb_upper = prev.get("bb_upper")
+        prev_bb_lower = prev.get("bb_lower")
+        prev_bb_middle = prev.get("bb_middle")
+        if (prev_bb_upper is not None and prev_bb_lower is not None and prev_bb_middle is not None
+                and bb_upper is not None and bb_lower is not None and bb_middle is not None
+                and prev_bb_middle > 0 and bb_middle > 0):
+            prev_width = (prev_bb_upper - prev_bb_lower) / prev_bb_middle
+            curr_width = (bb_upper - bb_lower) / bb_middle
+            if prev_width < bb_squeeze_width and current_close is not None and current_close > bb_upper:
+                return True
+
+        # 8. Volume spike (current volume > 2 * EMA of volume)
+        if volumes and volume_ema > 0 and volumes[-1] > 2.0 * volume_ema:
+            return True
+
+        # 9. EMA9 crossing above EMA21 (golden cross)
+        prev_ema_9 = prev.get("ema_9")
+        prev_ema_21 = prev.get("ema_21")
+        if (prev_ema_9 is not None and prev_ema_21 is not None
+                and ema_9 is not None and ema_21 is not None
+                and prev_ema_9 <= prev_ema_21 and ema_9 > ema_21):
+            return True
+
+        # 10. Price crossing above VWAP
+        prev_close = prev.get("close")
+        prev_vwap = prev.get("vwap")
+        if (prev_close is not None and prev_vwap is not None
+                and current_close is not None and vwap is not None
+                and prev_close <= prev_vwap and current_close > vwap):
+            return True
+
+        # 11. Parabolic SAR flip (from above price to below price → uptrend)
+        prev_sar = prev.get("parabolic_sar")
+        if (prev_sar is not None and parabolic_sar is not None
+                and prev_close is not None and current_close is not None
+                and prev_sar > prev_close and parabolic_sar < current_close):
+            return True
+
+        # 12. Ichimoku: price crossing above cloud
+        prev_cloud_top = prev.get("ichimoku_cloud_top")
+        prev_cloud_bottom = prev.get("ichimoku_cloud_bottom")
+        if (prev_cloud_top is not None and prev_cloud_bottom is not None
+                and ichimoku is not None
+                and prev_close is not None and current_close is not None):
+            cloud_top = ichimoku["cloud_top"]
+            cloud_bottom = ichimoku["cloud_bottom"]
+            # Previous close was below or inside cloud, current close above cloud top
+            if prev_close <= cloud_top and current_close > cloud_top:
+                return True
 
         return False
 
