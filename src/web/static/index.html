@@ -466,6 +466,9 @@
                     const shortReason = pauseInfo.reason.length > 40 ? pauseInfo.reason.substring(0, 40) + '…' : pauseInfo.reason;
                     statusStr += ` (${shortReason})`;
                 }
+                if (pauseInfo && pauseInfo.alpaca_time_str) {
+                    statusStr += ` | 🕒 ${pauseInfo.alpaca_time_str}`;
+                }
                 tradingText.textContent = statusStr;
             } else {
                 tradingDot.className = 'status-dot';
