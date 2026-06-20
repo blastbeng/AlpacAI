@@ -86,7 +86,6 @@ class LiveTrader:
                     limit_price=limit_price,
                     side=OrderSide.BUY,
                     time_in_force=tif,
-                    extended_hours=True,
                 )
             else:
                 order_data = MarketOrderRequest(
@@ -108,7 +107,6 @@ class LiveTrader:
                     limit_price=limit_price,
                     side=OrderSide.BUY,
                     time_in_force=tif,
-                    extended_hours=True,
                 )
             else:
                 order_data = MarketOrderRequest(
@@ -166,7 +164,6 @@ class LiveTrader:
                 limit_price=limit_price,
                 side=OrderSide.SELL,
                 time_in_force=tif,
-                extended_hours=True,
             )
         else:
             order_data = MarketOrderRequest(
@@ -233,7 +230,6 @@ class LiveTrader:
                 stop_price=stop_price,
                 side=OrderSide.BUY,
                 time_in_force=tif,
-                extended_hours=True,
             )
         else:
             # Fractionable – use notional
@@ -243,7 +239,6 @@ class LiveTrader:
                 stop_price=stop_price,
                 side=OrderSide.BUY,
                 time_in_force=tif,
-                extended_hours=True,
             )
         order = self.trading_client.submit_order(order_data)
         return self._order_to_dict(order, symbol)
@@ -262,7 +257,6 @@ class LiveTrader:
             stop_price=stop_price,
             side=OrderSide.SELL,
             time_in_force=tif,
-            extended_hours=True,
         )
         order = self.trading_client.submit_order(order_data)
         return self._order_to_dict(order, symbol)
@@ -290,7 +284,6 @@ class LiveTrader:
                 limit_price=limit_price,
                 side=OrderSide.BUY,
                 time_in_force=tif,
-                extended_hours=True,
             )
         else:
             order_data = StopLimitOrderRequest(
@@ -300,7 +293,6 @@ class LiveTrader:
                 limit_price=limit_price,
                 side=OrderSide.BUY,
                 time_in_force=tif,
-                extended_hours=True,
             )
         order = self.trading_client.submit_order(order_data)
         return self._order_to_dict(order, symbol)
@@ -321,7 +313,6 @@ class LiveTrader:
             limit_price=limit_price,
             side=OrderSide.SELL,
             time_in_force=tif,
-            extended_hours=True,
         )
         order = self.trading_client.submit_order(order_data)
         return self._order_to_dict(order, symbol)
@@ -349,7 +340,6 @@ class LiveTrader:
                 trail_offset=trail_offset,
                 side=OrderSide.BUY,
                 time_in_force=tif,
-                extended_hours=True,
             )
         else:
             order_data = TrailingStopOrderRequest(
@@ -358,7 +348,6 @@ class LiveTrader:
                 trail_offset=trail_offset,
                 side=OrderSide.BUY,
                 time_in_force=tif,
-                extended_hours=True,
             )
         order = self.trading_client.submit_order(order_data)
         return self._order_to_dict(order, symbol)
@@ -377,7 +366,6 @@ class LiveTrader:
             trail_offset=trail_offset,
             side=OrderSide.SELL,
             time_in_force=tif,
-            extended_hours=True,
         )
         order = self.trading_client.submit_order(order_data)
         return self._order_to_dict(order, symbol)

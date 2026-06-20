@@ -312,7 +312,7 @@ You will receive news sentiment data for each stock. Use it to gauge market sent
 Output strict JSON only. The response must start with '{' or '[' and end with '}' or ']'. No markdown fences, no explanations, no extra text.
 
 **Stock & ETF Market Specifics:**
-- **Market Hours:** The US stock market regular session is 9:30 AM – 4:00 PM Eastern Time. Pre-market (4:00 AM – 9:30 AM) and after-hours (4:00 PM – 8:00 PM) sessions have lower liquidity, wider spreads, and higher volatility. If the bot is trading during extended hours, reduce position sizes, widen stops, and be extra cautious. The `session_info` field will indicate the current session.
+- **Market Hours:** The bot only trades during regular US market hours (9:30 AM – 4:00 PM Eastern Time, Monday–Friday). Orders are never placed outside this window. The `session_info` field will indicate the current session.
 - **Earnings & Corporate Events:** Stocks can experience large price gaps due to earnings reports, FDA decisions, or other corporate events. If recent news suggests an upcoming earnings announcement or a major event, avoid holding through it unless you have very high conviction.
 - **ETFs:** ETFs (including inverse/leveraged ETFs) generally have lower volatility and smoother trends than individual stocks. Inverse ETFs allow profiting from market declines without shorting. Be aware of decay in leveraged inverse ETFs if held long.
 
@@ -337,7 +337,7 @@ Output strict JSON only. The response must start with '{' or '[' and end with '}
   Levels must be sorted by increasing take_profit_pct. The sum of all fractions must be ≤ 1.0. Each level is triggered only once. If this array is provided, the single `partial_take_profit_pct` and `partial_take_profit_fraction` are ignored.
 - `"news_sentiment_exit_threshold"`: an optional float between -1.0 and 1.0 (e.g., -0.5). If set, the bot will close the position immediately if the aggregate news sentiment compound score drops below this threshold while the position is open.
 - `"strategy_interval_seconds"`: an optional positive integer (e.g., 60, 120, 300). If set, the bot will re‑evaluate the strategy for this stock every N seconds instead of the default interval.
-- `"limit_price"`: (optional) a specific limit price for the order. **Required for extended‑hours trading** (pre‑market, after‑hours, weekends in paper mode). If the `session_info` shows a session other than "Regular", you MUST provide this field for BUY and SELL orders. During regular hours, you may also provide a `limit_price` for BUY orders to get a better entry price (e.g., at or near the VWAP). If you provide a `limit_price` during regular hours, the bot will place a limit order instead of a market order. If the price does not reach your limit, the order will not fill.
+- `"limit_price"`: (optional) a specific limit price for the order. You may provide a `limit_price` for BUY orders to get a better entry price (e.g., at or near the VWAP). If you provide a `limit_price` during regular hours, the bot will place a limit order instead of a market order. If the price does not reach your limit, the order will not fill.
 - `"time_in_force"`: (optional) "day" or "gtc". Default "day". Required together with `limit_price` for extended‑hours orders.
 
 **Order Types (REQUIRED for every BUY/SELL):**
@@ -536,8 +536,6 @@ Return a JSON object with the following fields:
 - "max_portfolio_stop_risk_pct": a float between 0.0 and 1.0 (e.g., 0.05 for 5%). The maximum total stop-loss risk as a percentage of portfolio value.
 - "min_risk_reward_ratio": a positive number (e.g., 1.5). The minimum reward:risk ratio required for all trades. Trades with a lower ratio will be rejected.
 - "limit_price_max_distance_pct": an optional float between 0.0 and 1.0 (e.g., 0.05 for 5%). The maximum allowed distance of a limit price from the current best bid/ask. Orders with a limit price further away than this are rejected to avoid indefinite queuing. Set to 0.0 to disable the check entirely. If omitted, the engine uses its default (0.05).
-- "extended_hours_position_size_multiplier": a float between 0.0 and 1.0 (e.g., 0.5). If the bot is trading during extended hours (pre-market or after-hours), all position sizes will be multiplied by this factor to account for lower liquidity and wider spreads. Use 1.0 if you don't want to reduce size during extended hours.
-- "extended_hours_stop_loss_multiplier": a float >= 1.0 (e.g., 1.5). If the bot is trading during extended hours, all stop-loss distances will be multiplied by this factor to account for higher volatility. Use 1.0 if you don't want to widen stops during extended hours.
 - "reasoning": a short string (max 200 characters) explaining why you selected these specific stocks and timeframes. This will be shown to the user, so make it informative.
 
 You may optionally include "stock_revaluation_interval_seconds" (integer >= 60) to change how often the bot re-evaluates the stock list.
