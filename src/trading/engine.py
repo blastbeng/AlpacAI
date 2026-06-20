@@ -301,7 +301,7 @@ class TradingEngine:
         if self._clock_cache is not None and (now - self._clock_cache_time) < 60:
             return self._clock_cache
         try:
-            clock = await asyncio.to_thread(self.trading_client.get_clock)
+            clock = await asyncio.to_thread(self.exchange.get_clock)
             self._clock_cache = clock
             self._clock_cache_time = now
             return clock
