@@ -161,6 +161,10 @@ class TradingEngine:
         # Per‑symbol state for crossover detection (stores last known indicator values)
         self._entry_signal_state: Dict[str, Dict[str, Any]] = {}
 
+        # Alpaca clock cache
+        self._clock_cache: Optional[Any] = None
+        self._clock_cache_time: float = 0.0
+
     async def _initialize_clients(self):
         """Create Alpaca clients and load persisted state (non‑blocking)."""
         try:
@@ -289,6 +293,20 @@ class TradingEngine:
             return agg
         except Exception as e:
             logger.warning(f"Failed to fetch sentiment for {base}: {e}")
+            return None
+
+    async def _get_clock(self) -> Optional[Any]:
+        """Fetch the current market clock from Alpaca, cached for 60 seconds."""
+        now = time.time()
+        if self._clock_cache is not None and (now - self._clock_cache_time) < 60:
+            return self._clock_cache
+        try:
+            clock = await asyncio.to_thread(self.trading_client.get_clock)
+            self._clock_cache = clock
+            self._clock_cache_time = now
+            return clock
+        except Exception as e:
+            logger.warning(f"Failed to fetch Alpaca clock: {e}")
             return None
 
     async def stop(self):
@@ -491,6 +509,67 @@ class TradingEngine:
             finally:
                 self._full_breadth_running = False
             await asyncio.sleep(300)  # every 5 minutes
+
+    async def _market_clock_monitor(self):
+        """Periodically check Alpaca clock and pause/resume trading based on market open/close."""
+        await asyncio.sleep(5)  # initial delay
+        while self._running:
+            try:
+                clock = await self._get_clock()
+                if clock is None:
+                    await asyncio.sleep(30)
+                    continue
+
+                is_open = clock.is_open
+                paused = await asyncio.to_thread(self.redis.get, "trading:paused")
+
+                if not is_open:
+                    # Market closed – pause if not already paused
+                    if not paused:
+                        # Format reason message
+                        now_et = clock.timestamp.astimezone(ZoneInfo("America/New_York"))
+                        next_open_et = clock.next_open.astimezone(ZoneInfo("America/New_York"))
+                        reason = (
+                            f"Market is currently closed, current ALPACA TIME "
+                            f"{now_et.strftime('%H:%M %d/%m/%Y')}, "
+                            f"reopens at {next_open_et.strftime('%H:%M %d/%m/%Y')}"
+                        )
+                        # Pause with source "market_closed"
+                        await asyncio.to_thread(self.redis.set, "trading:paused", "1")
+                        await asyncio.to_thread(self.redis.set, "trading:pause_source", "market_closed")
+                        await asyncio.to_thread(self.redis.set, "trading:pause_reason", reason)
+                        logger.info(f"Market closed, pausing trading. Reason: {reason}")
+                        if self.notifier:
+                            await self.notifier.send_notification(
+                                f"⏸️ {reason}",
+                                summary={"action": "PAUSE", "reason": reason}
+                            )
+                else:
+                    # Market open – resume if paused due to market_closed
+                    if paused:
+                        source = await asyncio.to_thread(self.redis.get, "trading:pause_source")
+                        if source and (source.decode() if isinstance(source, bytes) else source) == "market_closed":
+                            # Resume
+                            pause_keys = [
+                                "trading:paused",
+                                "trading:pause_source",
+                                "trading:pause_start",
+                                "trading:pause_duration",
+                                "trading:pause_reason",
+                                "trading:llm_pause_time",
+                            ]
+                            for key in pause_keys:
+                                await asyncio.to_thread(self.redis.delete, key)
+                            logger.info("Market opened, resuming trading.")
+                            self._reeval_trigger.set()
+                            if self.notifier:
+                                await self.notifier.send_notification(
+                                    "▶️ Market opened, trading resumed.",
+                                    summary={"action": "RESUME", "reason": "Market opened"}
+                                )
+            except Exception as e:
+                logger.error(f"Market clock monitor error: {e}", exc_info=True)
+            await asyncio.sleep(30)  # check every 30 seconds
 
     async def _get_sentiment_str(self, symbol: str) -> str:
         """Get a short news sentiment string for notifications, including an LLM summary."""
@@ -1512,6 +1591,7 @@ class TradingEngine:
         self._background_tasks.append(asyncio.create_task(self._cleanup_orphaned_orders()))
         self._background_tasks.append(asyncio.create_task(self._process_queued_orders()))
         self._background_tasks.append(asyncio.create_task(self._monitor_entry_signals_loop()))
+        self._background_tasks.append(asyncio.create_task(self._market_clock_monitor()))
 
         while self._running:
             try:
@@ -6090,7 +6170,7 @@ class TradingEngine:
             self.queued_orders = [q for q in self.queued_orders if not (q['symbol'] == symbol and q['side'] == 'sell')]
 
         # In live mode, only execute during regular market hours (manual overrides are allowed anytime)
-        if not self._is_market_open() and not (exit_reason and exit_reason.startswith("manual")):
+        if not await self._is_market_open() and not (exit_reason and exit_reason.startswith("manual")):
             logger.info(f"Skipping {signal.action} for {symbol}: market closed (live mode).")
             if self.notifier:
                 await self.notifier.send_notification(
@@ -9488,16 +9568,13 @@ class TradingEngine:
             session = "Closed (overnight)"
         return {"utc_hour": datetime.now(timezone.utc).hour, "session": session}
 
-    def _is_market_open(self) -> bool:
-        """Return True only during regular US market hours (Mon–Fri 9:30–16:00 ET)."""
-        now_et = datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York"))
-        weekday = now_et.weekday()
-        if weekday >= 5:
+    async def _is_market_open(self) -> bool:
+        """Return True if the US market is currently open (via Alpaca clock)."""
+        clock = await self._get_clock()
+        if clock is None:
+            # Fallback: if clock unavailable, assume closed to be safe
             return False
-        hour = now_et.hour + now_et.minute / 60.0
-        if hour < 9.5 or hour >= 16.0:
-            return False
-        return True
+        return clock.is_open
 
     def _is_regular_hours(self) -> bool:
         """Return True if current time is within regular US market hours (9:30–16:00 ET)."""
