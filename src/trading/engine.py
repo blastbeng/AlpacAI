@@ -8469,6 +8469,10 @@ class TradingEngine:
             logger.info(f"Partial TP sell cost {sell_amount * current_price:.2f} below min {min_cost} for {symbol}, skipping.")
             return
 
+        if not await self._is_market_open():
+            logger.info(f"Partial TP (single) for {symbol} skipped: market closed.")
+            return
+
         fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
 
         need_limit = not self._is_regular_hours()
@@ -8631,6 +8635,10 @@ class TradingEngine:
             return
         if min_cost is not None and sell_amount * current_price < float(min_cost):
             logger.info(f"Partial TP level {level_index} sell cost below min for {symbol}, skipping.")
+            return
+
+        if not await self._is_market_open():
+            logger.info(f"Partial TP level {level_index} for {symbol} skipped: market closed.")
             return
 
         fee_rate = get_fee_rate(self.exchange, symbol, self.redis)
@@ -8803,6 +8811,10 @@ class TradingEngine:
             return
         if min_cost is not None and balance * price < float(min_cost):
             logger.info(f"Dust sweep: notional {balance * price:.4f} below min cost {min_cost}, cannot sell.")
+            return
+
+        if not await self._is_market_open():
+            logger.info(f"Dust sweep for {symbol} skipped: market closed.")
             return
 
         need_limit = not self._is_regular_hours()
@@ -8979,6 +8991,10 @@ class TradingEngine:
                             marketable = True
 
                         if not marketable:
+                            if not await self._is_market_open():
+                                # Market closed – don't cancel the limit order or place a market order yet.
+                                # Wait for the market to open; the limit order may become marketable then.
+                                continue
                             logger.info(
                                 f"Limit order {order_id} for {symbol} still not marketable after "
                                 f"{settings.LIMIT_ORDER_MARKET_FALLBACK_SECONDS}s. "
